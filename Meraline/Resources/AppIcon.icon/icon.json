@@ -1,22 +1,27 @@
 {
   "fill" : {
     "linear-gradient" : [
-      "display-p3:0.29804,0.27451,0.94902,1.00000",
-      "display-p3:0.70196,0.36078,0.94118,1.00000"
+      "display-p3:0.97255,0.60784,0.80392,1.00000",
+      "display-p3:0.55686,0.42353,0.94118,1.00000"
     ]
   },
   "groups" : [
     {
       "layers" : [
         {
-          "glass" : true,
-          "image-name" : "wave.svg",
-          "name" : "wave"
+          "glass" : false,
+          "image-name" : "face.svg",
+          "name" : "face"
         },
         {
           "glass" : true,
-          "image-name" : "bubble.svg",
-          "name" : "bubble"
+          "image-name" : "sparkle.svg",
+          "name" : "sparkle"
+        },
+        {
+          "glass" : true,
+          "image-name" : "twinkle.svg",
+          "name" : "twinkle"
         }
       ],
       "shadow" : {
@@ -25,7 +30,7 @@
       },
       "translucency" : {
         "enabled" : true,
-        "value" : 0.4
+        "value" : 0.3
       }
     }
   ],
