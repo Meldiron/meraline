@@ -31,7 +31,7 @@ There are no chat lists, no history, and no projects. Nothing is saved to disk. 
 
 🖼️ **Understands images.** Paste a screenshot or drop an image into the window and ask about it.
 
-🔌 **Uses the AI you already have.** Click the sparkle in the window to switch between the providers you've turned on.
+🔌 **Uses the AI you already have.** Click the sparkle in the window to switch between the providers you've turned on, or to reopen one of your last five chats. Recent chats stay in memory until you quit Meraline.
 
 | | Works with |
 | --- | --- |

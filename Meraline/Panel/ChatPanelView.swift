@@ -66,7 +66,7 @@ struct ChatPanelView: View {
 
     private var inputRow: some View {
         HStack(alignment: .center, spacing: 12) {
-            ProviderMenu(preferences: preferences, isStreaming: session.isStreaming, openSettings: openSettings)
+            ProviderMenu(preferences: preferences, session: session) { isInputFocused = true }
 
             TextField(hasConversation ? "Ask a follow-up…" : "Ask anything…", text: $session.draft, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -77,48 +77,34 @@ struct ChatPanelView: View {
                 .onSubmit(session.send)
                 .disabled(session.isStreaming)
 
-            if session.isStreaming {
-                Button(action: session.stop) {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.mini)
-                        Text("Stop")
-                        Text("esc").foregroundStyle(.tertiary)
-                    }
-                    .font(.system(size: 12, weight: .medium))
-                }
-                .buttonStyle(.glass)
-                .fixedSize()
-                .help("Stop answering")
-            } else {
-                Button { preferences.isPinned.toggle() } label: {
-                    Image(systemName: preferences.isPinned ? "pin.fill" : "pin")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(preferences.isPinned ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
-                        .rotationEffect(.degrees(45))
-                        .frame(width: 32, height: 32)
-                        .glassEffect(
-                            preferences.isPinned ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(),
-                            in: .circle
-                        )
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut("p")
-                .help(preferences.isPinned ? "Unpin: close when clicking elsewhere (⌘P)" : "Pin: stay open when clicking elsewhere (⌘P)")
-                .accessibilityLabel(preferences.isPinned ? "Unpin" : "Pin")
-
-                Button(action: openSettings) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32)
-                        .glassEffect(.regular.interactive(), in: .circle)
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(",")
-                .help("Settings (⌘,)")
-                .accessibilityLabel("Settings")
+            Button { preferences.isPinned.toggle() } label: {
+                Image(systemName: preferences.isPinned ? "pin.fill" : "pin")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(preferences.isPinned ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
+                    .rotationEffect(.degrees(45))
+                    .frame(width: 32, height: 32)
+                    .glassEffect(
+                        preferences.isPinned ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(),
+                        in: .circle
+                    )
+                    .contentTransition(.symbolEffect(.replace))
             }
+            .buttonStyle(.plain)
+            .keyboardShortcut("p")
+            .help(preferences.isPinned ? "Unpin: close when clicking elsewhere (⌘P)" : "Pin: stay open when clicking elsewhere (⌘P)")
+            .accessibilityLabel(preferences.isPinned ? "Unpin" : "Pin")
+
+            Button(action: openSettings) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32, height: 32)
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(",")
+            .help("Settings (⌘,)")
+            .accessibilityLabel("Settings")
         }
         .padding(.leading, 20)
         .padding(.trailing, 12)
@@ -151,13 +137,27 @@ struct ChatPanelView: View {
                     .lineLimit(1)
             }
             Spacer()
-            FooterButton(title: "Copy Answer", symbol: "doc.on.doc", shortcut: KeyboardShortcut("c", modifiers: [.command, .shift])) {
-                session.copyLastAnswer()
-            }
-            .disabled(session.lastAnswer == nil)
-            FooterButton(title: "New Chat", symbol: "square.and.pencil", shortcut: KeyboardShortcut("n")) {
-                session.reset()
-                isInputFocused = true
+            if session.isStreaming {
+                Button(action: session.stop) {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text("Stop")
+                        Text("esc").foregroundStyle(.tertiary)
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.glass)
+                .controlSize(.small)
+                .help("Stop answering")
+            } else {
+                FooterButton(title: "Copy Answer", symbol: "doc.on.doc", shortcut: KeyboardShortcut("c", modifiers: [.command, .shift])) {
+                    session.copyLastAnswer()
+                }
+                .disabled(session.lastAnswer == nil)
+                FooterButton(title: "New Chat", symbol: "square.and.pencil", shortcut: KeyboardShortcut("n")) {
+                    session.reset()
+                    isInputFocused = true
+                }
             }
         }
         .padding(.leading, 20)
@@ -190,8 +190,8 @@ struct ChatPanelView: View {
 
 private struct ProviderMenu: View {
     let preferences: Preferences
-    let isStreaming: Bool
-    let openSettings: () -> Void
+    let session: ChatSession
+    let onReopen: () -> Void
 
     var body: some View {
         Menu {
@@ -210,12 +210,25 @@ private struct ProviderMenu: View {
                 }
             }
             Divider()
-            Button("Settings…", systemImage: "gearshape", action: openSettings)
+            Section("Recent Chats") {
+                if session.history.isEmpty {
+                    Text("No recent chats")
+                }
+                ForEach(session.history) { chat in
+                    Button {
+                        session.reopen(chat.id)
+                        onReopen()
+                    } label: {
+                        Text(chat.title)
+                        Text(chat.date, format: .relative(presentation: .named))
+                    }
+                }
+            }
         } label: {
             Image(systemName: "sparkle")
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(.meraline)
-                .symbolEffect(.pulse, isActive: isStreaming)
+                .symbolEffect(.pulse, isActive: session.isStreaming)
                 .frame(width: 28, height: 28)
                 .contentShape(.rect)
         }
@@ -223,8 +236,7 @@ private struct ProviderMenu: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .disabled(isStreaming)
-        .help("Choose a provider")
+        .help("Choose a provider or reopen a recent chat")
         .accessibilityLabel("Provider")
     }
 }

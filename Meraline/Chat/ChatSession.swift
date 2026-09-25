@@ -10,12 +10,26 @@ final class ChatSession {
         var answer = ""
         var activity: Activity?
         var isComplete = false
-        fileprivate var startsOverOnNextText = false
+        var startsOverOnNextText = false
     }
+
+    struct PastChat: Identifiable, Equatable {
+        let id = UUID()
+        let turns: [Turn]
+        let date: Date
+
+        var title: String {
+            let question = turns.first?.question ?? ""
+            return question.isEmpty ? "Image question" : question
+        }
+    }
+
+    static let historyLimit = 5
 
     var draft = ""
     private(set) var draftImages: [ImageAttachment] = []
     private(set) var turns: [Turn] = []
+    private(set) var history: [PastChat] = []
     private(set) var isStreaming = false
     private(set) var failure: String?
     private(set) var failureNeedsSettings = false
@@ -82,6 +96,7 @@ final class ChatSession {
     }
 
     func reset() {
+        archiveCurrentChat()
         streamTask?.cancel()
         streamTask = nil
         draft = ""
@@ -90,6 +105,30 @@ final class ChatSession {
         isStreaming = false
         failure = nil
         failureNeedsSettings = false
+    }
+
+    func reopen(_ id: PastChat.ID) {
+        guard let chat = history.first(where: { $0.id == id }) else { return }
+        history.removeAll { $0.id == id }
+        reset()
+        turns = chat.turns
+    }
+
+    private func archiveCurrentChat() {
+        history = Self.archiving(turns, into: history)
+    }
+
+    static func archiving(_ turns: [Turn], into history: [PastChat], at date: Date = .now) -> [PastChat] {
+        let answered = turns
+            .filter { !$0.answer.isEmpty }
+            .map { turn in
+                var turn = turn
+                turn.activity = nil
+                turn.isComplete = true
+                return turn
+            }
+        guard !answered.isEmpty else { return history }
+        return Array(([PastChat(turns: answered, date: date)] + history).prefix(historyLimit))
     }
 
     func clearDraft() {
