@@ -90,7 +90,17 @@ struct ChatPanelView: View {
                 .fixedSize()
                 .help("Stop answering")
             } else {
-                ModelMenu(preferences: preferences, openSettings: openSettings)
+                Button(action: openSettings) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(",")
+                .help("Settings (⌘,)")
+                .accessibilityLabel("Settings")
             }
         }
         .padding(.leading, 20)
@@ -158,40 +168,6 @@ struct ChatPanelView: View {
             }
         }
         return accepted
-    }
-}
-
-private struct ModelMenu: View {
-    let preferences: Preferences
-    let openSettings: () -> Void
-
-    var body: some View {
-        if let active = preferences.activeProvider {
-            Menu {
-                ForEach(preferences.readyProviders) { provider in
-                    Toggle(isOn: Binding(
-                        get: { provider == active },
-                        set: { if $0 { preferences.provider = provider } }
-                    )) {
-                        Label("\(provider.name) — \(preferences[provider].model)", systemImage: provider.symbol)
-                    }
-                }
-                Divider()
-                Button("Settings…", action: openSettings)
-            } label: {
-                Label(preferences[active].model, systemImage: active.symbol)
-                    .font(.system(size: 12, weight: .medium))
-                    .lineLimit(1)
-                    .frame(maxWidth: 190)
-            }
-            .menuStyle(.button)
-            .buttonStyle(.glass)
-            .fixedSize()
-            .help("Choose the model that answers")
-        } else {
-            Button("Set Up", action: openSettings)
-                .buttonStyle(.glassProminent)
-        }
     }
 }
 
