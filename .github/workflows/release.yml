@@ -1,11 +1,25 @@
 name: Release
 
+# Pushing a tag like v1.2.0 builds, signs, notarizes, and publishes that version. A tag with a
+# pre-release suffix (v1.2.0-beta.1) is published as a pre-release, which the update feed at
+# releases/latest never points at. Everything up to publishing is scripts/release.sh, so the same
+# steps can be rehearsed locally; see docs/releasing.md.
+
 on:
   push:
     tags: ["v*"]
 
 permissions:
   contents: write
+  # Build provenance: id-token proves to Sigstore which workflow run is signing, and attestations
+  # stores the result next to the release so a download can be traced back to this run.
+  id-token: write
+  attestations: write
+
+# The runner image's default Xcode moves over time; a release must not change under a tag
+# because the image did. Bump this on purpose, together with project.yml's deployment target.
+env:
+  XCODE_VERSION: "26.6"
 
 concurrency:
   group: release
@@ -13,85 +27,227 @@ concurrency:
 
 jobs:
   release:
+    name: Build, notarize, and publish
     runs-on: macos-26
-    env:
-      VERSION: ${{ github.ref_name }}
+    timeout-minutes: 60
+
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Generate project
-        run: xcodegen generate
-
-      - name: Import Developer ID certificate
-        uses: apple-actions/import-codesign-certs@v7
         with:
-          p12-file-base64: ${{ secrets.DEVELOPER_ID_P12 }}
-          p12-password: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          # The build number is the commit count, and the release notes look back to the
+          # previous tag, so the whole history is needed.
+          fetch-depth: 0
 
-      - name: Build
+      - name: Select Xcode
         run: |
-          xcodebuild archive \
-            -project Meraline.xcodeproj \
-            -scheme Meraline \
-            -configuration Release \
-            -destination 'generic/platform=macOS' \
-            -archivePath build/Meraline.xcarchive \
-            -clonedSourcePackagesDirPath build/SourcePackages \
-            MARKETING_VERSION="${VERSION#v}" \
-            CURRENT_PROJECT_VERSION="${{ github.run_number }}"
+          sudo xcode-select --switch "/Applications/Xcode_${XCODE_VERSION}.app"
+          xcodebuild -version
 
-      - name: Export with Developer ID
+      # A Meraline release is always signed and notarized; an ad-hoc build would be refused by
+      # Gatekeeper on every Mac but the runner, so missing secrets stop the run here rather than
+      # minutes later at the notarization step.
+      - name: Check the tag and the secrets
+        id: meta
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
-          xcodebuild -exportArchive \
-            -archivePath build/Meraline.xcarchive \
-            -exportOptionsPlist ExportOptions.plist \
-            -exportPath build/export
+          version="${GITHUB_REF_NAME#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME is not of the form vX.Y.Z or vX.Y.Z-pre.N"
+            exit 1
+          fi
+          missing=""
+          for name in DEVELOPER_ID_P12 DEVELOPER_ID_P12_PASSWORD NOTARY_KEY NOTARY_KEY_ID NOTARY_ISSUER_ID SPARKLE_PRIVATE_KEY; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing. See docs/releasing.md."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Releasing Meraline $version from $GITHUB_REF_NAME"
 
-      - name: Notarize
+      - name: Install tools
+        run: brew install xcodegen xcbeautify
+
+      # Plain `security` commands rather than a third-party action, because the private key of
+      # the signing certificate passes through here. The keychain lives in RUNNER_TEMP, is never
+      # made the default, and is deleted by the last step whatever happens to the run.
+      - name: Import the Developer ID certificate
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/meraline-signing.keychain-db"
+          certificate="$RUNNER_TEMP/developer-id.p12"
+          # Random per run: it only guards a keychain that dies with the runner.
+          password="$(openssl rand -base64 24)"
+          echo "KEYCHAIN_PATH=$keychain" >> "$GITHUB_ENV"
+
+          (umask 077; printf '%s' "$DEVELOPER_ID_P12" | base64 --decode > "$certificate")
+          if [ ! -s "$certificate" ]; then
+            echo "::error::DEVELOPER_ID_P12 did not decode. Recreate it with: base64 -i Certificates.p12 | pbcopy"
+            exit 1
+          fi
+
+          security create-keychain -p "$password" "$keychain"
+          # Without this the keychain relocks partway through a long build and codesign fails
+          # with "User interaction is not allowed".
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$DEVELOPER_ID_P12_PASSWORD" \
+            -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$certificate"
+          # -T above names the tools; this is what stops the keychain asking a runner nobody
+          # can click on for confirmation.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
+
+          # Prepend to the user search list, keeping the keychains already on it. Each entry is
+          # trimmed on its own because `security list-keychains` prints them indented and quoted.
+          existing=()
+          while IFS= read -r line; do
+            line="${line#"${line%%[![:space:]]*}"}"
+            line="${line%\"}"
+            line="${line#\"}"
+            [ -n "$line" ] && existing+=("$line")
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "$keychain" ${existing[@]+"${existing[@]}"}
+
+          found="$(security find-identity -v -p codesigning | grep -c "Developer ID Application" || true)"
+          if [ "$found" -ne 1 ]; then
+            echo "::error::Expected exactly one Developer ID Application identity after the import, found $found."
+            security find-identity -v -p codesigning
+            exit 1
+          fi
+          echo "Imported the certificate into a temporary keychain."
+
+      - name: Build, notarize, and package
+        id: package
         env:
           NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
-        run: |
-          app=build/export/Meraline.app
-          key="$RUNNER_TEMP/notary.p8"
-          trap 'rm -f "$key"' EXIT
-          printf '%s' "$NOTARY_KEY" > "$key"
-          credentials=(--key "$key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID")
-          ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/notarize.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" "${credentials[@]}" --wait --output-format json > "$RUNNER_TEMP/notary.json"
-          if [ "$(jq -r .status "$RUNNER_TEMP/notary.json")" != "Accepted" ]; then
-            xcrun notarytool log "$(jq -r .id "$RUNNER_TEMP/notary.json")" "${credentials[@]}"
-            exit 1
-          fi
-          xcrun stapler staple "$app"
-          spctl --assess --verbose=2 "$app"
-
-      - name: Package
-        run: |
-          mkdir -p build/release
-          ditto -c -k --sequesterRsrc --keepParent \
-            build/export/Meraline.app \
-            "build/release/Meraline-${VERSION#v}.zip"
-
-      - name: Generate appcast
-        env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          printf '%s' "$SPARKLE_PRIVATE_KEY" | build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast \
-            --ed-key-file - \
-            --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/${VERSION}/" \
-            build/release
+          MERALINE_REPO: ${{ github.repository }}
+        run: scripts/release.sh "${{ steps.meta.outputs.version }}"
 
-      - name: Publish release
+      # The Sparkle signature already covers the update path. This covers the other one: a file
+      # downloaded from the Releases page can be traced back to this tag and this run with
+      #   gh attestation verify Meraline-<version>.dmg --repo Meldiron/meraline
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            build/release/*.dmg
+            build/release/*.zip
+
+      - name: Write the release description
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          dmg="Meraline-$VERSION.dmg"
+          base="https://github.com/$REPO/releases/download/$GITHUB_REF_NAME"
+          {
+            echo "**[Download $dmg]($base/$dmg)**, open it, and drag Meraline into your Applications folder. Meraline needs macOS 26 or later. Installed copies update themselves."
+            echo
+            echo "## What's new"
+            echo
+            cat "build/notes/Meraline-$VERSION.md"
+            echo
+            echo "<details>"
+            echo "<summary>All files, and how to verify them</summary>"
+            echo
+            echo "| File | What it is | SHA-256 |"
+            echo "| --- | --- | --- |"
+            while read -r sum name; do
+              case "$name" in
+                *-dSYMs.zip) what="Debug symbols, for reading crash reports" ;;
+                *.dmg) what="The installer" ;;
+                *.zip) what="The archive Sparkle installs as an update" ;;
+                *) what="" ;;
+              esac
+              echo "| [\`$name\`]($base/$name) | $what | \`$sum\` |"
+            done < build/release/SHA256SUMS.txt
+            echo
+            echo "\`appcast.xml\` is the update feed that installed copies check once a day."
+            echo
+            echo "Every file was built by GitHub Actions from tag \`$GITHUB_REF_NAME\` and carries a signed provenance attestation:"
+            echo
+            echo '```sh'
+            echo "gh attestation verify $dmg --repo $REPO"
+            echo '```'
+            echo "</details>"
+          } > build/notes/release-body.md
+          cat build/notes/release-body.md
+
+      # Created as a draft and published once every file is attached, so releases/latest never
+      # points at a half-uploaded release.
+      - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
         run: |
-          gh release create "$VERSION" \
-            --title "Meraline ${VERSION#v}" \
-            --generate-notes \
-            "build/release/Meraline-${VERSION#v}.zip" \
-            build/release/appcast.xml
+          set -euo pipefail
+          flags=(--draft --verify-tag --title "Meraline $VERSION" --notes-file build/notes/release-body.md)
+          [ "$PRERELEASE" = "true" ] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
+            "build/release/Meraline-$VERSION.dmg" \
+            "build/release/Meraline-$VERSION.zip" \
+            "build/release/Meraline-$VERSION-dSYMs.zip" \
+            build/release/appcast.xml \
+            build/release/SHA256SUMS.txt
+          if [ "$PRERELEASE" = "true" ]; then
+            gh release edit "$GITHUB_REF_NAME" --draft=false --latest=false
+          else
+            gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          fi
+          echo "Published https://github.com/${{ github.repository }}/releases/tag/$GITHUB_REF_NAME"
+
+      # The beta feed lives on a rolling `beta` pre-release, because releases/latest never resolves
+      # to a pre-release and a fixed feed URL is needed. Every release's appcast is copied there, so
+      # clients on the beta channel always see the newest build, stable or beta; the artifacts
+      # themselves stay in their own tagged release, which the appcast points at.
+      - name: Update the beta channel feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          if ! gh release view beta >/dev/null 2>&1; then
+            gh release create beta --prerelease --latest=false --title "Beta channel" \
+              --notes "The Sparkle feed for the beta update channel. Turn it on in Settings › Software Update › Update channel. Downloads live in the versioned releases."
+          fi
+          gh release upload beta build/release/appcast.xml --clobber
+          echo "Beta feed now advertises $VERSION"
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-logs
+          path: build/logs
+          if-no-files-found: ignore
+
+      # Always, so a failed or cancelled run still takes the private key with it.
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN_PATH:-}" ] && [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+            echo "Deleted the temporary keychain."
+          fi
+          rm -f "$RUNNER_TEMP/developer-id.p12"

@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# The runner image's default Xcode moves over time; a release must not change under a tag
+# because the image did. Bump this on purpose, together with project.yml's deployment target.
+env:
+  XCODE_VERSION: "26.6"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select --switch "/Applications/Xcode_${XCODE_VERSION}.app"
+          xcodebuild -version
+
+      - name: Install tools
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate the project
+        run: xcodegen generate
+
+      - name: Test
+        run: |
+          set -o pipefail
+          mkdir -p build/logs
+          xcodebuild test \
+            -project Meraline.xcodeproj \
+            -scheme Meraline \
+            -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            -clonedSourcePackagesDirPath build/SourcePackages \
+            CODE_SIGN_IDENTITY=- \
+            DEVELOPMENT_TEAM= \
+            OTHER_CODE_SIGN_FLAGS= \
+            2>&1 | tee build/logs/test.log | xcbeautify --renderer github-actions --is-ci
+
+      - name: Upload the test log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-log
+          path: build/logs
+          if-no-files-found: ignore
+
+  # Runs the release pipeline without credentials on every change, so a broken build script or a
+  # disk image that no longer lays out right is caught before a tag is pushed. Ad-hoc signing is
+  # deliberate: pull requests from forks get no secrets, and a check that behaves differently for
+  # them is worse than one that runs the same way for everyone. The result is uploaded so the
+  # installer can be opened and looked at.
+  package:
+    name: Preview disk image
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select --switch "/Applications/Xcode_${XCODE_VERSION}.app"
+          xcodebuild -version
+
+      - name: Install tools
+        run: brew install xcodegen xcbeautify
+
+      - name: Build and package (ad-hoc)
+        run: scripts/release.sh "0.0.${{ github.run_number }}" --build "${{ github.run_number }}" --adhoc
+
+      - name: Upload the disk image
+        uses: actions/upload-artifact@v7
+        with:
+          name: Meraline-preview-dmg
+          path: build/release/Meraline-*.dmg
+          retention-days: 14
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-logs
+          path: build/logs
+          if-no-files-found: ignore

@@ -4,3 +4,7 @@ build/
 DerivedData/
 xcuserdata/
 *.xcuserstate
+# Credentials never belong in the repository.
+keys/
+*.p8
+*.p12

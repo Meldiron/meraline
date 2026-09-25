@@ -1,0 +1,168 @@
+<!doctype html>
+<!--
+  Source of truth for the disk image background. scripts/make_dmg.sh renders this file at 1x
+  and 2x, and positions the real Finder items (Meraline.app and the Applications link) on top of
+  it, so the artwork holds decoration only: the headline, the arrow, and the footer.
+
+  The canvas size and icon slots below are mirrored in scripts/make_dmg.sh; docs/releasing.md
+  explains the layout contract. The outer edges must stay pure white, because Finder draws the
+  image at its natural size anchored top-left and fills any leftover window area with white.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --pink: #F27DBF;
+    --lavender: #8E6CF0;
+    --ink: #1d1d1f;
+    --muted: #86868b;
+    --faint: #A1A1A6;
+    --canvas-w: 660px;
+    --canvas-h: 380px;
+    --icon-y: 210px;
+    --app-x: 170px;
+    --drop-x: 490px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: var(--canvas-w);
+    height: var(--canvas-h);
+    overflow: hidden;
+  }
+
+  body {
+    position: relative;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    /* Two soft glows behind the icon slots, pink under the app and lavender under the
+       Applications link. Each fades to nothing about 130px from its centre, well short of
+       the canvas edges, which must stay pure white. */
+    background:
+      radial-gradient(200px 160px at var(--app-x) var(--icon-y), rgba(242, 125, 191, 0.14) 0%, rgba(242, 125, 191, 0) 65%),
+      radial-gradient(200px 160px at var(--drop-x) var(--icon-y), rgba(142, 108, 240, 0.13) 0%, rgba(142, 108, 240, 0) 65%),
+      #FFFFFF;
+  }
+
+  .header {
+    position: absolute;
+    top: 40px;
+    left: 0;
+    right: 0;
+    text-align: center;
+  }
+
+  .title {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.6px;
+    color: var(--ink);
+  }
+
+  .title svg {
+    width: 24px;
+    height: 24px;
+    margin-top: 1px;
+  }
+
+  .subtitle {
+    margin-top: 8px;
+    font-size: 14px;
+    letter-spacing: -0.1px;
+    color: var(--muted);
+  }
+
+  .subtitle strong { font-weight: 590; color: #6e6e73; }
+
+  .arrow {
+    position: absolute;
+    top: calc(var(--icon-y) - 24px);
+    left: calc((var(--app-x) + var(--drop-x)) / 2 - 84px);
+    width: 168px;
+    height: 48px;
+  }
+
+  .twinkle {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+  }
+
+  .footer {
+    position: absolute;
+    bottom: 30px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 11.5px;
+    letter-spacing: 0.1px;
+    color: var(--faint);
+  }
+
+  .footer kbd {
+    font-family: inherit;
+    font-size: 11px;
+    color: #8a8a8f;
+    padding: 1px 5px 2px;
+    border: 1px solid #E3E3E6;
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: #FAFAFB;
+  }
+
+  .footer .dot { padding: 0 8px; color: #D2D2D7; }
+</style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#F27DBF"/>
+        <stop offset="1" stop-color="#8E6CF0"/>
+      </linearGradient>
+      <linearGradient id="trail" x1="0" y1="0" x2="168" y2="0" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#F27DBF" stop-opacity="0"/>
+        <stop offset="0.35" stop-color="#F27DBF" stop-opacity="0.55"/>
+        <stop offset="1" stop-color="#8E6CF0" stop-opacity="1"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <div class="header">
+    <div class="title">
+      <!-- The sparkle from the app icon, without the face: that one is the app itself, sitting
+           right below as a real Finder item. -->
+      <svg viewBox="0 0 1024 1024" aria-hidden="true">
+        <path fill="url(#brand)" d="M512 140 C546 140 560 360 628 424 C694 488 884 486 884 520 C884 554 694 552 628 616 C560 680 546 900 512 900 C478 900 464 680 396 616 C330 552 140 554 140 520 C140 486 330 488 396 424 C464 360 478 140 512 140 Z"/>
+      </svg>
+      <span>Install Meraline</span>
+    </div>
+    <div class="subtitle">Drag <strong>Meraline</strong> onto the <strong>Applications</strong> folder</div>
+  </div>
+
+  <svg class="arrow" viewBox="0 0 168 48" fill="none" aria-hidden="true">
+    <path d="M4 24H140" stroke="url(#trail)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M138 12L156 24L138 36" stroke="#8E6CF0" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+
+  <!-- A few twinkles, kept well inside the edges so the white bleed stays clean. -->
+  <svg class="twinkle" style="left: 96px; top: 74px;" viewBox="0 0 1024 1024" aria-hidden="true">
+    <path fill="#F27DBF" opacity="0.45" d="M512 140 C546 140 560 360 628 424 C694 488 884 486 884 520 C884 554 694 552 628 616 C560 680 546 900 512 900 C478 900 464 680 396 616 C330 552 140 554 140 520 C140 486 330 488 396 424 C464 360 478 140 512 140 Z"/>
+  </svg>
+  <svg class="twinkle" style="left: 560px; top: 58px; width: 10px; height: 10px;" viewBox="0 0 1024 1024" aria-hidden="true">
+    <path fill="#8E6CF0" opacity="0.4" d="M512 140 C546 140 560 360 628 424 C694 488 884 486 884 520 C884 554 694 552 628 616 C560 680 546 900 512 900 C478 900 464 680 396 616 C330 552 140 554 140 520 C140 486 330 488 396 424 C464 360 478 140 512 140 Z"/>
+  </svg>
+  <svg class="twinkle" style="left: 588px; top: 300px; width: 12px; height: 12px;" viewBox="0 0 1024 1024" aria-hidden="true">
+    <path fill="#F27DBF" opacity="0.35" d="M512 140 C546 140 560 360 628 424 C694 488 884 486 884 520 C884 554 694 552 628 616 C560 680 546 900 512 900 C478 900 464 680 396 616 C330 552 140 554 140 520 C140 486 330 488 396 424 C464 360 478 140 512 140 Z"/>
+  </svg>
+
+  <div class="footer">
+    Meraline lives in your menu bar<span class="dot">•</span>Press <kbd>⌥</kbd> <kbd>Space</kbd> to ask anything, anywhere
+  </div>
+</body>
+</html>
