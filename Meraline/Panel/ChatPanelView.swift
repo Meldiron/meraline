@@ -47,14 +47,13 @@ struct ChatPanelView: View {
             .overlay {
                 if isDropTargeted {
                     RoundedRectangle(cornerRadius: 26)
-                        .strokeBorder(.tint, lineWidth: 2)
+                        .strokeBorder(.primary.opacity(0.35), lineWidth: 2)
                         .allowsHitTesting(false)
                 }
             }
             .shadow(color: .black.opacity(0.28), radius: 22, y: 10)
         }
         .padding(PanelController.margin)
-        .tint(.meralinePink)
         .fixedSize(horizontal: false, vertical: true)
         .onGeometryChange(for: CGFloat.self, of: \.size.height) { onHeightChange($0) }
         .frame(maxHeight: .infinity, alignment: .top)
@@ -74,6 +73,7 @@ struct ChatPanelView: View {
                 .font(.system(size: 20))
                 .lineLimit(1...8)
                 .focused($isInputFocused)
+                .tint(.meralinePink)
                 .onSubmit(session.send)
                 .disabled(session.isStreaming)
 
@@ -93,7 +93,7 @@ struct ChatPanelView: View {
                 Button { preferences.isPinned.toggle() } label: {
                     Image(systemName: preferences.isPinned ? "pin.fill" : "pin")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(preferences.isPinned ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                        .foregroundStyle(preferences.isPinned ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
                         .rotationEffect(.degrees(45))
                         .frame(width: 32, height: 32)
                         .glassEffect(
@@ -268,7 +268,6 @@ private struct ActivityRow: View {
         HStack(spacing: 8) {
             if let activity {
                 Image(systemName: activity.symbol)
-                    .foregroundStyle(.tint)
                     .symbolEffect(.pulse, options: .repeating)
                     .frame(width: 18)
                 Text(activity.title)
@@ -277,7 +276,6 @@ private struct ActivityRow: View {
                     .contentTransition(.opacity)
             } else {
                 Image(systemName: "ellipsis")
-                    .foregroundStyle(.tint)
                     .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating)
                     .accessibilityLabel("Waiting for the answer")
             }
@@ -372,7 +370,7 @@ private struct SetupRow: View {
             }
             Spacer(minLength: 0)
             Button("Open Settings", action: openSettings)
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
         }
         .padding(12)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
@@ -417,6 +415,13 @@ enum MarkdownText {
             interpretedSyntax: .inlineOnlyPreservingWhitespace,
             failurePolicy: .returnPartiallyParsedIfPossible
         )
-        return (try? AttributedString(markdown: markdown, options: options)) ?? AttributedString(markdown)
+        guard var rendered = try? AttributedString(markdown: markdown, options: options) else {
+            return AttributedString(markdown)
+        }
+        for run in rendered.runs where run.link != nil {
+            rendered[run.range].foregroundColor = .primary
+            rendered[run.range].underlineStyle = .single
+        }
+        return rendered
     }
 }

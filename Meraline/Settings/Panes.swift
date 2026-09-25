@@ -16,7 +16,9 @@ struct GeneralPane: View {
                     KeyboardShortcuts.Recorder(for: .togglePanel)
                 }
                 Toggle("Open at login", isOn: launchAtLogin)
+                    .tint(.meralinePink)
                 Toggle("Show in menu bar", isOn: $preferences.showsMenuBarIcon)
+                    .tint(.meralinePink)
             } footer: {
                 if loginItemStatus == .requiresApproval {
                     HStack {
@@ -36,6 +38,7 @@ struct GeneralPane: View {
                     ForEach(PanelPlacement.allCases) { Text($0.title).tag($0) }
                 }
                 Toggle("Keep open when clicking elsewhere", isOn: $preferences.isPinned)
+                    .tint(.meralinePink)
             }
 
             Section {
@@ -131,6 +134,7 @@ struct ProviderPane: View {
             Section {
                 if provider.keyPolicy != .required {
                     Toggle("Use \(provider.name)", isOn: binding(\.isEnabled))
+                        .tint(.meralinePink)
                 }
                 if provider.keyPolicy != .none {
                     SecureField(
@@ -151,6 +155,7 @@ struct ProviderPane: View {
                         Text("Allow web search")
                         Text("Lets Claude search and read web pages for current information. Answers take longer.")
                     }
+                    .tint(.meralinePink)
                 }
             } footer: {
                 if let portal = provider.keyPortal {
@@ -262,7 +267,9 @@ struct SoftwareUpdatePane: View {
             if updater.isAvailable {
                 Section {
                     Toggle("Check for updates automatically", isOn: $updater.checksAutomatically)
+                        .tint(.meralinePink)
                     Toggle("Download and install updates automatically", isOn: $updater.downloadsAutomatically)
+                        .tint(.meralinePink)
                         .disabled(!updater.checksAutomatically)
                 }
                 Section {
@@ -301,7 +308,6 @@ struct AboutPane: View {
                         .frame(width: 96, height: 96)
                     Text("Meraline")
                         .font(.largeTitle.weight(.semibold))
-                        .foregroundStyle(.meraline)
                     Text("Version \(Bundle.main.shortVersion) (\(Bundle.main.buildNumber))")
                         .font(.callout)
                         .foregroundStyle(.secondary)

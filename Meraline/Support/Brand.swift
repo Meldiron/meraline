@@ -1,7 +1,7 @@
 import SwiftUI
 
 extension Color {
-    static let meralinePink = Color("AccentColor")
+    static let meralinePink = Color("Pink")
     static let meralineLavender = Color("Lavender")
 }
 

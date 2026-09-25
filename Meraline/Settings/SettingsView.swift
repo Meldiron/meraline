@@ -31,11 +31,17 @@ enum SettingsPane: Hashable {
     var tint: Color {
         switch self {
         case .general: .gray
-        case .answers: .meralinePink
+        case .answers: .gray
         case .provider(let provider): provider.tint
         case .softwareUpdate: .gray
-        case .about: .meralineLavender
+        case .about: .gray
         }
+    }
+}
+
+extension SettingsPane {
+    var glyph: AnyShapeStyle {
+        self == .about ? AnyShapeStyle(.meraline) : AnyShapeStyle(.white)
     }
 }
 
@@ -65,7 +71,6 @@ struct SettingsView: View {
                 .navigationTitle(navigation.selection?.title ?? "")
         }
         .toolbar(removing: .sidebarToggle)
-        .tint(.meralinePink)
     }
 
     @ViewBuilder
@@ -77,7 +82,7 @@ struct SettingsView: View {
                     Label {
                         Text(pane.title)
                     } icon: {
-                        SettingsIcon(symbol: pane.symbol, tint: pane.tint, size: 20)
+                        SettingsIcon(symbol: pane.symbol, tint: pane.tint, size: 20, glyph: pane.glyph)
                     }
                     .badge(badge(for: pane))
                     .tag(pane)
@@ -109,6 +114,7 @@ struct SettingsIcon: View {
     let symbol: String
     let tint: Color
     var size: CGFloat = 20
+    var glyph: AnyShapeStyle = AnyShapeStyle(.white)
 
     var body: some View {
         RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
@@ -117,7 +123,7 @@ struct SettingsIcon: View {
             .overlay {
                 Image(systemName: symbol)
                     .font(.system(size: size * 0.55, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(glyph)
             }
             .accessibilityHidden(true)
     }
@@ -130,7 +136,7 @@ struct PaneHeader: View {
     var body: some View {
         Section {
             VStack(spacing: 8) {
-                SettingsIcon(symbol: pane.symbol, tint: pane.tint, size: 56)
+                SettingsIcon(symbol: pane.symbol, tint: pane.tint, size: 56, glyph: pane.glyph)
                 Text(pane.title)
                     .font(.title2.weight(.semibold))
                 Text(summary)
