@@ -61,4 +61,4 @@ Updates are published as GitHub releases. The appcast lives at `https://github.c
    gh release create v<version> build/release/Meraline-<version>.zip build/release/appcast.xml
    ```
 
-Builds are signed ad hoc. For distribution to other Macs, sign with a Developer ID certificate and notarize the archive.
+Builds are signed with the Developer ID certificate of team `C24QP73SQM`. Notarize the archive with `xcrun notarytool submit` before publishing it, so Gatekeeper opens it on other Macs.

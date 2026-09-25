@@ -48,8 +48,10 @@ targets:
         PRODUCT_NAME: Meraline
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
-        CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: Developer ID Application
+        DEVELOPMENT_TEAM: C24QP73SQM
+        OTHER_CODE_SIGN_FLAGS: --timestamp
         COMBINE_HIDPI_IMAGES: YES
         INFOPLIST_KEY_CFBundleDisplayName: Meraline
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
