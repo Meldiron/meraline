@@ -55,6 +55,8 @@ nonisolated struct ChatRequest: Sendable {
             body = ollamaBody
         case .claudeCode, .codex, .opencode:
             preconditionFailure("\(provider) runs through CommandLineClient")
+        case .apple:
+            preconditionFailure("\(provider) runs through AppleIntelligenceClient")
         }
 
         guard var components = URLComponents(string: settings.baseURL.trimmed),

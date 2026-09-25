@@ -10,11 +10,18 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
     case claudeCode
     case codex
     case opencode
+    case apple
 
-    static let services: [Provider] = [.anthropic, .openAI, .gemini, .openRouter, .ollama, .custom]
+    static let services: [Provider] = [.apple, .anthropic, .openAI, .gemini, .openRouter, .ollama, .custom]
     static let commandLineTools: [Provider] = [.claudeCode, .codex, .opencode]
 
     var isCommandLine: Bool { Self.commandLineTools.contains(self) }
+
+    /// Runs on this Mac through Apple's Foundation Models framework: no key, no server, no command.
+    var isOnDevice: Bool { self == .apple }
+
+    /// Providers that can search the web when asked to.
+    var supportsWebSearch: Bool { self == .claudeCode || self == .codex }
 
     var id: String { rawValue }
 
@@ -29,6 +36,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .claudeCode: "Claude Code"
         case .codex: "Codex"
         case .opencode: "OpenCode"
+        case .apple: "Apple Intelligence"
         }
     }
 
@@ -43,6 +51,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .claudeCode: "Answers from the claude command, using the account it’s signed in to. Tools stay off."
         case .codex: "Answers from the codex command, using the account it’s signed in to, in a read-only sandbox."
         case .opencode: "Answers from the opencode command, using the providers configured in OpenCode."
+        case .apple: "The on-device model built into macOS. Private, works offline, and needs no key. Best for short questions; it can’t browse the web."
         }
     }
 
@@ -57,6 +66,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .claudeCode: "terminal.fill"
         case .codex: "chevron.left.forwardslash.chevron.right"
         case .opencode: "curlybraces"
+        case .apple: "apple.intelligence"
         }
     }
 
@@ -71,6 +81,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .claudeCode: Color(red: 0.80, green: 0.42, blue: 0.30)
         case .codex: Color(red: 0.13, green: 0.13, blue: 0.15)
         case .opencode: Color(red: 0.30, green: 0.33, blue: 0.40)
+        case .apple: Color(red: 0.44, green: 0.42, blue: 0.78)
         }
     }
 
@@ -81,7 +92,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .gemini: "gemini-3.6-flash"
         case .openRouter: "anthropic/claude-sonnet-5"
         case .ollama: "llama3.2"
-        case .custom, .claudeCode, .codex, .opencode: ""
+        case .custom, .claudeCode, .codex, .opencode, .apple: ""
         }
     }
 
@@ -92,7 +103,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .gemini: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
         case .openRouter: ["anthropic/claude-sonnet-5", "openai/gpt-5-mini", "google/gemini-3.6-flash"]
         case .ollama: ["llama3.2", "qwen3", "gemma3", "mistral"]
-        case .custom, .opencode: []
+        case .custom, .opencode, .apple: []
         case .claudeCode: ["sonnet", "opus", "haiku"]
         case .codex: ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"]
         }
@@ -109,6 +120,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .claudeCode: "claude"
         case .codex: "codex"
         case .opencode: "opencode"
+        case .apple: ""
         }
     }
 
@@ -116,7 +128,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         switch self {
         case .anthropic, .openAI, .gemini, .openRouter: .required
         case .custom: .optional
-        case .ollama, .claudeCode, .codex, .opencode: .none
+        case .ollama, .claudeCode, .codex, .opencode, .apple: .none
         }
     }
 
@@ -131,6 +143,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .claudeCode: URL(string: "https://code.claude.com/docs/en/setup")
         case .codex: URL(string: "https://developers.openai.com/codex/cli")
         case .opencode: URL(string: "https://opencode.ai/docs")
+        case .apple: nil
         }
     }
 
@@ -150,6 +163,7 @@ nonisolated struct ProviderSettings: Equatable, Sendable {
     var effort = ReasoningEffort.automatic
 
     func isReady(for provider: Provider) -> Bool {
+        if provider.isOnDevice { return isEnabled }
         if provider.isCommandLine { return isEnabled && !baseURL.trimmed.isEmpty }
         let hasModel = !model.trimmed.isEmpty && !baseURL.trimmed.isEmpty
         switch provider.keyPolicy {

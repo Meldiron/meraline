@@ -37,6 +37,7 @@ final class PanelController: NSObject {
     private let layout = PanelLayout()
     private var keyMonitor: Any?
     private var isApplyingFrame = false
+    private var hiddenAt: Date?
 
     init(session: ChatSession, preferences: Preferences, openSettings: @escaping () -> Void) {
         self.session = session
@@ -90,6 +91,9 @@ final class PanelController: NSObject {
             layout.focusRequest += 1
             return
         }
+        if preferences.idleReset.hasExpired(since: hiddenAt) { session.expire() }
+        hiddenAt = nil
+        if preferences.activeProvider?.isOnDevice == true { AppleIntelligenceClient.prewarm() }
         let screen = Self.screenUnderPointer
         layout.maximumConversationHeight = max(220, screen.visibleFrame.height * 0.6)
         place(on: screen)
@@ -100,6 +104,7 @@ final class PanelController: NSObject {
 
     func close() {
         guard panel.isVisible else { return }
+        hiddenAt = .now
         panel.orderOut(nil)
         removeKeyMonitor()
     }

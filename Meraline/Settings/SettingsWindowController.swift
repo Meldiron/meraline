@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import SwiftUI
 
 final class SettingsWindowController: NSWindowController {
@@ -8,7 +9,7 @@ final class SettingsWindowController: NSWindowController {
         let hostingController = NSHostingController(
             rootView: SettingsView(preferences: preferences, updater: updater, navigation: navigation)
         )
-        hostingController.sceneBridgingOptions = [.title, .toolbars]
+        hostingController.sceneBridgingOptions = [.toolbars]
 
         let window = NSWindow(contentViewController: hostingController)
         window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
@@ -21,6 +22,17 @@ final class SettingsWindowController: NSWindowController {
         window.setFrameAutosaveName("MeralineSettings")
         window.center()
         super.init(window: window)
+        observeTitle()
+    }
+
+    /// The window is named after the selected pane, like System Settings. SwiftUI's title bridging
+    /// doesn't reach a NavigationSplitView detail inside a hosting controller, so it's done here.
+    private func observeTitle() {
+        withObservationTracking {
+            window?.title = navigation.selection?.title ?? "Settings"
+        } onChange: {
+            Task { @MainActor [weak self] in self?.observeTitle() }
+        }
     }
 
     @available(*, unavailable)

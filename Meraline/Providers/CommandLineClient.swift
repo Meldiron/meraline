@@ -81,6 +81,9 @@ nonisolated enum CommandLineClient {
             if request.settings.effort != .automatic {
                 arguments += ["--config", "model_reasoning_effort=\"\(request.settings.effort.rawValue)\""]
             }
+            // Codex's search modes are disabled, cached, indexed, and live. Live is the only one that
+            // asks the web for anything newer than the model's index.
+            arguments += ["--config", "web_search=\"\(request.settings.allowsWebSearch ? "live" : "disabled")\""]
             for name in files.keys.sorted() { arguments += ["--image", name] }
             arguments.append("-")
             let prompt = prompt(for: request)
@@ -139,6 +142,7 @@ nonisolated enum CommandLineClient {
                 defer { try? FileManager.default.removeItem(at: directory) }
                 do {
                     let invocation = try invocation(for: request)
+                    Log.commandLine.info("Running \(invocation.executable.path) for \(request.provider.name)")
                     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                     for (name, data) in invocation.files {
                         try data.write(to: directory.appending(path: name))
@@ -188,6 +192,9 @@ nonisolated enum CommandLineClient {
                     var status: Int32 = 0
                     for await code in exit { status = code }
                     let message = await diagnostics
+                    if status != 0 {
+                        Log.commandLine.error("\(request.provider.name) exited with status \(status)\(receivedText ? " after answering" : "")")
+                    }
                     if status != 0 && !receivedText {
                         throw LLMError.provider(message.isEmpty ? "\(request.provider.name) exited with status \(status)." : message)
                     }

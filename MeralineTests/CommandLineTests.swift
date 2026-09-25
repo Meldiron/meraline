@@ -104,12 +104,25 @@ struct CommandLineTests {
         ))
         #expect(invocation.arguments == [
             "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--sandbox", "read-only",
+            "--config", "web_search=\"live\"",
             "--image", "image-1.png", "-"
         ])
         #expect(invocation.files["image-1.png"] == image.data)
         let prompt = String(decoding: try #require(invocation.input), as: UTF8.self)
         #expect(prompt.contains("Be brief."))
         #expect(prompt.hasSuffix("Hi"))
+    }
+
+    @Test func codexWebSearchFollowsTheToggle() throws {
+        let messages = [ChatMessage(role: .user, text: "Hi")]
+        let off = ProviderSettings(model: "", baseURL: "/bin/echo", apiKey: "", isEnabled: true, allowsWebSearch: false)
+        let quiet = try CommandLineClient.invocation(for: ChatRequest(provider: .codex, settings: off, systemPrompt: "", messages: messages))
+        #expect(quiet.arguments.contains("web_search=\"disabled\""))
+        #expect(!quiet.arguments.contains("web_search=\"live\""))
+        let on = ProviderSettings(model: "", baseURL: "/bin/echo", apiKey: "", isEnabled: true, allowsWebSearch: true)
+        let searching = try CommandLineClient.invocation(for: ChatRequest(provider: .codex, settings: on, systemPrompt: "", messages: messages))
+        #expect(searching.arguments.contains("web_search=\"live\""))
+        #expect(Provider.codex.supportsWebSearch && Provider.claudeCode.supportsWebSearch && !Provider.opencode.supportsWebSearch)
     }
 
     @Test func openCodePassesThePromptAfterTheOptions() throws {

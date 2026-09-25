@@ -68,6 +68,7 @@ nonisolated enum StreamDecoder {
         case .claudeCode: try claudeCode(payload)
         case .codex: try codex(payload)
         case .opencode: try opencode(payload)
+        case .apple: .ignored
         }
     }
 

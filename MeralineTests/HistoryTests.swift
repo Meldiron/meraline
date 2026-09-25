@@ -42,10 +42,42 @@ struct HistoryTests {
     @Test func resettingAnEmptyChatAddsNothing() {
         let session = ChatSession(preferences: Preferences(
             defaults: UserDefaults(suiteName: "MeralineTests.\(UUID().uuidString)")!,
-            secrets: SecretStore(read: { _ in "" }, write: { _, _ in })
+            secrets: SecretStore(read: { _ in "" }, write: { _, _ in }),
+            onDeviceModelAvailable: false
         ))
         #expect(session.history.isEmpty)
         session.reset()
         #expect(session.history.isEmpty)
+    }
+
+    @Test func conversationMarkdownListsEveryAnsweredTurn() throws {
+        var withImage = turn("", "A cat.")
+        withImage = ChatSession.Turn(question: "", images: [ImageAttachment(mediaType: "image/png", data: Data([1]))])
+        withImage.answer = "A cat."
+        let markdown = try #require(ChatSession.markdown(for: [
+            turn("Capital of France?", "Paris.\n"),
+            turn("Unanswered", ""),
+            withImage
+        ]))
+        #expect(markdown == """
+        **You**
+
+        Capital of France?
+
+        **Assistant**
+
+        Paris.
+
+        ---
+
+        **You**
+
+        _1 image attached_
+
+        **Assistant**
+
+        A cat.
+        """)
+        #expect(ChatSession.markdown(for: [turn("Nothing yet", "")]) == nil)
     }
 }

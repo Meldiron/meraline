@@ -6,6 +6,7 @@ nonisolated enum LLMClient {
 
     static func stream(_ request: ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> {
         if request.provider.isCommandLine { return CommandLineClient.stream(request) }
+        if request.provider.isOnDevice { return AppleIntelligenceClient.stream(request) }
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -16,6 +17,7 @@ nonisolated enum LLMClient {
                     guard (200..<300).contains(http.statusCode) else {
                         var body = Data()
                         for try await byte in bytes where body.count < 64_000 { body.append(byte) }
+                        Log.providers.error("\(request.provider.name) answered HTTP \(http.statusCode)")
                         throw LLMError.http(http.statusCode, StreamDecoder.errorMessage(from: body))
                     }
 

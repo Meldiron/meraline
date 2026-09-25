@@ -77,6 +77,8 @@ final class ChatSession {
         let turn = Turn(question: question, images: images)
         turns.append(turn)
         isStreaming = true
+        let model = preferences[provider].model.trimmed
+        Log.chat.info("Asking \(provider.name) (\(model.isEmpty ? "default model" : model)), turn \(turns.count), \(images.count) image(s)")
 
         streamTask = Task { [weak self] in
             do {
@@ -112,6 +114,16 @@ final class ChatSession {
         history.removeAll { $0.id == id }
         reset()
         turns = chat.turns
+    }
+
+    /// The window came back after being hidden for a long time: the chat moves to Recent Chats and the
+    /// next question starts fresh. Anything typed but not yet sent stays in the input.
+    func expire() {
+        guard !isStreaming, !turns.isEmpty else { return }
+        archiveCurrentChat()
+        turns = []
+        failure = nil
+        failureNeedsSettings = false
     }
 
     private func archiveCurrentChat() {
@@ -155,6 +167,28 @@ final class ChatSession {
         NSPasteboard.general.setString(lastAnswer, forType: .string)
     }
 
+    var conversationMarkdown: String? { Self.markdown(for: turns) }
+
+    func copyConversation() {
+        guard let conversationMarkdown else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(conversationMarkdown, forType: .string)
+    }
+
+    /// Every answered turn as Markdown, so a long thread can leave the panel without anything being saved.
+    static func markdown(for turns: [Turn]) -> String? {
+        let answered = turns.filter { !$0.answer.isEmpty }
+        guard !answered.isEmpty else { return nil }
+        return answered.map { turn in
+            var question = turn.question
+            if !turn.images.isEmpty {
+                let note = turn.images.count == 1 ? "1 image attached" : "\(turn.images.count) images attached"
+                question += question.isEmpty ? "_\(note)_" : " _(\(note))_"
+            }
+            return "**You**\n\n\(question)\n\n**Assistant**\n\n\(turn.answer.trimmed)"
+        }.joined(separator: "\n\n---\n\n")
+    }
+
     private func attach(_ make: () throws -> ImageAttachment) {
         guard draftImages.count < ImageAttachment.limit else {
             fail(with: AttachmentError.limitReached.localizedDescription)
@@ -195,9 +229,15 @@ final class ChatSession {
 
         guard let error, !(error is CancellationError), (error as? URLError)?.code != .cancelled else {
             turns[last].isComplete = !turns[last].answer.isEmpty
-            if turns[last].answer.isEmpty { restoreDraft(from: turns.removeLast()) }
+            if turns[last].answer.isEmpty {
+                Log.chat.info("Answer stopped before any text arrived")
+                restoreDraft(from: turns.removeLast())
+            } else {
+                Log.chat.info("Answer \(error == nil ? "complete" : "stopped"), \(turns[last].answer.count) characters")
+            }
             return
         }
+        Log.chat.error("Answer failed: \(error.localizedDescription)")
 
         if turns[last].answer.isEmpty {
             restoreDraft(from: turns.removeLast())

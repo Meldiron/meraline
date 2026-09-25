@@ -3,7 +3,7 @@ import SwiftUI
 
 enum SettingsPane: Hashable {
     case general
-    case answers
+    case prompt
     case provider(Provider)
     case softwareUpdate
     case about
@@ -11,7 +11,7 @@ enum SettingsPane: Hashable {
     var title: String {
         switch self {
         case .general: "General"
-        case .answers: "Answers"
+        case .prompt: "Prompt"
         case .provider(let provider): provider.name
         case .softwareUpdate: "Software Update"
         case .about: "About"
@@ -21,7 +21,7 @@ enum SettingsPane: Hashable {
     var symbol: String {
         switch self {
         case .general: "gearshape.fill"
-        case .answers: "text.bubble.fill"
+        case .prompt: "text.bubble.fill"
         case .provider(let provider): provider.symbol
         case .softwareUpdate: "arrow.triangle.2.circlepath"
         case .about: "sparkle"
@@ -31,17 +31,11 @@ enum SettingsPane: Hashable {
     var tint: Color {
         switch self {
         case .general: .gray
-        case .answers: .gray
+        case .prompt: .gray
         case .provider(let provider): provider.tint
         case .softwareUpdate: .gray
         case .about: .gray
         }
-    }
-}
-
-extension SettingsPane {
-    var glyph: AnyShapeStyle {
-        self == .about ? AnyShapeStyle(.meraline) : AnyShapeStyle(.white)
     }
 }
 
@@ -59,10 +53,9 @@ struct SettingsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $navigation.selection) {
-                sidebarSection([.general, .answers])
+                sidebarSection([.general, .prompt, .softwareUpdate, .about])
                 sidebarSection(Provider.services.map(SettingsPane.provider), title: "Providers")
                 sidebarSection(Provider.commandLineTools.map(SettingsPane.provider), title: "Command-Line Tools")
-                sidebarSection([.softwareUpdate, .about])
             }
             .searchable(text: $search, placement: .sidebar, prompt: "Search")
             .navigationSplitViewColumnWidth(215)
@@ -82,7 +75,7 @@ struct SettingsView: View {
                     Label {
                         Text(pane.title)
                     } icon: {
-                        SettingsIcon(symbol: pane.symbol, tint: pane.tint, size: 20, glyph: pane.glyph)
+                        SettingsIcon(symbol: pane.symbol, tint: pane.tint, size: 20)
                     }
                     .badge(badge(for: pane))
                     .tag(pane)
@@ -102,10 +95,10 @@ struct SettingsView: View {
     private var detail: some View {
         switch navigation.selection ?? .general {
         case .general: GeneralPane(preferences: preferences)
-        case .answers: AnswersPane(preferences: preferences)
+        case .prompt: PromptPane(preferences: preferences)
         case .provider(let provider): ProviderPane(provider: provider, preferences: preferences).id(provider)
         case .softwareUpdate: SoftwareUpdatePane(updater: updater)
-        case .about: AboutPane(updater: updater)
+        case .about: AboutPane(preferences: preferences, updater: updater)
         }
     }
 }
@@ -114,7 +107,6 @@ struct SettingsIcon: View {
     let symbol: String
     let tint: Color
     var size: CGFloat = 20
-    var glyph: AnyShapeStyle = AnyShapeStyle(.white)
 
     var body: some View {
         RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
@@ -123,7 +115,7 @@ struct SettingsIcon: View {
             .overlay {
                 Image(systemName: symbol)
                     .font(.system(size: size * 0.55, weight: .semibold))
-                    .foregroundStyle(glyph)
+                    .foregroundStyle(.white)
             }
             .accessibilityHidden(true)
     }
@@ -136,7 +128,7 @@ struct PaneHeader: View {
     var body: some View {
         Section {
             VStack(spacing: 8) {
-                SettingsIcon(symbol: pane.symbol, tint: pane.tint, size: 56, glyph: pane.glyph)
+                SettingsIcon(symbol: pane.symbol, tint: pane.tint, size: 56)
                 Text(pane.title)
                     .font(.title2.weight(.semibold))
                 Text(summary)

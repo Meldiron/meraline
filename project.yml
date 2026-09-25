@@ -21,20 +21,24 @@ settings:
     CODE_SIGN_IDENTITY: Developer ID Application
     DEVELOPMENT_TEAM: C24QP73SQM
     OTHER_CODE_SIGN_FLAGS: --timestamp
-    # Sparkle appcast and EdDSA public key. Empty values build without updates.
+    # Sparkle appcast and EdDSA public key. Empty values build without updates. The repository
+    # URL derives the beta feed, release-notes links, and the bug report link.
+    MERALINE_REPOSITORY_URL: https://github.com/Meldiron/meraline
     MERALINE_FEED_URL: https://github.com/Meldiron/meraline/releases/latest/download/appcast.xml
     MERALINE_SPARKLE_PUBLIC_KEY: V0BO6CZzio2FWhfvoOJqjc2vWVr86tqSVPbnjhhP0os=
 
+# Exact versions, so a release built on the runner resolves the same code as a build on a Mac.
+# Bump deliberately, in a pull request of its own.
 packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
-    from: 2.10.0
+    exactVersion: 2.10.0
   KeyboardShortcuts:
     url: https://github.com/sindresorhus/KeyboardShortcuts
-    from: 3.1.0
+    exactVersion: 3.1.0
   EventSource:
     url: https://github.com/mattt/EventSource
-    from: 1.5.1
+    exactVersion: 1.5.1
 
 targets:
   Meraline:
@@ -54,20 +58,25 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_HARDENED_RUNTIME: YES
         COMBINE_HIDPI_IMAGES: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Meraline
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
-        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Meldiron"
     info:
       path: Meraline/Resources/Info.plist
       properties:
         CFBundleName: Meraline
+        CFBundleDisplayName: Meraline
+        LSApplicationCategoryType: public.app-category.productivity
+        NSHumanReadableCopyright: "Copyright © 2026 Meldiron"
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         LSUIElement: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.meldiron.meraline
+            CFBundleURLSchemes: [meraline]
+        MeralineRepositoryURL: $(MERALINE_REPOSITORY_URL)
         SUFeedURL: $(MERALINE_FEED_URL)
         SUPublicEDKey: $(MERALINE_SPARKLE_PUBLIC_KEY)
         SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: true
         SUScheduledCheckInterval: 86400
 
   MeralineTests:

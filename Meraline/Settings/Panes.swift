@@ -33,12 +33,19 @@ struct GeneralPane: View {
                 }
             }
 
-            Section("Window") {
+            Section {
                 Picker("Open window", selection: $preferences.placement) {
                     ForEach(PanelPlacement.allCases) { Text($0.title).tag($0) }
                 }
                 Toggle("Keep open when clicking elsewhere", isOn: $preferences.isPinned)
                     .tint(.meralinePink)
+                Picker("Start a new chat", selection: $preferences.idleReset) {
+                    ForEach(IdleReset.allCases) { Text($0.title).tag($0) }
+                }
+            } header: {
+                Text("Window")
+            } footer: {
+                Text("When the window has been hidden this long, the chat moves to Recent Chats and your next question starts fresh.")
             }
 
             Section {
@@ -54,7 +61,7 @@ struct GeneralPane: View {
             } header: {
                 Text("Provider")
             } footer: {
-                Text("Chats live only in memory. Closing the window forgets the conversation.")
+                Text("Chats live only in memory and are never written to disk. Quitting Meraline forgets them.")
             }
         }
         .formStyle(.grouped)
@@ -81,12 +88,12 @@ struct GeneralPane: View {
     }
 }
 
-struct AnswersPane: View {
+struct PromptPane: View {
     @Bindable var preferences: Preferences
 
     var body: some View {
         Form {
-            PaneHeader(pane: .answers, summary: "Tell the model how to answer. These instructions are sent with every question.")
+            PaneHeader(pane: .prompt, summary: "Tell the model how to answer. These instructions are sent with every question.")
 
             Section {
                 TextEditor(text: $preferences.systemPrompt)
@@ -135,6 +142,7 @@ struct ProviderPane: View {
                 if provider.keyPolicy != .required {
                     Toggle("Use \(provider.name)", isOn: binding(\.isEnabled))
                         .tint(.meralinePink)
+                        .disabled(provider.isOnDevice && !onDeviceModelIsAvailable && !settings.isEnabled)
                 }
                 if provider.keyPolicy != .none {
                     SecureField(
@@ -143,48 +151,69 @@ struct ProviderPane: View {
                         prompt: Text("Paste your key")
                     )
                 }
-                TextField("Model", text: binding(\.model), prompt: Text(modelPlaceholder))
-                    .textInputSuggestions(provider.suggestedModels, id: \.self) { Text($0).textInputCompletion($0) }
+                if !provider.isOnDevice {
+                    TextField("Model", text: binding(\.model), prompt: Text(modelPlaceholder))
+                        .textInputSuggestions(provider.suggestedModels, id: \.self) { Text($0).textInputCompletion($0) }
+                }
                 if provider.isCommandLine {
                     Picker("Reasoning effort", selection: binding(\.effort)) {
                         ForEach(ReasoningEffort.allCases) { Text($0.title).tag($0) }
                     }
                 }
-                if provider == .claudeCode {
+                if provider.supportsWebSearch {
                     Toggle(isOn: binding(\.allowsWebSearch)) {
                         Text("Allow web search")
-                        Text("Lets Claude search and read web pages for current information. Answers take longer.")
+                        Text(provider == .claudeCode
+                            ? "Lets Claude search and read web pages for current information. Answers take longer."
+                            : "Lets Codex search the web for current information. Answers take longer.")
                     }
                     .tint(.meralinePink)
                 }
             } footer: {
-                if let portal = provider.keyPortal {
+                if provider.isOnDevice {
+                    Text("Answers are generated on this Mac and never leave it. The model is small: good for quick facts, rewrites, and summaries, with room for only a few follow-ups.")
+                } else if let portal = provider.keyPortal {
                     Link(provider.keyPolicy == .none ? "Install \(provider.name)" : "Get an API key", destination: portal)
                 }
             }
 
-            Section {
-                TextField(
-                    provider.isCommandLine ? "Command" : "Server address",
-                    text: binding(\.baseURL),
-                    prompt: Text(provider.defaultBaseURL)
-                )
-                if provider.isCommandLine {
-                    LabeledContent("Location") {
-                        if let path = CommandLineClient.resolve(settings.baseURL)?.path {
-                            Text(path).textSelection(.enabled)
+            if provider.isOnDevice {
+                Section("Availability") {
+                    LabeledContent {
+                        availabilityStatus
+                    } label: {
+                        Text("Apple Intelligence")
+                        if case .unavailable(let reason) = AppleIntelligenceClient.availability {
+                            Text(AppleIntelligenceClient.explanation(for: reason))
                         } else {
-                            Text("Not found").foregroundStyle(.red)
+                            Text("Ready on this Mac")
                         }
                     }
                 }
-            } header: {
-                Text(provider.isCommandLine ? "Command" : "Connection")
-            } footer: {
-                if settings.baseURL != provider.defaultBaseURL && !provider.defaultBaseURL.isEmpty {
-                    HStack {
-                        Spacer()
-                        Button("Restore Default") { update(\.baseURL, provider.defaultBaseURL) }
+            } else {
+                Section {
+                    TextField(
+                        provider.isCommandLine ? "Command" : "Server address",
+                        text: binding(\.baseURL),
+                        prompt: Text(provider.defaultBaseURL)
+                    )
+                    if provider.isCommandLine {
+                        LabeledContent("Location") {
+                            if let path = CommandLineClient.resolve(settings.baseURL)?.path {
+                                Text(path).textSelection(.enabled)
+                            } else {
+                                Text("Not found").foregroundStyle(.red)
+                            }
+                        }
+                    }
+                } header: {
+                    Text(provider.isCommandLine ? "Command" : "Connection")
+                } footer: {
+                    if settings.baseURL != provider.defaultBaseURL && !provider.defaultBaseURL.isEmpty {
+                        HStack {
+                            Spacer()
+                            Button("Restore Default") { update(\.baseURL, provider.defaultBaseURL) }
+                        }
                     }
                 }
             }
@@ -209,6 +238,25 @@ struct ProviderPane: View {
         }
         .formStyle(.grouped)
         .onChange(of: settings) { test = .idle }
+    }
+
+    private var onDeviceModelIsAvailable: Bool { AppleIntelligenceClient.isAvailable }
+
+    @ViewBuilder
+    private var availabilityStatus: some View {
+        if onDeviceModelIsAvailable {
+            Label("Available", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        } else {
+            HStack(spacing: 8) {
+                Label("Not available", systemImage: "xmark.octagon.fill")
+                    .foregroundStyle(.red)
+                Button("Open System Settings") {
+                    let pane = URL(string: "x-apple.systempreferences:com.apple.Siri-Settings.extension")!
+                    NSWorkspace.shared.open(pane)
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -265,12 +313,37 @@ struct SoftwareUpdatePane: View {
             PaneHeader(pane: .softwareUpdate, summary: "Meraline \(Bundle.main.shortVersion)")
 
             if updater.isAvailable {
+                if let staged = updater.stagedUpdate {
+                    Section {
+                        LabeledContent {
+                            Button("Restart to Update", action: updater.installStagedUpdate)
+                        } label: {
+                            Text("Meraline \(staged.version) is ready")
+                            Text("It installs when you quit Meraline, or right now.")
+                        }
+                    }
+                } else if let available = updater.availableUpdate {
+                    Section {
+                        LabeledContent {
+                            Button("Update…", action: updater.checkForUpdates)
+                        } label: {
+                            Text("Meraline \(available.version) is available")
+                        }
+                    }
+                }
                 Section {
                     Toggle("Check for updates automatically", isOn: $updater.checksAutomatically)
                         .tint(.meralinePink)
                     Toggle("Download and install updates automatically", isOn: $updater.downloadsAutomatically)
                         .tint(.meralinePink)
                         .disabled(!updater.checksAutomatically)
+                }
+                Section {
+                    Picker("Update channel", selection: $updater.channel) {
+                        ForEach(UpdateChannel.allCases) { Text($0.title).tag($0) }
+                    }
+                } footer: {
+                    Text(updater.channel.summary)
                 }
                 Section {
                     LabeledContent("Last checked") {
@@ -297,7 +370,9 @@ struct SoftwareUpdatePane: View {
 }
 
 struct AboutPane: View {
+    let preferences: Preferences
     let updater: Updater
+    @State private var copiedDiagnostics = false
 
     var body: some View {
         Form {
@@ -328,8 +403,46 @@ struct AboutPane: View {
                     Text(copyright).frame(maxWidth: .infinity)
                 }
             }
+
+            Section {
+                if let notes = Bundle.main.releaseNotesURL(for: Bundle.main.shortVersion) {
+                    LabeledContent("Release notes") {
+                        Link("What’s new in \(Bundle.main.shortVersion)", destination: notes)
+                    }
+                }
+                LabeledContent {
+                    HStack(spacing: 8) {
+                        if copiedDiagnostics {
+                            Label("Copied", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .transition(.opacity)
+                        }
+                        Button("Copy Diagnostics", action: copyDiagnostics)
+                    }
+                } label: {
+                    Text("Diagnostics")
+                    Text("Versions, provider setup, and recent events. No keys, questions, or answers.")
+                }
+                if let issue = Bundle.main.newIssueURL {
+                    LabeledContent("Found a bug?") {
+                        Link("Report It on GitHub", destination: issue)
+                    }
+                }
+            } header: {
+                Text("Support")
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private func copyDiagnostics() {
+        Diagnostics.copyToPasteboard(Diagnostics.report(preferences: preferences, updates: updater.status))
+        Log.app.info("Diagnostics copied")
+        withAnimation { copiedDiagnostics = true }
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            withAnimation { copiedDiagnostics = false }
+        }
     }
 }
 

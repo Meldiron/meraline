@@ -154,6 +154,11 @@ struct ChatPanelView: View {
                     session.copyLastAnswer()
                 }
                 .disabled(session.lastAnswer == nil)
+                FooterButton(title: "Copy Conversation", symbol: "doc.on.clipboard", shortcut: KeyboardShortcut("c", modifiers: [.command, .shift, .option])) {
+                    session.copyConversation()
+                }
+                .disabled(session.conversationMarkdown == nil)
+                .help("Copy the whole chat as Markdown")
                 FooterButton(title: "New Chat", symbol: "square.and.pencil", shortcut: KeyboardShortcut("n")) {
                     session.reset()
                     isInputFocused = true

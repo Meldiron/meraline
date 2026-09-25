@@ -15,23 +15,69 @@ enum MeralineApp {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferences = Preferences.shared
-    private let updater = Updater()
+    private let updater = Updater(preferences: .shared)
     private lazy var session = ChatSession(preferences: preferences)
     private lazy var panel = PanelController(session: session, preferences: preferences) { [weak self] in
         self?.showSettings(nil)
     }
     private lazy var settings = SettingsWindowController(preferences: preferences, updater: updater)
     private var statusItem: NSStatusItem?
+    private var whatsNew: WhatsNewWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Log.app.info("Meraline \(Bundle.main.shortVersion) (\(Bundle.main.buildNumber)) launched")
         NSApp.mainMenu = makeMainMenu()
         KeyboardShortcuts.onKeyUp(for: .togglePanel) { [weak self] in self?.panel.toggle() }
         observeMenuBarPreference()
 
-        if !UserDefaults.standard.bool(forKey: "hasLaunchedBefore") {
-            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+        let defaults = UserDefaults.standard
+        if !defaults.bool(forKey: "hasLaunchedBefore") {
+            defaults.set(true, forKey: "hasLaunchedBefore")
+            defaults.set(Bundle.main.shortVersion, forKey: "lastRunVersion")
             panel.show()
+        } else {
+            showWhatsNewIfUpdated()
         }
+    }
+
+    /// The `meraline://` scheme. See AutomationRoute for the routes.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            guard let route = AutomationRoute(url: url) else {
+                Log.app.error("Ignored unknown URL route: \(url.host() ?? url.absoluteString)")
+                continue
+            }
+            switch route {
+            case .ask(let text, let send):
+                Log.app.info("URL route: ask\(text == nil ? "" : " with text")\(send ? ", send" : "")")
+                panel.show()
+                if let text { session.draft = text }
+                if send { session.send() }
+            case .newChat:
+                Log.app.info("URL route: new chat")
+                session.reset()
+                panel.show()
+            case .settings:
+                Log.app.info("URL route: settings")
+                showSettings(nil)
+            }
+        }
+    }
+
+    /// After an update, shows the notes Sparkle carried for the running version, or a link to
+    /// the release when it was installed by hand. Nothing is shown on a fresh install.
+    private func showWhatsNewIfUpdated() {
+        let defaults = UserDefaults.standard
+        let current = Bundle.main.shortVersion
+        // Copies from before this feature never stored a version; having launched before is
+        // enough to know this is an update rather than a first run.
+        let previous = defaults.string(forKey: "lastRunVersion") ?? "an earlier version"
+        defaults.set(current, forKey: "lastRunVersion")
+        guard previous != current else { return }
+        Log.app.info("Updated from \(previous) to \(current)")
+        let update = updater.takeWhatsNew(for: current) ?? Updater.Update(version: current, notes: nil)
+        whatsNew = WhatsNewWindowController(update: update)
+        whatsNew?.show()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -49,6 +95,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func checkForUpdates(_ sender: Any?) { updater.checkForUpdates() }
+
+    @objc private func installStagedUpdate(_ sender: Any?) { updater.installStagedUpdate() }
 
     @objc private func showAbout(_ sender: Any?) {
         panel.close()
@@ -74,18 +122,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "Meraline")
         let menu = NSMenu()
+        menu.delegate = self
+        populateStatusMenu(menu)
+        item.menu = menu
+        statusItem = item
+    }
+
+    /// Rebuilt each time the menu opens, so an update Sparkle found or staged shows up in it.
+    private func populateStatusMenu(_ menu: NSMenu) {
+        menu.removeAllItems()
         let ask = menu.addItem(withTitle: "Ask Meraline", action: #selector(showPanel), keyEquivalent: "")
         ask.target = self
         ask.setShortcut(for: .togglePanel)
         menu.addItem(.separator())
+        if let staged = updater.stagedUpdate {
+            let install = menu.addItem(withTitle: "Restart to Update to \(staged.version)", action: #selector(installStagedUpdate), keyEquivalent: "")
+            install.target = self
+            install.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)
+            menu.addItem(.separator())
+        } else if let available = updater.availableUpdate {
+            let update = menu.addItem(withTitle: "Update to Meraline \(available.version)…", action: #selector(checkForUpdates), keyEquivalent: "")
+            update.target = self
+            update.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
+            menu.addItem(.separator())
+        }
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
-        if updater.isAvailable {
+        if updater.isAvailable, updater.state == .idle {
             menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
         }
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Meraline", action: #selector(NSApplication.terminate), keyEquivalent: "q")
-        item.menu = menu
-        statusItem = item
     }
 
     private func makeMainMenu() -> NSMenu {
@@ -120,6 +186,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.windowsMenu = windowMenu
 
         return mainMenu
+    }
+}
+
+extension AppDelegate: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === statusItem?.menu else { return }
+        populateStatusMenu(menu)
     }
 }
 
