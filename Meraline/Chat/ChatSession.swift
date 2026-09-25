@@ -8,7 +8,9 @@ final class ChatSession {
         let question: String
         let images: [ImageAttachment]
         var answer = ""
+        var activity: Activity?
         var isComplete = false
+        fileprivate var startsOverOnNextText = false
     }
 
     var draft = ""
@@ -64,8 +66,8 @@ final class ChatSession {
 
         streamTask = Task { [weak self] in
             do {
-                for try await text in LLMClient.stream(request) {
-                    self?.append(text, to: turn.id)
+                for try await output in LLMClient.stream(request) {
+                    self?.receive(output, for: turn.id)
                 }
                 self?.finishStreaming(turn.id, error: nil)
             } catch {
@@ -127,9 +129,22 @@ final class ChatSession {
         }
     }
 
-    private func append(_ text: String, to id: Turn.ID) {
+    private func receive(_ output: StreamOutput, for id: Turn.ID) {
         guard turns.last?.id == id else { return }
-        turns[turns.count - 1].answer += text
+        let last = turns.count - 1
+        switch output {
+        case .activity(let activity):
+            turns[last].activity = activity
+            turns[last].startsOverOnNextText = !turns[last].answer.isEmpty
+        case .text(let text):
+            if turns[last].startsOverOnNextText {
+                turns[last].answer = text
+                turns[last].startsOverOnNextText = false
+            } else {
+                turns[last].answer += text
+            }
+            turns[last].activity = nil
+        }
     }
 
     private func finishStreaming(_ id: Turn.ID, error: Error?) {
@@ -137,6 +152,7 @@ final class ChatSession {
         isStreaming = false
         streamTask = nil
         let last = turns.count - 1
+        turns[last].activity = nil
 
         guard let error, !(error is CancellationError), (error as? URLError)?.code != .cancelled else {
             turns[last].isComplete = !turns[last].answer.isEmpty

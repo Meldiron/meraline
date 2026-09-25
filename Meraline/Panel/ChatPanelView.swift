@@ -51,7 +51,9 @@ struct ChatPanelView: View {
                         .allowsHitTesting(false)
                 }
             }
+            .shadow(color: .black.opacity(0.28), radius: 22, y: 10)
         }
+        .padding(PanelController.margin)
         .fixedSize(horizontal: false, vertical: true)
         .onGeometryChange(for: CGFloat.self, of: \.size.height) { onHeightChange($0) }
         .frame(maxHeight: .infinity, alignment: .top)
@@ -87,6 +89,20 @@ struct ChatPanelView: View {
                 .fixedSize()
                 .help("Stop answering")
             } else {
+                Button { preferences.isPinned.toggle() } label: {
+                    Image(systemName: preferences.isPinned ? "pin.fill" : "pin")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(preferences.isPinned ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                        .rotationEffect(.degrees(45))
+                        .frame(width: 32, height: 32)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("p")
+                .help(preferences.isPinned ? "Unpin: close when clicking elsewhere (⌘P)" : "Pin: stay open when clicking elsewhere (⌘P)")
+                .accessibilityLabel(preferences.isPinned ? "Unpin" : "Pin")
+
                 Button(action: openSettings) {
                     Image(systemName: "gearshape")
                         .font(.system(size: 14, weight: .medium))
@@ -226,21 +242,43 @@ private struct TurnView: View {
                     ForEach(turn.images) { AttachmentThumbnail(image: $0, size: 40) }
                 }
             }
-            if turn.answer.isEmpty && isAnswering {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating)
-                    .accessibilityLabel("Thinking")
-            } else {
+            if !turn.answer.isEmpty {
                 Text(MarkdownText.render(turn.answer))
                     .font(.system(size: 15))
                     .lineSpacing(3)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if isAnswering && (turn.answer.isEmpty || turn.activity != nil) {
+                ActivityRow(activity: turn.activity)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct ActivityRow: View {
+    let activity: Activity?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let activity {
+                Image(systemName: activity.symbol)
+                    .symbolEffect(.pulse, options: .repeating)
+                    .frame(width: 18)
+                Text(activity.title)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .contentTransition(.opacity)
+            } else {
+                Image(systemName: "ellipsis")
+                    .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating)
+                    .accessibilityLabel("Waiting for the answer")
+            }
+        }
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(.secondary)
+        .animation(.smooth(duration: 0.2), value: activity)
     }
 }
 

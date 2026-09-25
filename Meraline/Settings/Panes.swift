@@ -35,7 +35,7 @@ struct GeneralPane: View {
                 Picker("Open window", selection: $preferences.placement) {
                     ForEach(PanelPlacement.allCases) { Text($0.title).tag($0) }
                 }
-                Toggle("Close when clicking elsewhere", isOn: $preferences.closesOnDeactivation)
+                Toggle("Keep open when clicking elsewhere", isOn: $preferences.isPinned)
             }
 
             Section {
@@ -141,6 +141,17 @@ struct ProviderPane: View {
                 }
                 TextField("Model", text: binding(\.model), prompt: Text(modelPlaceholder))
                     .textInputSuggestions(provider.suggestedModels, id: \.self) { Text($0).textInputCompletion($0) }
+                if provider.isCommandLine {
+                    Picker("Reasoning effort", selection: binding(\.effort)) {
+                        ForEach(ReasoningEffort.allCases) { Text($0.title).tag($0) }
+                    }
+                }
+                if provider == .claudeCode {
+                    Toggle(isOn: binding(\.allowsWebSearch)) {
+                        Text("Allow web search")
+                        Text("Lets Claude search and read web pages for current information. Answers take longer.")
+                    }
+                }
             } footer: {
                 if let portal = provider.keyPortal {
                     Link(provider.keyPolicy == .none ? "Install \(provider.name)" : "Get an API key", destination: portal)

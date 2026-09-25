@@ -28,6 +28,8 @@ final class PanelLayout {
 
 final class PanelController: NSObject {
     static let width: CGFloat = 640
+    static let margin: CGFloat = 32
+    private static var windowWidth: CGFloat { width + margin * 2 }
 
     private let panel: FloatingPanel
     private let session: ChatSession
@@ -40,7 +42,7 @@ final class PanelController: NSObject {
         self.session = session
         self.preferences = preferences
         panel = FloatingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 72),
+            contentRect: NSRect(x: 0, y: 0, width: Self.windowWidth, height: 136),
             styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -49,7 +51,7 @@ final class PanelController: NSObject {
 
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.level = .floating
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
@@ -72,6 +74,7 @@ final class PanelController: NSObject {
         )
         let hostingView = NSHostingView(rootView: view)
         hostingView.sizingOptions = []
+        hostingView.focusRingType = .none
         panel.contentView = hostingView
     }
 
@@ -99,14 +102,13 @@ final class PanelController: NSObject {
         guard panel.isVisible else { return }
         panel.orderOut(nil)
         removeKeyMonitor()
-        session.reset()
     }
 
     private func handleEscape() {
         if session.isStreaming {
             session.stop()
-        } else if !session.draft.isEmpty || !session.draftImages.isEmpty {
-            session.clearDraft()
+        } else if !session.turns.isEmpty || !session.draft.isEmpty || !session.draftImages.isEmpty || session.failure != nil {
+            session.reset()
         } else {
             close()
         }
@@ -119,19 +121,19 @@ final class PanelController: NSObject {
 
         switch preferences.placement {
         case .screenCenter:
-            origin = NSPoint(x: visible.midX - Self.width / 2, y: visible.maxY - visible.height * 0.2 - height)
+            origin = NSPoint(x: visible.midX - Self.windowWidth / 2, y: visible.maxY - visible.height * 0.2 - height)
         case .pointer:
             let pointer = NSEvent.mouseLocation
-            origin = NSPoint(x: pointer.x - Self.width / 2, y: pointer.y - 16 - height)
+            origin = NSPoint(x: pointer.x - Self.windowWidth / 2, y: pointer.y - 16 - height + Self.margin)
         case .lastPosition:
             if let saved = UserDefaults.standard.array(forKey: "panelTopLeft") as? [Double], saved.count == 2 {
                 origin = NSPoint(x: saved[0], y: saved[1] - height)
             } else {
-                origin = NSPoint(x: visible.midX - Self.width / 2, y: visible.maxY - visible.height * 0.2 - height)
+                origin = NSPoint(x: visible.midX - Self.windowWidth / 2, y: visible.maxY - visible.height * 0.2 - height)
             }
         }
 
-        let frame = NSRect(origin: origin, size: NSSize(width: Self.width, height: height))
+        let frame = NSRect(origin: origin, size: NSSize(width: Self.windowWidth, height: height))
         apply(frame.clamped(to: Self.screen(containing: frame)?.visibleFrame ?? visible))
     }
 
@@ -147,7 +149,6 @@ final class PanelController: NSObject {
     private func apply(_ frame: NSRect) {
         isApplyingFrame = true
         panel.setFrame(frame, display: true)
-        panel.invalidateShadow()
         isApplyingFrame = false
     }
 
@@ -202,7 +203,7 @@ final class PanelController: NSObject {
 
 extension PanelController: NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
-        if preferences.closesOnDeactivation { close() }
+        if !preferences.isPinned { close() }
     }
 
     func windowDidMove(_ notification: Notification) {

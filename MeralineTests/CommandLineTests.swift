@@ -46,8 +46,10 @@ struct CommandLineTests {
         ))
         #expect(invocation.arguments.contains("--no-session-persistence"))
         let tools = try #require(invocation.arguments.firstIndex(of: "--tools"))
-        #expect(invocation.arguments[tools + 1] == "")
-        #expect(Array(invocation.arguments.suffix(2)) == ["--model", "sonnet"])
+        #expect(invocation.arguments[tools + 1] == "WebSearch,WebFetch")
+        let model = try #require(invocation.arguments.firstIndex(of: "--model"))
+        #expect(invocation.arguments[model + 1] == "sonnet")
+        #expect(!invocation.arguments.contains("--effort"))
 
         let input = try #require(invocation.input)
         let line = try #require(JSONSerialization.jsonObject(with: input) as? [String: Any])
@@ -55,6 +57,44 @@ struct CommandLineTests {
         let content = try #require(message["content"] as? [[String: Any]])
         #expect(content.first?["type"] as? String == "image")
         #expect(content.last?["text"] as? String == "What is this?")
+    }
+
+    @Test func claudeCodeCanRunWithoutToolsAndWithLowEffort() throws {
+        let invocation = try CommandLineClient.invocation(for: ChatRequest(
+            provider: .claudeCode,
+            settings: ProviderSettings(model: "", baseURL: "/bin/echo", apiKey: "", isEnabled: true, allowsWebSearch: false, effort: .low),
+            systemPrompt: "Be brief.",
+            messages: [ChatMessage(role: .user, text: "Hi")]
+        ))
+        let tools = try #require(invocation.arguments.firstIndex(of: "--tools"))
+        #expect(invocation.arguments[tools + 1] == "")
+        #expect(!invocation.arguments.contains("--allowedTools"))
+        let effort = try #require(invocation.arguments.firstIndex(of: "--effort"))
+        #expect(invocation.arguments[effort + 1] == "low")
+    }
+
+    @Test func effortMapsToEachTool() throws {
+        let settings = ProviderSettings(model: "", baseURL: "/bin/echo", apiKey: "", isEnabled: true, effort: .high)
+        let messages = [ChatMessage(role: .user, text: "Hi")]
+        let codex = try CommandLineClient.invocation(for: ChatRequest(provider: .codex, settings: settings, systemPrompt: "", messages: messages))
+        #expect(codex.arguments.contains("model_reasoning_effort=\"high\""))
+        let opencode = try CommandLineClient.invocation(for: ChatRequest(provider: .opencode, settings: settings, systemPrompt: "", messages: messages))
+        let variant = try #require(opencode.arguments.firstIndex(of: "--variant"))
+        #expect(opencode.arguments[variant + 1] == "high")
+    }
+
+    @Test func decodesActivities() throws {
+        let thinking = #"{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}}"#
+        #expect(try StreamDecoder.decode(thinking, from: .claudeCode) == .activity(.thinking))
+        let toolStart = #"{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"t","name":"WebSearch","input":{}}}}"#
+        #expect(try StreamDecoder.decode(toolStart, from: .claudeCode) == .activity(.searching(nil)))
+        let toolInput = #"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t","name":"WebFetch","input":{"url":"https://www.prague.eu/events","prompt":"x"}}]}}"#
+        #expect(try StreamDecoder.decode(toolInput, from: .claudeCode) == .activity(.reading("www.prague.eu")))
+        let command = #"{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"ls","status":"in_progress"}}"#
+        #expect(try StreamDecoder.decode(command, from: .codex) == .activity(.running))
+        let tool = #"{"type":"tool_use","part":{"type":"tool","tool":"websearch","state":{"status":"completed","input":{"query":"Prague events"}}}}"#
+        #expect(try StreamDecoder.decode(tool, from: .opencode) == .activity(.searching("Prague events")))
+        #expect(Activity.searching("Prague events").title == "Searching for “Prague events”")
     }
 
     @Test func codexRunsEphemerallyInAReadOnlySandbox() throws {
@@ -127,12 +167,14 @@ struct CommandLineTests {
         for provider in Provider.commandLineTools where CommandLineClient.resolve(provider.defaultBaseURL) != nil {
             let request = ChatRequest(
                 provider: provider,
-                settings: ProviderSettings(model: models[provider]!, baseURL: provider.defaultBaseURL, apiKey: "", isEnabled: true),
+                settings: ProviderSettings(model: models[provider]!, baseURL: provider.defaultBaseURL, apiKey: "", isEnabled: true, effort: .low),
                 systemPrompt: "Reply with exactly one lowercase word.",
                 messages: [ChatMessage(role: .user, text: "Say ready.")]
             )
             var answer = ""
-            for try await text in LLMClient.stream(request) { answer += text }
+            for try await output in LLMClient.stream(request) {
+                if case .text(let text) = output { answer += text }
+            }
             #expect(answer.lowercased().contains("ready"), "\(provider.name) answered: \(answer)")
         }
     }

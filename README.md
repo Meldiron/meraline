@@ -19,15 +19,15 @@
 
 ---
 
-Meraline is a tiny Mac app for quick questions. Press <kbd>⌥</kbd> <kbd>Space</kbd>, type, and the answer streams in a small glass window. Ask a follow-up if you need one. Press <kbd>Esc</kbd> and it's gone.
+Meraline is a tiny Mac app for quick questions. Press <kbd>⌥</kbd> <kbd>Space</kbd>, type, and the answer streams in a small glass window. Ask a follow-up if you need one. Click away and it waits for you; press <kbd>Esc</kbd> to start fresh.
 
-There are no chat lists, no history, and no projects. Nothing is saved to disk, and the next question starts fresh.
+There are no chat lists, no history, and no projects. Nothing is saved to disk. Pin the window (📌 or <kbd>⌘</kbd> <kbd>P</kbd>) to keep it open while you work in other apps.
 
 ## What it does
 
 ✨ **Opens anywhere.** A global shortcut brings up the window over whatever you're doing, on any Space or full-screen app. It doesn't steal focus from the app you're in.
 
-💬 **Answers quickly.** Replies stream in as they're written, with bold, italics, code, and links rendered.
+💬 **Answers quickly.** Replies stream in as they're written, with bold, italics, code, and links rendered. While a model thinks, searches the web, or runs a tool, you see what it's doing.
 
 🖼️ **Understands images.** Paste a screenshot or drop an image into the window and ask about it.
 
@@ -58,7 +58,8 @@ That's it. Press <kbd>⌥</kbd> <kbd>Space</kbd> whenever you have a question.
 | --- | --- |
 | <kbd>⌥</kbd> <kbd>Space</kbd> | Open or close Meraline (change it in Settings) |
 | <kbd>↩</kbd> or <kbd>⇥</kbd> | Send |
-| <kbd>Esc</kbd> | Stop the answer, clear what you typed, or close the window |
+| <kbd>Esc</kbd> | Stop the answer, then start a new chat, then close the window |
+| <kbd>⌘</kbd> <kbd>P</kbd> | Pin or unpin the window |
 | <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>C</kbd> | Copy the last answer |
 | <kbd>⌘</kbd> <kbd>N</kbd> | Start a new chat |
 | <kbd>⌘</kbd> <kbd>,</kbd> | Open Settings |

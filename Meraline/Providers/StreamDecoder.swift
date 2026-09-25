@@ -2,8 +2,53 @@ import Foundation
 
 nonisolated enum StreamChunk: Equatable, Sendable {
     case text(String)
+    case activity(Activity)
     case finished
     case ignored
+}
+
+nonisolated enum StreamOutput: Equatable, Sendable {
+    case text(String)
+    case activity(Activity)
+}
+
+nonisolated enum Activity: Equatable, Sendable {
+    case thinking
+    case searching(String?)
+    case reading(String?)
+    case running
+    case tool(String)
+
+    static func named(_ name: String, query: String? = nil, url: String? = nil) -> Activity {
+        switch name.lowercased() {
+        case "websearch", "web_search": .searching(query)
+        case "webfetch", "web_fetch", "fetch": .reading(url.flatMap { URL(string: $0)?.host() } ?? url)
+        case "bash", "shell", "command_execution": .running
+        default: .tool(name)
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .thinking: "Thinking"
+        case .searching(let query?): "Searching for “\(query)”"
+        case .searching: "Searching the web"
+        case .reading(let page?): "Reading \(page)"
+        case .reading: "Reading a page"
+        case .running: "Running a command"
+        case .tool(let name): "Using \(name)"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .thinking: "brain"
+        case .searching: "magnifyingglass"
+        case .reading: "doc.text"
+        case .running: "terminal"
+        case .tool: "wrench.and.screwdriver"
+        }
+    }
 }
 
 nonisolated enum StreamDecoder {
@@ -41,6 +86,12 @@ nonisolated enum StreamDecoder {
 
     private static func anthropic(_ event: AnthropicEvent) throws -> StreamChunk {
         switch event.type {
+        case "content_block_start":
+            switch event.contentBlock?.type {
+            case "thinking", "redacted_thinking": return .activity(.thinking)
+            case "tool_use", "server_tool_use": return .activity(.named(event.contentBlock?.name ?? "tool"))
+            default: break
+            }
         case "content_block_delta":
             if event.delta?.type == "text_delta", let text = event.delta?.text { return .text(text) }
         case "message_delta":
@@ -65,6 +116,12 @@ nonisolated enum StreamDecoder {
         switch kind {
         case "response.output_text.delta":
             return .text(try decoder.decode(ResponsesTextDelta.self, from: data).delta)
+        case "response.output_item.added":
+            switch try decoder.decode(ResponsesItemAdded.self, from: data).item.type {
+            case "reasoning": return .activity(.thinking)
+            case "web_search_call": return .activity(.searching(nil))
+            default: return .ignored
+            }
         case "response.completed":
             return .finished
         case "response.incomplete":
@@ -97,8 +154,10 @@ nonisolated enum StreamDecoder {
             throw LLMError.provider("Gemini blocked this request (\(reason)).")
         }
         guard let candidate = chunk.candidates?.first else { return .ignored }
-        let text = candidate.content?.parts?.compactMap { $0.thought == true ? nil : $0.text }.joined() ?? ""
+        let parts = candidate.content?.parts ?? []
+        let text = parts.compactMap { $0.thought == true ? nil : $0.text }.joined()
         if !text.isEmpty { return .text(text) }
+        if parts.contains(where: { $0.thought == true }) { return .activity(.thinking) }
         switch candidate.finishReason {
         case "MAX_TOKENS": throw LLMError.truncated
         case "SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII": throw LLMError.refused
@@ -112,6 +171,11 @@ nonisolated enum StreamDecoder {
         case "stream_event":
             guard let event = line.event else { return .ignored }
             return try anthropic(event)
+        case "assistant":
+            guard let tool = line.message?.content?.last(where: { $0.type == "tool_use" }), let name = tool.name else {
+                return .ignored
+            }
+            return .activity(.named(name, query: tool.input?.query, url: tool.input?.url))
         case "result":
             if line.isError == true { throw LLMError.provider(line.result ?? "Claude Code couldn’t answer.") }
             return .finished
@@ -123,6 +187,14 @@ nonisolated enum StreamDecoder {
     private static func codex(_ payload: String) throws -> StreamChunk {
         guard let line = try? decoder.decode(CodexLine.self, from: Data(payload.utf8)) else { return .ignored }
         switch line.type {
+        case "item.started":
+            switch line.item?.type {
+            case "reasoning": return .activity(.thinking)
+            case "command_execution": return .activity(.running)
+            case "web_search": return .activity(.searching(line.item?.query))
+            case "mcp_tool_call": return .activity(.tool(line.item?.tool ?? "a tool"))
+            default: return .ignored
+            }
         case "item.completed":
             guard line.item?.type == "agent_message", let text = line.item?.text, !text.isEmpty else { return .ignored }
             return .text(text)
@@ -141,6 +213,11 @@ nonisolated enum StreamDecoder {
         case "text":
             guard let text = line.part?.text, !text.isEmpty else { return .ignored }
             return .text(text)
+        case "reasoning":
+            return .activity(.thinking)
+        case "tool_use":
+            guard let tool = line.part?.tool else { return .ignored }
+            return .activity(.named(tool, query: line.part?.state?.input?.query, url: line.part?.state?.input?.url))
         case "error":
             throw LLMError.provider(line.error?.data?.message ?? line.error?.name ?? "OpenCode couldn’t answer.")
         default:
@@ -202,12 +279,31 @@ private nonisolated struct ErrorEnvelope: Decodable {
 private nonisolated struct AnthropicEvent: Decodable {
     let type: String
     let delta: Delta?
+    let contentBlock: ContentBlock?
     let error: ErrorDetail?
+
+    struct ContentBlock: Decodable {
+        let type: String
+        let name: String?
+    }
 
     struct Delta: Decodable {
         let type: String?
         let text: String?
         let stopReason: String?
+    }
+}
+
+private nonisolated struct ToolInput: Decodable {
+    let query: String?
+    let url: String?
+}
+
+private nonisolated struct ResponsesItemAdded: Decodable {
+    let item: Item
+
+    struct Item: Decodable {
+        let type: String
     }
 }
 
@@ -274,8 +370,19 @@ private nonisolated struct OllamaChunk: Decodable {
 private nonisolated struct ClaudeCodeLine: Decodable {
     let type: String
     let event: AnthropicEvent?
+    let message: Message?
     let isError: Bool?
     let result: String?
+
+    struct Message: Decodable {
+        let content: [Block]?
+    }
+
+    struct Block: Decodable {
+        let type: String
+        let name: String?
+        let input: ToolInput?
+    }
 }
 
 private nonisolated struct CodexLine: Decodable {
@@ -286,6 +393,8 @@ private nonisolated struct CodexLine: Decodable {
     struct Item: Decodable {
         let type: String
         let text: String?
+        let query: String?
+        let tool: String?
     }
 }
 
@@ -296,6 +405,12 @@ private nonisolated struct OpenCodeLine: Decodable {
 
     struct Part: Decodable {
         let text: String?
+        let tool: String?
+        let state: State?
+    }
+
+    struct State: Decodable {
+        let input: ToolInput?
     }
 
     struct Failure: Decodable {

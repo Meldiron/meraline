@@ -4,7 +4,7 @@ import Foundation
 nonisolated enum LLMClient {
     private static let session = URLSession(configuration: .ephemeral)
 
-    static func stream(_ request: ChatRequest) -> AsyncThrowingStream<String, Error> {
+    static func stream(_ request: ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> {
         if request.provider.isCommandLine { return CommandLineClient.stream(request) }
         return AsyncThrowingStream { continuation in
             let task = Task {
@@ -24,7 +24,9 @@ nonisolated enum LLMClient {
                         switch try StreamDecoder.decode(payload, from: request.provider) {
                         case .text(let text):
                             receivedText = true
-                            continuation.yield(text)
+                            continuation.yield(.text(text))
+                        case .activity(let activity):
+                            continuation.yield(.activity(activity))
                         case .finished:
                             return true
                         case .ignored:

@@ -56,10 +56,15 @@ nonisolated enum CommandLineClient {
                 "--include-partial-messages",
                 "--no-session-persistence",
                 "--strict-mcp-config",
-                "--tools", "",
                 "--system-prompt", request.systemPrompt
             ]
             if !model.isEmpty { arguments += ["--model", model] }
+            if request.settings.effort != .automatic { arguments += ["--effort", request.settings.effort.rawValue] }
+            if request.settings.allowsWebSearch {
+                arguments += ["--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch", "WebFetch"]
+            } else {
+                arguments += ["--tools", ""]
+            }
             var content: [[String: Any]] = images.map { image in
                 ["type": "image", "source": ["type": "base64", "media_type": image.mediaType, "data": image.base64]]
             }
@@ -73,6 +78,9 @@ nonisolated enum CommandLineClient {
             let files = attachmentFiles(for: images)
             var arguments = ["exec", "--json", "--ephemeral", "--skip-git-repo-check", "--sandbox", "read-only"]
             if !model.isEmpty { arguments += ["--model", model] }
+            if request.settings.effort != .automatic {
+                arguments += ["--config", "model_reasoning_effort=\"\(request.settings.effort.rawValue)\""]
+            }
             for name in files.keys.sorted() { arguments += ["--image", name] }
             arguments.append("-")
             let prompt = prompt(for: request)
@@ -82,6 +90,7 @@ nonisolated enum CommandLineClient {
             let files = attachmentFiles(for: images)
             var arguments = ["run", "--format", "json"]
             if !model.isEmpty { arguments += ["--model", model] }
+            if request.settings.effort != .automatic { arguments += ["--variant", request.settings.effort.rawValue] }
             for name in files.keys.sorted() { arguments += ["--file", name] }
             arguments += ["--", prompt(for: request)]
             return CommandInvocation(executable: executable, arguments: arguments, files: files)
@@ -122,7 +131,7 @@ nonisolated enum CommandLineClient {
         })
     }
 
-    static func stream(_ request: ChatRequest) -> AsyncThrowingStream<String, Error> {
+    static func stream(_ request: ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> {
         AsyncThrowingStream { continuation in
             let process = Process()
             let task = Task {
@@ -160,12 +169,17 @@ nonisolated enum CommandLineClient {
 
                     async let diagnostics = tail(of: errors.fileHandleForReading)
                     var receivedText = false
+                    var needsSeparator = false
                     for try await line in output.fileHandleForReading.bytes.lines {
                         switch try StreamDecoder.decode(line, from: request.provider) {
                         case .text(let text):
-                            if receivedText && request.provider != .claudeCode { continuation.yield("\n\n") }
-                            continuation.yield(text)
+                            if needsSeparator { continuation.yield(.text("\n\n")) }
+                            continuation.yield(.text(text))
                             receivedText = true
+                            needsSeparator = request.provider != .claudeCode
+                        case .activity(let activity):
+                            needsSeparator = false
+                            continuation.yield(.activity(activity))
                         case .finished, .ignored:
                             break
                         }

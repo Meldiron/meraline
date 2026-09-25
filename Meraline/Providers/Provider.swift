@@ -146,6 +146,8 @@ nonisolated struct ProviderSettings: Equatable, Sendable {
     var baseURL: String
     var apiKey: String
     var isEnabled: Bool
+    var allowsWebSearch = true
+    var effort = ReasoningEffort.automatic
 
     func isReady(for provider: Provider) -> Bool {
         if provider.isCommandLine { return isEnabled && !baseURL.trimmed.isEmpty }
@@ -153,6 +155,24 @@ nonisolated struct ProviderSettings: Equatable, Sendable {
         switch provider.keyPolicy {
         case .required: return hasModel && !apiKey.trimmed.isEmpty
         case .optional, .none: return hasModel && isEnabled
+        }
+    }
+}
+
+nonisolated enum ReasoningEffort: String, CaseIterable, Identifiable, Sendable {
+    case automatic = ""
+    case low
+    case medium
+    case high
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .automatic: "Default"
+        case .low: "Low"
+        case .medium: "Medium"
+        case .high: "High"
         }
     }
 }

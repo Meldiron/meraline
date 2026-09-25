@@ -42,8 +42,8 @@ final class Preferences {
     var placement: PanelPlacement {
         didSet { defaults.set(placement.rawValue, forKey: "placement") }
     }
-    var closesOnDeactivation: Bool {
-        didSet { defaults.set(closesOnDeactivation, forKey: "closesOnDeactivation") }
+    var isPinned: Bool {
+        didSet { defaults.set(isPinned, forKey: "isPinned") }
     }
     var showsMenuBarIcon: Bool {
         didSet { defaults.set(showsMenuBarIcon, forKey: "showsMenuBarIcon") }
@@ -58,7 +58,7 @@ final class Preferences {
         self.secrets = secrets
         provider = defaults.string(forKey: "provider").flatMap(Provider.init(rawValue:))
         placement = defaults.string(forKey: "placement").flatMap(PanelPlacement.init(rawValue:)) ?? .screenCenter
-        closesOnDeactivation = defaults.object(forKey: "closesOnDeactivation") as? Bool ?? false
+        isPinned = defaults.bool(forKey: "isPinned")
         showsMenuBarIcon = defaults.object(forKey: "showsMenuBarIcon") as? Bool ?? true
         systemPrompt = defaults.string(forKey: "systemPrompt") ?? Self.defaultSystemPrompt
         providerSettings = Dictionary(uniqueKeysWithValues: Provider.allCases.map { provider in
@@ -66,7 +66,9 @@ final class Preferences {
                 model: defaults.string(forKey: "\(provider.rawValue).model") ?? provider.defaultModel,
                 baseURL: defaults.string(forKey: "\(provider.rawValue).baseURL") ?? provider.defaultBaseURL,
                 apiKey: provider.keyPolicy == .none ? "" : secrets.read(provider.rawValue),
-                isEnabled: defaults.bool(forKey: "\(provider.rawValue).enabled")
+                isEnabled: defaults.bool(forKey: "\(provider.rawValue).enabled"),
+                allowsWebSearch: defaults.object(forKey: "\(provider.rawValue).webSearch") as? Bool ?? true,
+                effort: defaults.string(forKey: "\(provider.rawValue).effort").flatMap(ReasoningEffort.init(rawValue:)) ?? .automatic
             ))
         })
         if let provider, !readyProviders.contains(provider) {
@@ -83,6 +85,8 @@ final class Preferences {
             defaults.set(newValue.model, forKey: "\(provider.rawValue).model")
             defaults.set(newValue.baseURL, forKey: "\(provider.rawValue).baseURL")
             defaults.set(newValue.isEnabled, forKey: "\(provider.rawValue).enabled")
+            defaults.set(newValue.allowsWebSearch, forKey: "\(provider.rawValue).webSearch")
+            defaults.set(newValue.effort.rawValue, forKey: "\(provider.rawValue).effort")
             if old.apiKey != newValue.apiKey { secrets.write(provider.rawValue, newValue.apiKey.trimmed) }
             reconcileActiveProvider()
         }
