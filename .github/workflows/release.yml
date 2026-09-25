@@ -43,26 +43,38 @@ jobs:
             MARKETING_VERSION="${VERSION#v}" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}"
 
+      - name: Export with Developer ID
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/Meraline.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath build/export
+
       - name: Notarize
         env:
           NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
-          app=build/Meraline.xcarchive/Products/Applications/Meraline.app
+          app=build/export/Meraline.app
           key="$RUNNER_TEMP/notary.p8"
+          trap 'rm -f "$key"' EXIT
           printf '%s' "$NOTARY_KEY" > "$key"
+          credentials=(--key "$key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID")
           ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/notarize.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
-            --key "$key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" --wait
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" "${credentials[@]}" --wait --output-format json > "$RUNNER_TEMP/notary.json"
+          if [ "$(jq -r .status "$RUNNER_TEMP/notary.json")" != "Accepted" ]; then
+            xcrun notarytool log "$(jq -r .id "$RUNNER_TEMP/notary.json")" "${credentials[@]}"
+            exit 1
+          fi
           xcrun stapler staple "$app"
-          rm "$key"
+          spctl --assess --verbose=2 "$app"
 
       - name: Package
         run: |
           mkdir -p build/release
           ditto -c -k --sequesterRsrc --keepParent \
-            build/Meraline.xcarchive/Products/Applications/Meraline.app \
+            build/export/Meraline.app \
             "build/release/Meraline-${VERSION#v}.zip"
 
       - name: Generate appcast
