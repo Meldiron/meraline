@@ -42,23 +42,24 @@ xcodebuild -project Meraline.xcodeproj -scheme Meraline test
 
 ## Releasing an update
 
-Updates are published as GitHub releases. The appcast lives at `https://github.com/Meldiron/meraline/releases/latest/download/appcast.xml`, and the EdDSA public key is set in `project.yml`. The matching private key is stored in the release machine's Keychain by Sparkle's `generate_keys`.
+Every push to `main` and every pull request runs the tests in GitHub Actions.
 
-1. Bump `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml`.
-2. Archive and export the app:
-   ```sh
-   xcodegen generate
-   xcodebuild -project Meraline.xcodeproj -scheme Meraline -configuration Release -archivePath build/Meraline.xcarchive archive
-   mkdir -p build/release
-   ditto -c -k --sequesterRsrc --keepParent build/Meraline.xcarchive/Products/Applications/Meraline.app build/release/Meraline-<version>.zip
-   ```
-3. Generate the appcast with Sparkle's tool (it lives in the resolved Sparkle package under `SourcePackages/artifacts/sparkle/Sparkle/bin`):
-   ```sh
-   generate_appcast --download-url-prefix https://github.com/Meldiron/meraline/releases/download/v<version>/ build/release
-   ```
-4. Create the release and attach both files:
-   ```sh
-   gh release create v<version> build/release/Meraline-<version>.zip build/release/appcast.xml
-   ```
+To ship a version, push a tag:
 
-Builds are signed with the Developer ID certificate of team `C24QP73SQM`. Notarize the archive with `xcrun notarytool submit` before publishing it, so Gatekeeper opens it on other Macs.
+```sh
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+The Release workflow builds the app with the tag's version, signs it with the Developer ID certificate, notarizes and staples it, signs the update for Sparkle, and publishes a GitHub release with `Meraline-<version>.zip` and `appcast.xml`. Installed copies find the update through `https://github.com/Meldiron/meraline/releases/latest/download/appcast.xml`.
+
+The workflow needs these repository secrets:
+
+| Secret | Contents |
+| --- | --- |
+| `DEVELOPER_ID_P12` | Base64 of the exported Developer ID Application certificate and private key (`.p12`) |
+| `DEVELOPER_ID_P12_PASSWORD` | Password chosen when exporting the `.p12` |
+| `NOTARY_KEY` | Contents of an App Store Connect API key (`AuthKey_XXXX.p8`) |
+| `NOTARY_KEY_ID` | That key's ID |
+| `NOTARY_ISSUER_ID` | The App Store Connect issuer ID |
+| `SPARKLE_PRIVATE_KEY` | EdDSA private key from Sparkle's `generate_keys -x` |

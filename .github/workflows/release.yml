@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.DEVELOPER_ID_P12 }}
+          p12-password: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+
+      - name: Build
+        run: |
+          xcodebuild archive \
+            -project Meraline.xcodeproj \
+            -scheme Meraline \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -archivePath build/Meraline.xcarchive \
+            -clonedSourcePackagesDirPath build/SourcePackages \
+            MARKETING_VERSION="${VERSION#v}" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}"
+
+      - name: Notarize
+        env:
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          app=build/Meraline.xcarchive/Products/Applications/Meraline.app
+          key="$RUNNER_TEMP/notary.p8"
+          printf '%s' "$NOTARY_KEY" > "$key"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --key "$key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" --wait
+          xcrun stapler staple "$app"
+          rm "$key"
+
+      - name: Package
+        run: |
+          mkdir -p build/release
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/Meraline.xcarchive/Products/Applications/Meraline.app \
+            "build/release/Meraline-${VERSION#v}.zip"
+
+      - name: Generate appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/${VERSION}/" \
+            build/release
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$VERSION" \
+            --title "Meraline ${VERSION#v}" \
+            --generate-notes \
+            "build/release/Meraline-${VERSION#v}.zip" \
+            build/release/appcast.xml

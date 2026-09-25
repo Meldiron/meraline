@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Test
+        run: |
+          xcodebuild test \
+            -project Meraline.xcodeproj \
+            -scheme Meraline \
+            -destination 'platform=macOS' \
+            CODE_SIGN_IDENTITY=- \
+            DEVELOPMENT_TEAM= \
+            OTHER_CODE_SIGN_FLAGS=
