@@ -5,7 +5,8 @@ nonisolated enum LLMClient {
     private static let session = URLSession(configuration: .ephemeral)
 
     static func stream(_ request: ChatRequest) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
+        if request.provider.isCommandLine { return CommandLineClient.stream(request) }
+        return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     let (bytes, response) = try await session.bytes(for: request.urlRequest())

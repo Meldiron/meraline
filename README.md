@@ -6,6 +6,7 @@ A tiny macOS utility for ephemeral LLM chats. Press a shortcut, ask a question, 
 
 - Floating Liquid Glass window that opens with a global shortcut (default `⌥Space`)
 - Streaming answers from Anthropic, OpenAI, Google Gemini, OpenRouter, Ollama, or any OpenAI-compatible server
+- Answers from command-line agents you're already signed in to: Claude Code (`claude`), Codex (`codex`), and OpenCode (`opencode`). They run in an empty temporary folder with tools off (Claude Code) or a read-only sandbox (Codex), and nothing is saved as a session.
 - Paste or drop images into the question
 - API keys stored in the macOS Keychain; requests use an ephemeral URL session and ask OpenAI not to store responses
 - Settings styled after System Settings

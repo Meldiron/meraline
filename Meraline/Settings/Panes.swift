@@ -119,6 +119,11 @@ struct ProviderPane: View {
 
     private var settings: ProviderSettings { preferences[provider] }
 
+    private var modelPlaceholder: String {
+        if provider.isCommandLine { return "Default" }
+        return provider == .custom ? "Model identifier" : provider.defaultModel
+    }
+
     var body: some View {
         Form {
             PaneHeader(pane: .provider(provider), summary: provider.summary)
@@ -134,18 +139,31 @@ struct ProviderPane: View {
                         prompt: Text("Paste your key")
                     )
                 }
-                TextField("Model", text: binding(\.model), prompt: Text(provider == .custom ? "Model identifier" : provider.defaultModel))
+                TextField("Model", text: binding(\.model), prompt: Text(modelPlaceholder))
                     .textInputSuggestions(provider.suggestedModels, id: \.self) { Text($0).textInputCompletion($0) }
             } footer: {
                 if let portal = provider.keyPortal {
-                    Link(provider.keyPolicy == .none ? "Download \(provider.name)" : "Get an API key", destination: portal)
+                    Link(provider.keyPolicy == .none ? "Install \(provider.name)" : "Get an API key", destination: portal)
                 }
             }
 
             Section {
-                TextField("Server address", text: binding(\.baseURL), prompt: Text(provider.defaultBaseURL))
+                TextField(
+                    provider.isCommandLine ? "Command" : "Server address",
+                    text: binding(\.baseURL),
+                    prompt: Text(provider.defaultBaseURL)
+                )
+                if provider.isCommandLine {
+                    LabeledContent("Location") {
+                        if let path = CommandLineClient.resolve(settings.baseURL)?.path {
+                            Text(path).textSelection(.enabled)
+                        } else {
+                            Text("Not found").foregroundStyle(.red)
+                        }
+                    }
+                }
             } header: {
-                Text("Connection")
+                Text(provider.isCommandLine ? "Command" : "Connection")
             } footer: {
                 if settings.baseURL != provider.defaultBaseURL && !provider.defaultBaseURL.isEmpty {
                     HStack {

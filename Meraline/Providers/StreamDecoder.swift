@@ -20,6 +20,9 @@ nonisolated enum StreamDecoder {
         case .gemini: try gemini(payload)
         case .openRouter, .custom: try chatCompletions(payload)
         case .ollama: try ollama(payload)
+        case .claudeCode: try claudeCode(payload)
+        case .codex: try codex(payload)
+        case .opencode: try opencode(payload)
         }
     }
 
@@ -33,7 +36,10 @@ nonisolated enum StreamDecoder {
     }
 
     private static func anthropic(_ payload: String) throws -> StreamChunk {
-        let event = try decoder.decode(AnthropicEvent.self, from: Data(payload.utf8))
+        try anthropic(decoder.decode(AnthropicEvent.self, from: Data(payload.utf8)))
+    }
+
+    private static func anthropic(_ event: AnthropicEvent) throws -> StreamChunk {
         switch event.type {
         case "content_block_delta":
             if event.delta?.type == "text_delta", let text = event.delta?.text { return .text(text) }
@@ -98,6 +104,57 @@ nonisolated enum StreamDecoder {
         case "SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII": throw LLMError.refused
         default: return .ignored
         }
+    }
+
+    private static func claudeCode(_ payload: String) throws -> StreamChunk {
+        guard let line = try? decoder.decode(ClaudeCodeLine.self, from: Data(payload.utf8)) else { return .ignored }
+        switch line.type {
+        case "stream_event":
+            guard let event = line.event else { return .ignored }
+            return try anthropic(event)
+        case "result":
+            if line.isError == true { throw LLMError.provider(line.result ?? "Claude Code couldn’t answer.") }
+            return .finished
+        default:
+            return .ignored
+        }
+    }
+
+    private static func codex(_ payload: String) throws -> StreamChunk {
+        guard let line = try? decoder.decode(CodexLine.self, from: Data(payload.utf8)) else { return .ignored }
+        switch line.type {
+        case "item.completed":
+            guard line.item?.type == "agent_message", let text = line.item?.text, !text.isEmpty else { return .ignored }
+            return .text(text)
+        case "turn.completed":
+            return .finished
+        case "turn.failed":
+            throw LLMError.provider(unwrappedErrorMessage(line.error?.message) ?? "Codex couldn’t answer.")
+        default:
+            return .ignored
+        }
+    }
+
+    private static func opencode(_ payload: String) throws -> StreamChunk {
+        guard let line = try? decoder.decode(OpenCodeLine.self, from: Data(payload.utf8)) else { return .ignored }
+        switch line.type {
+        case "text":
+            guard let text = line.part?.text, !text.isEmpty else { return .ignored }
+            return .text(text)
+        case "error":
+            throw LLMError.provider(line.error?.data?.message ?? line.error?.name ?? "OpenCode couldn’t answer.")
+        default:
+            return .ignored
+        }
+    }
+
+    private static func unwrappedErrorMessage(_ message: String?) -> String? {
+        guard let message else { return nil }
+        if let envelope = try? decoder.decode(ErrorEnvelope.self, from: Data(message.utf8)),
+           let nested = envelope.error?.message ?? envelope.message {
+            return nested
+        }
+        return message
     }
 
     private static func ollama(_ payload: String) throws -> StreamChunk {
@@ -211,5 +268,38 @@ private nonisolated struct OllamaChunk: Decodable {
 
     struct Message: Decodable {
         let content: String?
+    }
+}
+
+private nonisolated struct ClaudeCodeLine: Decodable {
+    let type: String
+    let event: AnthropicEvent?
+    let isError: Bool?
+    let result: String?
+}
+
+private nonisolated struct CodexLine: Decodable {
+    let type: String
+    let item: Item?
+    let error: ErrorDetail?
+
+    struct Item: Decodable {
+        let type: String
+        let text: String?
+    }
+}
+
+private nonisolated struct OpenCodeLine: Decodable {
+    let type: String
+    let part: Part?
+    let error: Failure?
+
+    struct Part: Decodable {
+        let text: String?
+    }
+
+    struct Failure: Decodable {
+        let name: String?
+        let data: ErrorDetail?
     }
 }

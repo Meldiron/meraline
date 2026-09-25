@@ -7,6 +7,14 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
     case openRouter
     case ollama
     case custom
+    case claudeCode
+    case codex
+    case opencode
+
+    static let services: [Provider] = [.anthropic, .openAI, .gemini, .openRouter, .ollama, .custom]
+    static let commandLineTools: [Provider] = [.claudeCode, .codex, .opencode]
+
+    var isCommandLine: Bool { Self.commandLineTools.contains(self) }
 
     var id: String { rawValue }
 
@@ -18,6 +26,9 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .openRouter: "OpenRouter"
         case .ollama: "Ollama"
         case .custom: "Custom"
+        case .claudeCode: "Claude Code"
+        case .codex: "Codex"
+        case .opencode: "OpenCode"
         }
     }
 
@@ -29,6 +40,9 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .openRouter: "One key for hundreds of models from many labs."
         case .ollama: "Local models running on this Mac. No key needed."
         case .custom: "Any server that speaks the OpenAI Chat Completions API, such as LM Studio."
+        case .claudeCode: "Answers from the claude command, using the account it’s signed in to. Tools stay off."
+        case .codex: "Answers from the codex command, using the account it’s signed in to, in a read-only sandbox."
+        case .opencode: "Answers from the opencode command, using the providers configured in OpenCode."
         }
     }
 
@@ -40,6 +54,9 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .openRouter: "arrow.triangle.branch"
         case .ollama: "desktopcomputer"
         case .custom: "server.rack"
+        case .claudeCode: "terminal.fill"
+        case .codex: "chevron.left.forwardslash.chevron.right"
+        case .opencode: "curlybraces"
         }
     }
 
@@ -51,6 +68,9 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .openRouter: Color(red: 0.42, green: 0.36, blue: 0.91)
         case .ollama: Color(white: 0.35)
         case .custom: Color(red: 0.55, green: 0.56, blue: 0.60)
+        case .claudeCode: Color(red: 0.80, green: 0.42, blue: 0.30)
+        case .codex: Color(red: 0.13, green: 0.13, blue: 0.15)
+        case .opencode: Color(red: 0.30, green: 0.33, blue: 0.40)
         }
     }
 
@@ -61,7 +81,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .gemini: "gemini-3.6-flash"
         case .openRouter: "anthropic/claude-sonnet-5"
         case .ollama: "llama3.2"
-        case .custom: ""
+        case .custom, .claudeCode, .codex, .opencode: ""
         }
     }
 
@@ -72,7 +92,9 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .gemini: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
         case .openRouter: ["anthropic/claude-sonnet-5", "openai/gpt-5-mini", "google/gemini-3.6-flash"]
         case .ollama: ["llama3.2", "qwen3", "gemma3", "mistral"]
-        case .custom: []
+        case .custom, .opencode: []
+        case .claudeCode: ["sonnet", "opus", "haiku"]
+        case .codex: ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"]
         }
     }
 
@@ -84,6 +106,9 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .openRouter: "https://openrouter.ai/api/v1"
         case .ollama: "http://127.0.0.1:11434"
         case .custom: "http://127.0.0.1:1234/v1"
+        case .claudeCode: "claude"
+        case .codex: "codex"
+        case .opencode: "opencode"
         }
     }
 
@@ -91,7 +116,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         switch self {
         case .anthropic, .openAI, .gemini, .openRouter: .required
         case .custom: .optional
-        case .ollama: .none
+        case .ollama, .claudeCode, .codex, .opencode: .none
         }
     }
 
@@ -103,6 +128,9 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .openRouter: URL(string: "https://openrouter.ai/settings/keys")
         case .ollama: URL(string: "https://ollama.com/download")
         case .custom: nil
+        case .claudeCode: URL(string: "https://code.claude.com/docs/en/setup")
+        case .codex: URL(string: "https://developers.openai.com/codex/cli")
+        case .opencode: URL(string: "https://opencode.ai/docs")
         }
     }
 
@@ -120,6 +148,7 @@ nonisolated struct ProviderSettings: Equatable, Sendable {
     var isEnabled: Bool
 
     func isReady(for provider: Provider) -> Bool {
+        if provider.isCommandLine { return isEnabled && !baseURL.trimmed.isEmpty }
         let hasModel = !model.trimmed.isEmpty && !baseURL.trimmed.isEmpty
         switch provider.keyPolicy {
         case .required: return hasModel && !apiKey.trimmed.isEmpty

@@ -53,6 +53,8 @@ nonisolated struct ChatRequest: Sendable {
         case .ollama:
             path = "api/chat"
             body = ollamaBody
+        case .claudeCode, .codex, .opencode:
+            preconditionFailure("\(provider) runs through CommandLineClient")
         }
 
         guard var components = URLComponents(string: settings.baseURL.trimmed),
@@ -153,6 +155,7 @@ nonisolated struct ChatRequest: Sendable {
 nonisolated enum LLMError: LocalizedError, Equatable {
     case missingKey(Provider)
     case invalidBaseURL(String)
+    case commandNotFound(Provider, String)
     case http(Int, String)
     case provider(String)
     case refused
@@ -163,6 +166,7 @@ nonisolated enum LLMError: LocalizedError, Equatable {
         switch self {
         case .missingKey(let provider): "Add your \(provider.name) API key in Settings."
         case .invalidBaseURL(let url): "“\(url)” isn’t a valid server address."
+        case .commandNotFound(let provider, let command): "Meraline couldn’t find the \(provider.name) command “\(command)”. Install it or set its path in Settings."
         case .http(let status, let message): "\(HTTPURLResponse.localizedString(forStatusCode: status).capitalized) (\(status)): \(message)"
         case .provider(let message): message
         case .refused: "The model declined to answer this request."

@@ -128,7 +128,7 @@ struct ChatPanelView: View {
     private var footer: some View {
         HStack(spacing: 8) {
             if let provider = preferences.activeProvider {
-                Label(preferences[provider].model, systemImage: provider.symbol)
+                Label(preferences[provider].model.isEmpty ? provider.name : preferences[provider].model, systemImage: provider.symbol)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

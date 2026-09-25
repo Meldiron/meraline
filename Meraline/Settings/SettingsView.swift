@@ -54,7 +54,8 @@ struct SettingsView: View {
         NavigationSplitView {
             List(selection: $navigation.selection) {
                 sidebarSection([.general, .answers])
-                sidebarSection(Provider.allCases.map(SettingsPane.provider), title: "Providers")
+                sidebarSection(Provider.services.map(SettingsPane.provider), title: "Providers")
+                sidebarSection(Provider.commandLineTools.map(SettingsPane.provider), title: "Command-Line Tools")
                 sidebarSection([.softwareUpdate, .about])
             }
             .searchable(text: $search, placement: .sidebar, prompt: "Search")
