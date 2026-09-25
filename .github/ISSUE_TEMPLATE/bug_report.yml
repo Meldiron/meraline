@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in Meraline does not work the way it should.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Settings › About › **Copy Diagnostics** puts everything we need to know about your setup on the clipboard, with no keys, questions, or answers in it.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What went wrong, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Press ⌥ Space
+        2. Ask "..."
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider in use
+      options:
+        - Anthropic
+        - OpenAI
+        - Google Gemini
+        - OpenRouter
+        - Ollama
+        - Custom (OpenAI-compatible server)
+        - Claude Code
+        - Codex
+        - OpenCode
+        - Not provider-related
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Paste the report from Settings › About › Copy Diagnostics. It includes the Meraline and macOS versions, so you do not need to type them.
+      render: markdown
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, a recording, or the exact error text if one was shown.

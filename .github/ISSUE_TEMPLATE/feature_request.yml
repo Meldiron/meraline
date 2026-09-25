@@ -1,0 +1,29 @@
+name: Feature request
+description: An idea for Meraline.
+title: "[Idea]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Meraline is deliberately small: a question, an answer, a follow-up, and nothing saved. Ideas that fit that shape land more easily than ones that turn it into a chat client.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation, not the solution. What is awkward or missing today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like Meraline to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered

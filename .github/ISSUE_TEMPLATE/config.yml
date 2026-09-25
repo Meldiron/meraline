@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Meldiron/meraline/security/advisories/new
+    about: Report a vulnerability privately. Please do not open a public issue for it.
+  - name: Releases and update notes
+    url: https://github.com/Meldiron/meraline/releases
+    about: Download the latest version or read what changed in each release.
