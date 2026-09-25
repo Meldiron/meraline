@@ -64,10 +64,7 @@ struct ChatPanelView: View {
 
     private var inputRow: some View {
         HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "sparkle")
-                .font(.system(size: 19, weight: .medium))
-                .foregroundStyle(.secondary)
-                .symbolEffect(.pulse, isActive: session.isStreaming)
+            ProviderMenu(preferences: preferences, isStreaming: session.isStreaming, openSettings: openSettings)
 
             TextField(hasConversation ? "Ask a follow-up…" : "Ask anything…", text: $session.draft, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -168,6 +165,47 @@ struct ChatPanelView: View {
             }
         }
         return accepted
+    }
+}
+
+private struct ProviderMenu: View {
+    let preferences: Preferences
+    let isStreaming: Bool
+    let openSettings: () -> Void
+
+    var body: some View {
+        Menu {
+            let active = preferences.activeProvider
+            if preferences.readyProviders.isEmpty {
+                Text("No providers are turned on")
+            }
+            ForEach(preferences.readyProviders) { provider in
+                Toggle(isOn: Binding(
+                    get: { provider == active },
+                    set: { if $0 { preferences.provider = provider } }
+                )) {
+                    Label(provider.name, systemImage: provider.symbol)
+                    let model = preferences[provider].model
+                    Text(model.isEmpty ? "Default model" : model)
+                }
+            }
+            Divider()
+            Button("Settings…", systemImage: "gearshape", action: openSettings)
+        } label: {
+            Image(systemName: "sparkle")
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(.secondary)
+                .symbolEffect(.pulse, isActive: isStreaming)
+                .frame(width: 28, height: 28)
+                .contentShape(.rect)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(isStreaming)
+        .help("Choose a provider")
+        .accessibilityLabel("Provider")
     }
 }
 

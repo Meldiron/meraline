@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Observation
 import SwiftUI
 import UniformTypeIdentifiers
@@ -32,7 +33,7 @@ final class PanelController: NSObject {
     private let session: ChatSession
     private let preferences: Preferences
     private let layout = PanelLayout()
-    private var pasteMonitor: Any?
+    private var keyMonitor: Any?
     private var isApplyingFrame = false
 
     init(session: ChatSession, preferences: Preferences, openSettings: @escaping () -> Void) {
@@ -91,13 +92,13 @@ final class PanelController: NSObject {
         place(on: screen)
         panel.makeKeyAndOrderFront(nil)
         layout.focusRequest += 1
-        installPasteMonitor()
+        installKeyMonitor()
     }
 
     func close() {
         guard panel.isVisible else { return }
         panel.orderOut(nil)
-        removePasteMonitor()
+        removeKeyMonitor()
         session.reset()
     }
 
@@ -150,21 +151,25 @@ final class PanelController: NSObject {
         isApplyingFrame = false
     }
 
-    private func installPasteMonitor() {
-        guard pasteMonitor == nil else { return }
-        pasteMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self,
-                  event.window === self.panel,
-                  event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-                  event.charactersIgnoringModifiers == "v",
-                  self.pasteImages(from: .general) else { return event }
-            return nil
+    private func installKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === self.panel else { return event }
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if event.keyCode == UInt16(kVK_Tab), modifiers.isEmpty {
+                self.session.send()
+                return nil
+            }
+            if modifiers == .command, event.charactersIgnoringModifiers == "v", self.pasteImages(from: .general) {
+                return nil
+            }
+            return event
         }
     }
 
-    private func removePasteMonitor() {
-        if let pasteMonitor { NSEvent.removeMonitor(pasteMonitor) }
-        pasteMonitor = nil
+    private func removeKeyMonitor() {
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
     }
 
     private func pasteImages(from pasteboard: NSPasteboard) -> Bool {
