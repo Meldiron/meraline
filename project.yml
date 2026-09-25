@@ -1,0 +1,92 @@
+name: Meraline
+
+options:
+  bundleIdPrefix: com.meldiron
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+
+settings:
+  base:
+    MARKETING_VERSION: 1.0.0
+    CURRENT_PROJECT_VERSION: 1
+    SWIFT_VERSION: "6.0"
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+    # Sparkle appcast and EdDSA public key. Empty values build without updates.
+    MERALINE_FEED_URL: https://github.com/Meldiron/meraline/releases/latest/download/appcast.xml
+    MERALINE_SPARKLE_PUBLIC_KEY: V0BO6CZzio2FWhfvoOJqjc2vWVr86tqSVPbnjhhP0os=
+
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.10.0
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: 3.1.0
+  EventSource:
+    url: https://github.com/mattt/EventSource
+    from: 1.5.1
+
+targets:
+  Meraline:
+    type: application
+    platform: macOS
+    sources:
+      - path: Meraline
+    dependencies:
+      - package: Sparkle
+      - package: KeyboardShortcuts
+      - package: EventSource
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.meldiron.meraline
+        PRODUCT_NAME: Meraline
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        COMBINE_HIDPI_IMAGES: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Meraline
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Meldiron"
+    info:
+      path: Meraline/Resources/Info.plist
+      properties:
+        CFBundleName: Meraline
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSUIElement: true
+        SUFeedURL: $(MERALINE_FEED_URL)
+        SUPublicEDKey: $(MERALINE_SPARKLE_PUBLIC_KEY)
+        SUEnableAutomaticChecks: true
+        SUScheduledCheckInterval: 86400
+
+  MeralineTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: MeralineTests
+    dependencies:
+      - target: Meraline
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.meldiron.meraline.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Meraline.app/Contents/MacOS/Meraline
+        BUNDLE_LOADER: $(TEST_HOST)
+
+schemes:
+  Meraline:
+    build:
+      targets:
+        Meraline: all
+        MeralineTests: [test]
+    test:
+      targets:
+        - MeralineTests

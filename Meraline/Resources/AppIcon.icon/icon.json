@@ -1,0 +1,37 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "display-p3:0.29804,0.27451,0.94902,1.00000",
+      "display-p3:0.70196,0.36078,0.94118,1.00000"
+    ]
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "wave.svg",
+          "name" : "wave"
+        },
+        {
+          "glass" : true,
+          "image-name" : "bubble.svg",
+          "name" : "bubble"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.4
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}
