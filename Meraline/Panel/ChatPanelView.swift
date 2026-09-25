@@ -54,6 +54,7 @@ struct ChatPanelView: View {
             .shadow(color: .black.opacity(0.28), radius: 22, y: 10)
         }
         .padding(PanelController.margin)
+        .tint(.meralinePink)
         .fixedSize(horizontal: false, vertical: true)
         .onGeometryChange(for: CGFloat.self, of: \.size.height) { onHeightChange($0) }
         .frame(maxHeight: .infinity, alignment: .top)
@@ -95,7 +96,10 @@ struct ChatPanelView: View {
                         .foregroundStyle(preferences.isPinned ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                         .rotationEffect(.degrees(45))
                         .frame(width: 32, height: 32)
-                        .glassEffect(.regular.interactive(), in: .circle)
+                        .glassEffect(
+                            preferences.isPinned ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(),
+                            in: .circle
+                        )
                         .contentTransition(.symbolEffect(.replace))
                 }
                 .buttonStyle(.plain)
@@ -210,7 +214,7 @@ private struct ProviderMenu: View {
         } label: {
             Image(systemName: "sparkle")
                 .font(.system(size: 19, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.meraline)
                 .symbolEffect(.pulse, isActive: isStreaming)
                 .frame(width: 28, height: 28)
                 .contentShape(.rect)
@@ -264,6 +268,7 @@ private struct ActivityRow: View {
         HStack(spacing: 8) {
             if let activity {
                 Image(systemName: activity.symbol)
+                    .foregroundStyle(.tint)
                     .symbolEffect(.pulse, options: .repeating)
                     .frame(width: 18)
                 Text(activity.title)
@@ -272,6 +277,7 @@ private struct ActivityRow: View {
                     .contentTransition(.opacity)
             } else {
                 Image(systemName: "ellipsis")
+                    .foregroundStyle(.tint)
                     .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating)
                     .accessibilityLabel("Waiting for the answer")
             }

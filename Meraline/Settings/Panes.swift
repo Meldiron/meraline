@@ -301,6 +301,7 @@ struct AboutPane: View {
                         .frame(width: 96, height: 96)
                     Text("Meraline")
                         .font(.largeTitle.weight(.semibold))
+                        .foregroundStyle(.meraline)
                     Text("Version \(Bundle.main.shortVersion) (\(Bundle.main.buildNumber))")
                         .font(.callout)
                         .foregroundStyle(.secondary)

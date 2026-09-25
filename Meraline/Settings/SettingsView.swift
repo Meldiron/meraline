@@ -24,17 +24,17 @@ enum SettingsPane: Hashable {
         case .answers: "text.bubble.fill"
         case .provider(let provider): provider.symbol
         case .softwareUpdate: "arrow.triangle.2.circlepath"
-        case .about: "info"
+        case .about: "sparkle"
         }
     }
 
     var tint: Color {
         switch self {
         case .general: .gray
-        case .answers: .blue
+        case .answers: .meralinePink
         case .provider(let provider): provider.tint
         case .softwareUpdate: .gray
-        case .about: .gray
+        case .about: .meralineLavender
         }
     }
 }
@@ -65,6 +65,7 @@ struct SettingsView: View {
                 .navigationTitle(navigation.selection?.title ?? "")
         }
         .toolbar(removing: .sidebarToggle)
+        .tint(.meralinePink)
     }
 
     @ViewBuilder
