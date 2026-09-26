@@ -1,9 +1,15 @@
 import CoreGraphics
 import Foundation
 
-// Lists one window of a process. Usage: windows <pid> panel|settings
+// Lists one window of a process. Usage: windows <pid> panel|settings, or windows screen
 // panel    → "x y width height" of the 704-point-wide floating panel
 // settings → "id x y width height" of the 715-point-wide Settings window
+// screen   → "width height" of the main display, in points
+if CommandLine.arguments[1] == "screen" {
+    let bounds = CGDisplayBounds(CGMainDisplayID())
+    print(Int(bounds.width), Int(bounds.height))
+    exit(0)
+}
 let pid = Int32(CommandLine.arguments[1])!
 let wanted = CommandLine.arguments[2]
 let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as! [[String: Any]]

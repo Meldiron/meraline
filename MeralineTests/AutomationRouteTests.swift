@@ -23,7 +23,15 @@ struct AutomationRouteTests {
 
     @Test func otherRoutes() {
         #expect(AutomationRoute(url: URL(string: "meraline://new")!) == .newChat)
-        #expect(AutomationRoute(url: URL(string: "MERALINE://Settings")!) == .settings)
+        #expect(AutomationRoute(url: URL(string: "MERALINE://Settings")!) == .settings(pane: nil))
+        #expect(AutomationRoute(url: URL(string: "meraline://settings?pane=claudeCode")!) == .settings(pane: "claudeCode"))
+    }
+
+    @MainActor @Test func settingsPanesByName() {
+        #expect(SettingsPane(named: "claudecode") == .provider(.claudeCode))
+        #expect(SettingsPane(named: "Updates") == .softwareUpdate)
+        #expect(SettingsPane(named: "about") == .about)
+        #expect(SettingsPane(named: "nowhere") == nil)
     }
 
     @Test func rejectsForeignSchemesAndUnknownRoutes() {

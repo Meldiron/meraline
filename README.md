@@ -26,7 +26,7 @@ There are no chat lists, no history, and no projects. Nothing is saved to disk. 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/panel.png">
-    <img src="docs/screenshots/panel-light.png" width="704" alt="Meraline's floating glass panel showing a question and a streamed answer">
+    <img src="docs/screenshots/panel-light.png" width="704" alt="Meraline's floating glass panel showing a question and a streamed answer, with the LLM and Agent toggle and the game buttons under the input">
   </picture>
 </p>
 
@@ -59,20 +59,49 @@ There are no chat lists, no history, and no projects. Nothing is saved to disk. 
   <tr>
     <td align="center">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/menu.png">
-        <img src="docs/screenshots/menu-light.png" width="440" alt="The sparkle menu listing the providers that are turned on and the recent chats">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/agent.png">
+        <img src="docs/screenshots/agent-light.png" width="440" alt="Agent mode: Claude Code's answer with a trail of the MCP tools it used and a card asking to write notes.md, with Deny and Allow">
       </picture>
     </td>
     <td align="center">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings.png">
-        <img src="docs/screenshots/settings-light.png" width="440" alt="Settings window on the Apple Intelligence provider page">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/question.png">
+        <img src="docs/screenshots/question-light.png" width="440" alt="Agent mode: Claude Code asks which release a changelog entry is for, with two choices and a field for another answer">
       </picture>
     </td>
   </tr>
   <tr>
-    <td align="center"><sub>Switch providers or reopen a recent chat from the sparkle</sub></td>
-    <td align="center"><sub>Settings look like System Settings</sub></td>
+    <td align="center"><sub>Agents show the MCP tools they use and ask before writing to the chat's workspace</sub></td>
+    <td align="center"><sub>An agent's questions come with their choices</sub></td>
+  </tr>
+  <tr>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/game.png">
+        <img src="docs/screenshots/game-light.png" width="440" alt="Odd One Out: the model set three words, shown as buttons to tap">
+      </picture>
+    </td>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/menu.png">
+        <img src="docs/screenshots/menu-light.png" width="440" alt="The sparkle menu listing the ready LLMs and the recent chats">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Six word games, one click each from the controller buttons</sub></td>
+    <td align="center"><sub>The sparkle lists the current mode's providers and your recent chats</sub></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings.png">
+        <img src="docs/screenshots/settings-light.png" width="440" alt="Settings on the Claude Code page: model, reasoning effort, web search, MCP servers turned on, and the list of MCP servers with a toggle each">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><sub>Settings look like System Settings; each agent lists its MCP servers with a switch for each</sub></td>
   </tr>
 </table>
 
@@ -127,6 +156,7 @@ Other apps and scripts can open Meraline through the `meraline://` URL scheme, w
 | `meraline://ask?text=…&send=1` | Fills it in and sends it |
 | `meraline://new` | Starts a new chat and opens the window |
 | `meraline://settings` | Opens Settings |
+| `meraline://settings?pane=claudeCode` | Opens Settings on a page: `general`, `prompt`, `updates`, `about`, or a provider such as `anthropic`, `apple`, or `codex` |
 
 ```sh
 open "meraline://ask?text=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' 'Explain CRDTs in one paragraph')&send=1"

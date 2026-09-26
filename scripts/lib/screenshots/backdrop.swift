@@ -1,13 +1,16 @@
 import AppKit
 
 // A full-screen gradient behind Meraline's floating panel, so screenshots never show other windows.
-// Usage: backdrop dark|light
+// Usage: backdrop dark|light [above]
+// "above" puts it over every normal window, so no app that comes forward can cover it; Meraline's floating
+// panel and its menus stay on top. Without it the backdrop is a normal window, which Settings can open over.
 let light = CommandLine.arguments.dropFirst().first == "light"
+let above = CommandLine.arguments.dropFirst(2).first == "above"
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let screen = NSScreen.main ?? NSScreen.screens[0]
 let window = NSWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
-window.level = .normal
+window.level = above ? NSWindow.Level(rawValue: NSWindow.Level.normal.rawValue + 1) : .normal
 window.isOpaque = true
 window.hasShadow = false
 window.ignoresMouseEvents = true

@@ -7,10 +7,12 @@ import Foundation
 ///     meraline://ask?text=…&send=1      fill it in and send it
 ///     meraline://new                    start a new chat and open the window
 ///     meraline://settings               open Settings
+///     meraline://settings?pane=…        open Settings on a pane: general, prompt, updates, about, or a
+///                                       provider such as claudeCode (see `SettingsPane(named:)`)
 nonisolated enum AutomationRoute: Equatable, Sendable {
     case ask(text: String?, send: Bool)
     case newChat
-    case settings
+    case settings(pane: String?)
 
     static let scheme = "meraline"
 
@@ -29,7 +31,8 @@ nonisolated enum AutomationRoute: Equatable, Sendable {
         case "new":
             self = .newChat
         case "settings":
-            self = .settings
+            let pane = value("pane")?.trimmed ?? ""
+            self = .settings(pane: pane.isEmpty ? nil : pane)
         default:
             return nil
         }

@@ -13,6 +13,7 @@ scripts/test.sh HistoryTests        # one test struct
 scripts/test.sh --e2e               # also run the installed claude, codex, and opencode for real
 scripts/install.sh                  # clean Release build into /Applications and launch it
 scripts/clean.sh                    # remove build/ and DerivedData
+scripts/screenshots.sh --wait-idle  # README screenshots of every feature, dark and light, once the Mac is idle
 scripts/release.sh 1.2.0 --adhoc    # the whole release pipeline without credentials (see docs/releasing.md)
 ```
 

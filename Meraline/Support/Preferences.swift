@@ -73,7 +73,16 @@ enum UpdateChannel: String, CaseIterable, Identifiable {
 
 @Observable
 final class Preferences {
-    static let shared = Preferences()
+    static let shared: Preferences = {
+        #if DEBUG
+        // Throwaway runs, such as scripts/screenshots.sh, keep their settings in a suite of their own so
+        // the preferences of the copy you use are never touched. Debug builds only.
+        if let suite = ProcessInfo.processInfo.environment["MERALINE_DEFAULTS_SUITE"], let defaults = UserDefaults(suiteName: suite) {
+            return Preferences(defaults: defaults)
+        }
+        #endif
+        return Preferences()
+    }()
 
     static let defaultSystemPrompt = """
     You answer quick questions asked from a small floating window. Lead with the answer. \

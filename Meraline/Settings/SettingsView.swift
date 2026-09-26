@@ -8,6 +8,20 @@ enum SettingsPane: Hashable {
     case softwareUpdate
     case about
 
+    /// A pane by the name `meraline://settings?pane=` uses: general, prompt, updates, about, or a
+    /// provider's id such as claudeCode. Case doesn't matter.
+    init?(named name: String) {
+        switch name.lowercased() {
+        case "general": self = .general
+        case "prompt": self = .prompt
+        case "updates", "softwareupdate": self = .softwareUpdate
+        case "about": self = .about
+        default:
+            guard let provider = Provider.allCases.first(where: { $0.rawValue.lowercased() == name.lowercased() }) else { return nil }
+            self = .provider(provider)
+        }
+    }
+
     var title: String {
         switch self {
         case .general: "General"

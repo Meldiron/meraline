@@ -62,9 +62,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Log.app.info("URL route: new chat")
                 session.reset()
                 panel.show()
-            case .settings:
-                Log.app.info("URL route: settings")
-                showSettings(nil)
+            case .settings(let name):
+                let pane = name.flatMap(SettingsPane.init(named:))
+                Log.app.info("URL route: settings\(pane.map { " on \($0.title)" } ?? "")")
+                panel.close()
+                settings.show(pane)
             }
         }
     }

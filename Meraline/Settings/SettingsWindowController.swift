@@ -43,5 +43,9 @@ final class SettingsWindowController: NSWindowController {
         NSApp.activate()
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+        // Nothing on the pane is focused when the window opens. AppKit would otherwise focus its first
+        // text field, and a model field would pop open its suggestions.
+        window?.makeFirstResponder(nil)
+        DispatchQueue.main.async { [weak self] in self?.window?.makeFirstResponder(nil) }
     }
 }
