@@ -20,7 +20,7 @@ The bug report template asks for it. `Diagnostics.report` builds it and `Diagnos
 | --- | --- |
 | `app` | Launch, updates from an earlier version, `meraline://` routes, diagnostics copied |
 | `panel` | Reserved for window events |
-| `chat` | A question sent (provider, model, turn, image count), an answer finished, stopped, or failed |
+| `chat` | A question sent (provider, model, turn, image count), an answer finished, stopped, or failed. For games: a game started, each move sent, kept on this Mac, or sent back, and each round over, by game name and turn number only |
 | `providers` | HTTP failures from a provider, with the status code |
 | `cli` | Command-line tools resolved and run, with the executable path and exit status |
 | `updates` | Sparkle: started, channel, found, staged, installing, skipped, errors |

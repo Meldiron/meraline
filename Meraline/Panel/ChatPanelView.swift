@@ -37,6 +37,10 @@ struct ChatPanelView: View {
                     SetupRow(openSettings: openSettings)
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
+                } else if let nudge = session.nudge {
+                    NudgeRow(message: nudge, symbol: session.game?.symbol ?? "sparkle")
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 12)
                 }
                 if hasConversation {
                     footer
@@ -62,13 +66,26 @@ struct ChatPanelView: View {
         .onChange(of: session.isStreaming) { if !session.isStreaming { isInputFocused = true } }
         .animation(.smooth(duration: 0.2), value: session.draftImages)
         .animation(.smooth(duration: 0.2), value: session.failure)
+        .animation(.smooth(duration: 0.2), value: session.nudge)
+    }
+
+    private var placeholder: String {
+        guard let state = session.gameState else {
+            return hasConversation ? "Ask a follow-up…" : "Ask anything…"
+        }
+        switch state.phase {
+        case .yourMove(let placeholder, _): return placeholder
+        case .waiting: return "The model is thinking…"
+        case .modelMoves: return "Press Return for the model’s move…"
+        case .over(_, let rematch): return rematch.placeholder
+        }
     }
 
     private var inputRow: some View {
         HStack(alignment: .center, spacing: 12) {
             ProviderMenu(preferences: preferences, session: session) { isInputFocused = true }
 
-            TextField(hasConversation ? "Ask a follow-up…" : "Ask anything…", text: $session.draft, axis: .vertical)
+            TextField(placeholder, text: $session.draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 20))
                 .lineLimit(1...8)
@@ -114,8 +131,19 @@ struct ChatPanelView: View {
     private var conversation: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                ForEach(session.turns) { turn in
-                    TurnView(turn: turn, isAnswering: session.isStreaming && turn.id == session.turns.last?.id)
+                if let game = session.game {
+                    GameTranscript(
+                        lines: game.rules.lines(for: session.turns),
+                        choices: session.isYourMove ? session.gameState?.choices ?? [] : [],
+                        activity: session.isStreaming ? .some(session.turns.last?.activity) : nil
+                    ) { choice in
+                        session.choose(choice)
+                        isInputFocused = true
+                    }
+                } else {
+                    ForEach(session.turns) { turn in
+                        TurnView(turn: turn, isAnswering: session.isStreaming && turn.id == session.turns.last?.id)
+                    }
                 }
             }
             .padding(.horizontal, 22)
@@ -130,7 +158,12 @@ struct ChatPanelView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            if let provider = preferences.activeProvider {
+            if let game = session.game, let state = session.gameState {
+                Label(state.status, systemImage: game.symbol)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(session.isYourMove ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
+                    .lineLimit(1)
+            } else if let provider = preferences.activeProvider {
                 Label(preferences[provider].model.isEmpty ? provider.name : preferences[provider].model, systemImage: provider.symbol)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -149,6 +182,16 @@ struct ChatPanelView: View {
                 .buttonStyle(.glass)
                 .controlSize(.small)
                 .help("Stop answering")
+            } else if session.isPlaying {
+                FooterButton(title: "Copy", symbol: "doc.on.clipboard", shortcut: KeyboardShortcut("c", modifiers: [.command, .shift])) {
+                    session.copyConversation()
+                }
+                .disabled(session.conversationMarkdown == nil)
+                .help("Copy the game as plain text")
+                FooterButton(title: "End Game", symbol: "square.and.pencil", shortcut: KeyboardShortcut("n")) {
+                    session.reset()
+                    isInputFocused = true
+                }
             } else {
                 FooterButton(title: "Copy Answer", symbol: "doc.on.doc", shortcut: KeyboardShortcut("c", modifiers: [.command, .shift])) {
                     session.copyLastAnswer()
@@ -196,7 +239,7 @@ struct ChatPanelView: View {
 private struct ProviderMenu: View {
     let preferences: Preferences
     let session: ChatSession
-    let onReopen: () -> Void
+    let focusInput: () -> Void
 
     var body: some View {
         Menu {
@@ -215,6 +258,17 @@ private struct ProviderMenu: View {
                 }
             }
             Divider()
+            Section("Play") {
+                ForEach(Game.allCases) { game in
+                    Button {
+                        session.startGame(game)
+                        focusInput()
+                    } label: {
+                        Label(game.title, systemImage: game.symbol)
+                        Text(game.summary)
+                    }
+                }
+            }
             Section("Recent Chats") {
                 if session.history.isEmpty {
                     Text("No recent chats")
@@ -222,7 +276,7 @@ private struct ProviderMenu: View {
                 ForEach(session.history) { chat in
                     Button {
                         session.reopen(chat.id)
-                        onReopen()
+                        focusInput()
                     } label: {
                         Text(chat.title)
                         Text(chat.date, format: .relative(presentation: .named))
@@ -241,7 +295,7 @@ private struct ProviderMenu: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Choose a provider or reopen a recent chat")
+        .help("Choose a provider, play a game, or reopen a recent chat")
         .accessibilityLabel("Provider")
     }
 }
@@ -278,6 +332,115 @@ private struct TurnView: View {
     }
 }
 
+/// A game's transcript: its lines, the model's move while it thinks, and buttons for the choices on your
+/// move. The buttons play themselves.
+private struct GameTranscript: View {
+    let lines: [GameLine]
+    let choices: [String]
+    /// Set while the model is moving: what it is doing, if the provider says.
+    let activity: Activity??
+    let choose: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(lines) { GameLineView(line: $0) }
+            if let activity {
+                ActivityRow(activity: activity)
+            }
+            if !choices.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(choices, id: \.self) { choice in
+                        Button(choice) { choose(choice) }
+                            .buttonStyle(.glass)
+                            .controlSize(.large)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Your words in semibold gray and the model's in the primary color, so a line reads as a conversation.
+private struct GameLineView: View {
+    let line: GameLine
+
+    var body: some View {
+        switch line.kind {
+        case .heading:
+            Text(line.text)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .padding(.top, line.id == 0 ? 0 : 6)
+        case .verse:
+            Text(Self.verse(line.pieces))
+                .lineSpacing(3)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        case .verdict(let youWon):
+            Label {
+                Text(line.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: youWon == true ? "checkmark.circle" : youWon == false ? "xmark.circle" : "flag.checkered")
+            }
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+        case .note:
+            Text(line.text)
+                .font(.system(size: 12))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 6)
+        }
+    }
+
+    static func verse(_ pieces: [GameLine.Piece]) -> AttributedString {
+        var verse = AttributedString()
+        for piece in pieces {
+            var run = AttributedString(piece.text)
+            switch piece.voice {
+            case .you:
+                run.font = .system(size: 15, weight: .semibold)
+                run.foregroundColor = .secondary
+            case .model:
+                run.font = .system(size: 15)
+                run.foregroundColor = .primary
+            case .plain:
+                run.font = .system(size: 15)
+                run.foregroundColor = Color(nsColor: .tertiaryLabelColor)
+            }
+            if piece.isMarked {
+                run.font = .system(size: 15, weight: .bold)
+                run.underlineStyle = .single
+            }
+            verse += run
+        }
+        return verse
+    }
+}
+
+/// A line from a game: its invitation, why a move came back, or that the round is over. Nothing went
+/// wrong, so it is plain glass rather than the orange of `FailureRow`.
+private struct NudgeRow: View {
+    let message: String
+    let symbol: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol)
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.system(size: 13))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+}
+
 private struct ActivityRow: View {
     let activity: Activity?
 
@@ -287,19 +450,45 @@ private struct ActivityRow: View {
                 Image(systemName: activity.symbol)
                     .symbolEffect(.pulse, options: .repeating)
                     .frame(width: 18)
+            } else {
+                Image(systemName: "ellipsis")
+                    .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating)
+                    .frame(width: 18)
+            }
+            if let activity, activity != .thinking {
                 Text(activity.title)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .contentTransition(.opacity)
             } else {
-                Image(systemName: "ellipsis")
-                    .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating)
-                    .accessibilityLabel("Waiting for the answer")
+                ThinkingStatusText()
             }
         }
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(.secondary)
         .animation(.smooth(duration: 0.2), value: activity)
+    }
+}
+
+/// Murmurs a different line from `ThinkingStatus` every few seconds until the first word of the answer
+/// arrives. Waiting for the first byte and an explicit thinking phase share one view, so the line keeps
+/// rotating instead of restarting when a model moves from one to the other.
+private struct ThinkingStatusText: View {
+    @State private var line = ThinkingStatus.line()
+
+    var body: some View {
+        Text(line)
+            .lineLimit(1)
+            .id(line)
+            .transition(.blurReplace)
+            .accessibilityLabel("Thinking")
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: ThinkingStatus.rotationInterval)
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.smooth(duration: 0.45)) { line = ThinkingStatus.line(after: line) }
+                }
+            }
     }
 }
 

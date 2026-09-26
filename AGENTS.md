@@ -26,7 +26,8 @@ A Developer ID certificate is optional. `dev_run.sh`, `test.sh`, and `release.sh
 | --- | --- |
 | `Meraline/App/AppDelegate.swift` | Entry point, menu bar item, main menu, hotkey, `meraline://` URL routes, What's new after an update |
 | `Meraline/Panel/` | The floating non-activating panel (`PanelController`) and its SwiftUI content (`ChatPanelView`) |
-| `Meraline/Chat/` | `ChatSession` (in-memory turns, draft, streaming, recent chats) and `ImageAttachment` |
+| `Meraline/Chat/` | `ChatSession` (in-memory turns, draft, streaming, recent chats, and the game engine), `ImageAttachment`, and `ThinkingStatus` (the lines the panel murmurs while waiting for an answer) |
+| `Meraline/Games/` | The games in the sparkle menu's Play section: `Game` (the list, the `GameRules` protocol, shared parsing) and one file of rules per game |
 | `Meraline/Providers/` | Provider list and settings, request building, HTTP streaming (`LLMClient`), command-line tools (`CommandLineClient`), stream decoding |
 | `Meraline/Settings/` | The System Settings-style window and its panes |
 | `Meraline/Support/` | `Preferences` (UserDefaults + Keychain), `Updater` (Sparkle), `Log` and `Diagnostics`, `Brand` colors, `Keychain` |
@@ -41,7 +42,7 @@ A Developer ID certificate is optional. `dev_run.sh`, `test.sh`, and `release.sh
 - **Log through `Log`, never `print`.** `Log.<category>.info(...)` writes to `os.Logger` and the in-memory buffer that feeds the diagnostics report. Log providers, models, paths, and error descriptions; never questions, answers, or keys.
 - **Swift 6, strict concurrency, `MainActor` by default.** Networking and parsing types are `nonisolated`. Sparkle's KVO and delegate callbacks must read their arguments rather than main-actor state.
 - **Design.** The base is neutral glass: white, black, gray, graphite accent. Pink appears only as an accent (text cursor, the sparkle in the input row, toggles, the active pin, a faint glass tint on buttons). Never solid pink buttons or strong pink backgrounds. The logo is the sparkle character with a face; do not change it. The panel draws its own rounded shadow and keeps the window shadow off.
-- **Behavior.** Return or Tab sends. Esc stops, then starts a new chat, then closes. Closing the window only hides it. Providers are picked from the sparkle menu, not from a model switcher in the panel.
+- **Behavior.** Return or Tab sends. Esc stops, then starts a new chat, then closes. Closing the window only hides it. Providers are picked from the sparkle menu, not from a model switcher in the panel. Games are a mode of `ChatSession`, started from the sparkle menu's Play section, and the model always moves first. A game's rules work everything out from the turns, so a game keeps no state of its own; answers the model hides after a `|` in its reply stay hidden until you have played. Each game has its own system prompt and never touches the prompt in Settings, lives only in memory like any chat, and Esc or End Game ends it. A move that breaks the rules comes back to the input and costs nothing.
 - **Releases.** Version comes from the tag, the build number is the commit count, and a release is always signed and notarized. Never re-introduce `codesign --deep`. The layout numbers in `assets/dmg/background.html` and `scripts/lib/dmg.sh` must change together.
 
 ## Where to read more

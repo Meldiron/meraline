@@ -112,7 +112,7 @@ final class PanelController: NSObject {
     private func handleEscape() {
         if session.isStreaming {
             session.stop()
-        } else if !session.turns.isEmpty || !session.draft.isEmpty || !session.draftImages.isEmpty || session.failure != nil {
+        } else if !session.turns.isEmpty || !session.draft.isEmpty || !session.draftImages.isEmpty || session.failure != nil || session.isPlaying {
             session.reset()
         } else {
             close()

@@ -19,7 +19,7 @@ This policy covers the Meraline app in this repository. Vulnerabilities in the A
 ## Security-relevant behavior
 
 - **API keys live in the Keychain.** They are stored as generic passwords under the service `com.meldiron.meraline.api-keys`, one item per provider, and are never written to preferences, logs, or diagnostics.
-- **Nothing is written to disk.** Conversations, drafts, pasted images, and recent chats exist only in memory and are gone when Meraline quits.
+- **Nothing is written to disk.** Conversations, games, drafts, pasted images, and recent chats exist only in memory and are gone when Meraline quits.
 - **Requests carry the minimum.** OpenAI requests ask not to be stored (`store: false`). Gemini keys travel in a header, never in a URL. Every HTTP session is ephemeral, with no cookie or cache storage.
 - **Command-line tools run contained.** Claude Code, Codex, and OpenCode are launched in an empty temporary folder that is deleted afterwards, without session persistence, and Codex runs in its read-only sandbox.
 - **Logs and diagnostics are private by default.** The in-app log records events, providers, models, and error descriptions, never questions, answers, or keys. The diagnostics report from Settings › About is built from that log and from non-secret settings, so it is safe to paste into an issue.

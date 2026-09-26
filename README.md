@@ -34,13 +34,15 @@ There are no chat lists, no history, and no projects. Nothing is saved to disk. 
 
 ✨ **Opens anywhere.** A global shortcut brings up the window over whatever you're doing, on any Space or full-screen app. It doesn't steal focus from the app you're in.
 
-💬 **Answers quickly.** Replies stream in as they're written, with bold, italics, code, and links rendered. While a model thinks, searches the web, or runs a tool, you see what it's doing.
+💬 **Answers quickly.** Replies stream in as they're written, with bold, italics, code, and links rendered. While a model searches the web or runs a tool, you see what it's doing. While it thinks, Meraline murmurs ("sharpening pencils…", "asking the void…", "consulting the sparkle council…").
 
 🖼️ **Understands images.** Paste a screenshot or drop an image into the window and ask about it.
 
+🎲 **Plays word games.** The sparkle menu's Play section has six quick games against the model: Rhyme Duel, Add-a-Word, Categories, Word Football, Odd One Out, and Fix the Typo. The model moves first, a move that breaks the rules comes back to you instead of costing a turn, and <kbd>Esc</kbd> forgets the game like any other chat.
+
 🍎 **Works out of the box.** On a Mac with Apple Intelligence, the on-device model built into macOS answers the moment you install. No key, no account, and nothing leaves your Mac.
 
-🔌 **Uses the AI you already have.** Click the sparkle in the window to switch between the providers you've turned on, or to reopen one of your last five chats. Recent chats stay in memory until you quit Meraline.
+🔌 **Uses the AI you already have.** Click the sparkle in the window to switch between the providers you've turned on, start a game, or reopen one of your last five chats. Recent chats stay in memory until you quit Meraline.
 
 | | Works with |
 | --- | --- |
@@ -109,7 +111,7 @@ That's it. Press <kbd>⌥</kbd> <kbd>Space</kbd> whenever you have a question.
 Meraline is built so you don't have to take its word for any of this.
 
 - **No account and no server in between.** Questions go straight from your Mac to the provider you chose. Meraline has no backend, no analytics, and no crash reporting. The only other connection is a once-a-day update check against `github.com`, which you can turn off in Settings. Watch the traffic with any network monitor and you'll see nothing else.
-- **Nothing on disk.** Conversations live in memory and are gone when you quit. The preferences file (`defaults read com.meldiron.meraline`) holds settings only: shortcut, window placement, and which providers are on.
+- **Nothing on disk.** Conversations and games live in memory and are gone when you quit. The preferences file (`defaults read com.meldiron.meraline`) holds settings only: shortcut, window placement, and which providers are on.
 - **Keys in the Keychain.** API keys are stored as Keychain items under the service `com.meldiron.meraline.api-keys`, where Keychain Access can show and delete them. They never appear in preferences, logs, or diagnostics.
 - **Command-line agents stay in charge of their own sign-in.** Meraline runs the unmodified `claude`, `codex`, and `opencode` commands in an empty temporary folder that is deleted afterwards, with session persistence off. It never reads or copies their tokens.
 - **On-device means on-device.** Apple Intelligence answers come from the model inside macOS. Nothing is sent anywhere.
