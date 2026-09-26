@@ -141,9 +141,10 @@ nonisolated enum CommandLineClient {
         }
     }
 
-    /// Claude Code's built-in tools for the chat's workspace. Reading inside it needs no leave; a write
-    /// or an edit is asked about, and AskUserQuestion is how claude asks something of its own.
-    static let claudeCodeWorkspaceTools = ["Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
+    /// Claude Code's built-in tools for the chat's workspace. Reading inside it needs no leave; a write,
+    /// an edit, a command claude doesn't judge read-only, or a skill is asked about, and AskUserQuestion
+    /// is how claude asks something of its own.
+    static let claudeCodeWorkspaceTools = ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Skill", "AskUserQuestion"]
 
     /// A TOML key for a server name: bare when it can be, quoted otherwise.
     static func tomlKey(_ name: String) -> String {

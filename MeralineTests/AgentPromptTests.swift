@@ -5,6 +5,18 @@ import Testing
 struct AgentPromptTests {
     private let root = FileManager.default.temporaryDirectory.appending(path: "MeralineTests.prompts.\(UUID().uuidString)")
 
+    @Test func claudeCodeShowsTheCommandOrSkillItAsksToRun() throws {
+        let command = ##"{"type":"control_request","request_id":"req-2","request":{"subtype":"can_use_tool","tool_name":"Bash","display_name":"Bash","input":{"command":"python3 check.py","description":"Run the check"},"description":"Run the check","permission_suggestions":[],"tool_use_id":"toolu_2"}}"##
+        let skill = ##"{"type":"control_request","request_id":"req-3","request":{"subtype":"can_use_tool","tool_name":"Skill","display_name":"Skill","input":{"skill":"pdf"},"description":"Skill","permission_suggestions":[],"tool_use_id":"toolu_3"}}"##
+        guard case .prompt(let run) = try StreamDecoder.decode(command, from: .claudeCode),
+              case .prompt(let use) = try StreamDecoder.decode(skill, from: .claudeCode) else {
+            Issue.record("Claude Code's ask was not decoded")
+            return
+        }
+        #expect(run.kind == .permission(.running, detail: "python3 check.py"))
+        #expect(use.kind == .permission(.tool("Skill"), detail: "pdf"))
+    }
+
     @Test func claudeCodeAsksForLeaveToWrite() throws {
         let line = ##"{"type":"control_request","request_id":"req-1","request":{"subtype":"can_use_tool","tool_name":"Write","display_name":"Write","input":{"file_path":"/tmp/ws/note.md","content":"# Beta\n"},"description":"note.md","permission_suggestions":[],"tool_use_id":"toolu_1"}}"##
         guard case .prompt(let prompt) = try StreamDecoder.decode(line, from: .claudeCode) else {

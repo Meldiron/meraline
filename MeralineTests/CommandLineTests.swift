@@ -46,7 +46,7 @@ struct CommandLineTests {
         ))
         #expect(invocation.arguments.contains("--no-session-persistence"))
         let tools = try #require(invocation.arguments.firstIndex(of: "--tools"))
-        #expect(invocation.arguments[tools + 1] == "WebSearch,WebFetch,Read,Write,Edit,Glob,Grep,AskUserQuestion")
+        #expect(invocation.arguments[tools + 1] == "WebSearch,WebFetch,Read,Write,Edit,Glob,Grep,Bash,Skill,AskUserQuestion")
         let prompts = try #require(invocation.arguments.firstIndex(of: "--permission-prompt-tool"))
         #expect(invocation.arguments[prompts + 1] == "stdio")
         let allowed = try #require(invocation.arguments.firstIndex(of: "--allowedTools"))
@@ -71,7 +71,7 @@ struct CommandLineTests {
             messages: [ChatMessage(role: .user, text: "Hi")]
         ))
         let tools = try #require(invocation.arguments.firstIndex(of: "--tools"))
-        #expect(invocation.arguments[tools + 1] == "Read,Write,Edit,Glob,Grep,AskUserQuestion")
+        #expect(invocation.arguments[tools + 1] == "Read,Write,Edit,Glob,Grep,Bash,Skill,AskUserQuestion")
         #expect(!invocation.arguments.contains("--allowedTools"))
         let effort = try #require(invocation.arguments.firstIndex(of: "--effort"))
         #expect(invocation.arguments[effort + 1] == "low")

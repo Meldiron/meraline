@@ -287,7 +287,8 @@ nonisolated enum StreamDecoder {
             if !questions.isEmpty { return .prompt(AgentPrompt(id: id, kind: .question(questions), input: encoded)) }
         }
         let activity = Activity.named(tool, query: input["query"] as? String, url: input["url"] as? String, knownServers: knownServers)
-        let detail = request["description"] as? String ?? detail(of: input)
+        // A command's description is claude's own summary of it, so the prompt shows the command itself.
+        let detail = (input["command"] ?? input["skill"]) as? String ?? request["description"] as? String ?? detail(of: input)
         return .prompt(AgentPrompt(id: id, kind: .permission(activity, detail: detail), input: encoded))
     }
 
