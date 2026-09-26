@@ -27,6 +27,7 @@ That is all. The Release workflow builds the tagged commit, and the tag decides 
 Two optional things before tagging:
 
 - **Release notes.** Add a `## v1.2.0 - 2026-10-01` section to `CHANGELOG.md` and it becomes the release description on GitHub and the notes in the in-app update window. Without an entry, the notes list the commits since the previous tag.
+- **Screenshots in the notes.** Show what's new with pictures: retake the README screenshots (`scripts/screenshots.sh --wait-idle`), then put the ones that show the new features in the section, each on a line of its own after the entry it illustrates, as `![What it shows](https://raw.githubusercontent.com/Meldiron/meraline/v1.2.0/docs/screenshots/panel-light.png)`. The link names the tag, so the picture never changes once released. The notes under the input in the app skip picture lines and show the words.
 - **Nothing to bump.** The version comes from the tag and the build number is the number of commits reachable from the tagged commit, so every release is newer than the one before it and a local build of the same commit gets the same number.
 
 ## The beta channel

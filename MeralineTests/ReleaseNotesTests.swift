@@ -23,6 +23,21 @@ struct ReleaseNotesTests {
         ])
     }
 
+    @Test func screenshotsAreLeftToGitHub() {
+        let markdown = """
+        - **Actions.** A panel of them.
+
+        ![The panel of actions](https://raw.githubusercontent.com/Meldiron/meraline/v1.4.0/docs/screenshots/panel-light.png)
+
+        <img src="https://example.com/shot.png" width="600">
+        - Recent chats under the clock.
+        """
+        #expect(ReleaseNotes.blocks(from: markdown) == [
+            .bullet("**Actions.** A panel of them."),
+            .bullet("Recent chats under the clock.")
+        ])
+    }
+
     @Test func emptyNotesProduceNoBlocks() {
         #expect(ReleaseNotes.blocks(from: "\n\n  \n").isEmpty)
     }

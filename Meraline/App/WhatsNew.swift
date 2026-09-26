@@ -23,6 +23,9 @@ nonisolated enum ReleaseNotes {
             let line = raw.trimmed
             if line.isEmpty {
                 flush()
+            } else if isPicture(line) {
+                // The screenshots in the notes are for GitHub; the card under the input shows the words.
+                flush()
             } else if line.hasPrefix("#") {
                 flush()
                 blocks.append(.heading(String(line.drop { $0 == "#" }).trimmed))
@@ -35,6 +38,11 @@ nonisolated enum ReleaseNotes {
         }
         flush()
         return blocks
+    }
+
+    /// A line that only shows a picture: a Markdown image, or an HTML `img` or `picture` with its parts.
+    private static func isPicture(_ line: String) -> Bool {
+        line.hasPrefix("![") || ["<img", "<picture", "</picture", "<source"].contains { line.lowercased().hasPrefix($0) }
     }
 
     /// Enough for an appcast that carries HTML notes: tags go, the common entities come back.
