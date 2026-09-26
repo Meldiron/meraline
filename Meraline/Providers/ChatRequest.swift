@@ -9,6 +9,8 @@ nonisolated struct ChatMessage: Equatable, Sendable {
     let role: Role
     let text: String
     var images: [ImageAttachment] = []
+    /// Files for an agent, which finds them in its folder. The LLM bodies leave them out.
+    var files: [FileAttachment] = []
 }
 
 nonisolated struct ChatRequest: Sendable {

@@ -132,6 +132,11 @@ final class Preferences {
     var showsMenuBarIcon: Bool {
         didSet { defaults.set(showsMenuBarIcon, forKey: "showsMenuBarIcon") }
     }
+    /// The shortcut brings the text selected in the app in front, or the files selected in Finder, once
+    /// Meraline has Accessibility access.
+    var bringsSelection: Bool {
+        didSet { defaults.set(bringsSelection, forKey: "bringsSelection") }
+    }
     var systemPrompt: String {
         didSet { defaults.set(systemPrompt, forKey: "systemPrompt") }
     }
@@ -166,6 +171,7 @@ final class Preferences {
         placement = defaults.string(forKey: "placement").flatMap(PanelPlacement.init(rawValue:)) ?? .screenCenter
         isPinned = defaults.bool(forKey: "isPinned")
         showsMenuBarIcon = defaults.object(forKey: "showsMenuBarIcon") as? Bool ?? true
+        bringsSelection = defaults.object(forKey: "bringsSelection") as? Bool ?? true
         systemPrompt = defaults.string(forKey: "systemPrompt") ?? Self.defaultSystemPrompt
         updateChannel = defaults.string(forKey: "updateChannel").flatMap(UpdateChannel.init(rawValue:)) ?? .stable
         idleReset = (defaults.object(forKey: "idleReset") as? Int).flatMap(IdleReset.init(rawValue:)) ?? .thirtyMinutes

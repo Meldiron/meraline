@@ -66,7 +66,10 @@ nonisolated enum FixTheTypo: GameRules {
         if last.outcome == nil { return GameState(phase: .yourMove(placeholder: "The misspelled word, spelled right…"), status: current) }
         if game.count >= roundLimit {
             return GameState(
-                phase: .over(summary: "Game done: \(fixed) of \(roundLimit) fixed. Press Return for a new game.", rematch: Rematch(cue: newGame, placeholder: "Press Return for a new game…")),
+                phase: .over(
+                    outcome: GameOutcome(text: "Game done: \(fixed) of \(roundLimit) fixed.", youWon: fixed * 2 > roundLimit),
+                    rematch: Rematch(cue: newGame, placeholder: "Press Return for a new game…")
+                ),
                 status: "Game done · \(fixed) of \(roundLimit) fixed"
             )
         }

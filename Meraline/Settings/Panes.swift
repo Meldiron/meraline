@@ -4,6 +4,7 @@ import SwiftUI
 
 struct GeneralPane: View {
     @Bindable var preferences: Preferences
+    private let selectionAccess = SelectionAccess.shared
     @State private var loginItemStatus = SMAppService.mainApp.status
     @State private var loginItemError: String?
 
@@ -12,8 +13,11 @@ struct GeneralPane: View {
             PaneHeader(pane: .general, summary: "Choose how Meraline opens and where its window appears.")
 
             Section {
-                LabeledContent("Keyboard shortcut") {
+                LabeledContent {
                     KeyboardShortcuts.Recorder(for: .togglePanel)
+                } label: {
+                    Text("Keyboard shortcut")
+                    Text("ChatGPT, Gemini, and Raycast often use ⌥ Space too. If Meraline doesn’t open, pick another.")
                 }
                 Toggle("Open at login", isOn: launchAtLogin)
                     .tint(.meralinePink)
@@ -49,6 +53,33 @@ struct GeneralPane: View {
             }
 
             Section {
+                Toggle(isOn: $preferences.bringsSelection) {
+                    Text("Bring the selection")
+                    Text("When you press the shortcut, text you select in any app waits behind the cursor button above the window until you add it, and files and folders selected in Finder come along. When you ask an LLM, only photos come from Finder.")
+                }
+                .tint(.meralinePink)
+                if preferences.bringsSelection {
+                    LabeledContent {
+                        if selectionAccess.isGranted {
+                            Label("Allowed", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Button("Allow Access…") { selectionAccess.request() }
+                        }
+                    } label: {
+                        Text("Accessibility access")
+                        Text(selectionAccess.isGranted
+                            ? "Meraline reads the selection only when you press the shortcut."
+                            : "Meraline needs it to read the selection. Allow Access asks macOS again for this copy of Meraline, even if a switch for it already looks on.")
+                    }
+                }
+            } header: {
+                Text("Selection")
+            } footer: {
+                Text("Most apps share their selection directly. In the few that don't, such as browsers or Zed, Meraline uses the app's own Copy command, or presses ⌘C in an app that describes nothing but its window, and then puts back what was on the clipboard. Services › Ask Meraline, in any app's menu or Finder's, brings the selection without Accessibility access.")
+            }
+
+            Section {
                 ForEach(ProviderKind.allCases) { kind in
                     let ready = preferences.readyProviders(for: kind)
                     Picker("Default \(kind.title)", selection: defaultProvider(for: kind)) {
@@ -69,6 +100,13 @@ struct GeneralPane: View {
         }
         .formStyle(.grouped)
         .onAppear { loginItemStatus = SMAppService.mainApp.status }
+        .task {
+            // System Settings doesn't always say when Accessibility access changes, so look while the pane is open.
+            while !Task.isCancelled {
+                selectionAccess.refresh()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
     }
 
     /// A mode's provider. Picking here leaves the panel in the mode it is in.

@@ -13,6 +13,11 @@ nonisolated struct ImageAttachment: Identifiable, Equatable, Sendable {
     var base64: String { data.base64EncodedString() }
     var dataURL: String { "data:\(mediaType);base64,\(base64)" }
 
+    /// Whether the file at `url` is an image, by its type, without reading it.
+    static func isImage(at url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)?.conforms(to: .image) == true
+    }
+
     static func load(from url: URL) throws -> ImageAttachment {
         guard let type = try url.resourceValues(forKeys: [.contentTypeKey]).contentType,
               type.conforms(to: .image),
@@ -56,16 +61,20 @@ nonisolated struct ImageAttachment: Identifiable, Equatable, Sendable {
     }
 }
 
-nonisolated enum AttachmentError: LocalizedError {
+nonisolated enum AttachmentError: LocalizedError, Equatable {
     case unreadable
     case tooLarge
     case limitReached
+    case unreadableFile
+    case tooManyFiles(String)
 
     var errorDescription: String? {
         switch self {
-        case .unreadable: "That file isn’t an image Meraline can read."
+        case .unreadable: "Meraline can’t read that image."
         case .tooLarge: "That image is too large to attach."
         case .limitReached: "You can attach up to \(ImageAttachment.limit) images."
+        case .unreadableFile: "Meraline can’t open that file."
+        case .tooManyFiles(let name): "“\(name)” has too many files to copy. Meraline copies up to \(FileAttachment.folderLimit.formatted()) from a folder, leaving out what git ignores."
         }
     }
 }

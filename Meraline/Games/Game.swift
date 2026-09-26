@@ -11,6 +11,8 @@ nonisolated enum Game: String, CaseIterable, Identifiable, Sendable {
     case wordFootball
     case oddOneOut
     case fixTheTypo
+    case speedDefinitions
+    case letterAuction
 
     var id: Self { self }
 
@@ -22,6 +24,8 @@ nonisolated enum Game: String, CaseIterable, Identifiable, Sendable {
         case .wordFootball: WordFootball.self
         case .oddOneOut: OddOneOut.self
         case .fixTheTypo: FixTheTypo.self
+        case .speedDefinitions: SpeedDefinitions.self
+        case .letterAuction: LetterAuction.self
         }
     }
 
@@ -29,7 +33,7 @@ nonisolated enum Game: String, CaseIterable, Identifiable, Sendable {
     var summary: String { rules.summary }
     var symbol: String { rules.symbol }
 
-    static let noImages = "Images sit this one out. Just type."
+    static let noImages = "Images and files sit this one out. Just type."
 }
 
 /// What `ChatSession` needs from a game. Everything is worked out from the chat's turns, so a game keeps no
@@ -73,8 +77,8 @@ nonisolated struct GameState: Equatable, Sendable {
         case waiting
         /// Your move. `choices` show as buttons that play themselves; Hint shows one of `hints` at a time.
         case yourMove(placeholder: String, choices: [String] = [], hints: [String] = [])
-        /// The round is over, and Return starts the next one.
-        case over(summary: String, rematch: Rematch)
+        /// The round is over, with who won it, and Return or Play Again starts the next one.
+        case over(outcome: GameOutcome, rematch: Rematch)
     }
 
     var phase: Phase
@@ -249,6 +253,14 @@ nonisolated enum GameText {
         let a = key(a), b = key(b)
         guard !a.isEmpty, !b.isEmpty else { return false }
         return a == b || a + "s" == b || b + "s" == a || a + "es" == b || b + "es" == a
+    }
+
+    /// "Score: 7/10, a bold claim" as 7 and "a bold claim".
+    static func score(in line: String) -> (score: Int, comment: String)? {
+        guard let match = line.firstMatch(of: #/(\d{1,2})\s*(?:\/|out of)\s*10\b/#),
+              let score = Int(match.1), (0...10).contains(score) else { return nil }
+        let comment = line[match.range.upperBound...].trimmingCharacters(in: CharacterSet(charactersIn: " -–—:.,;)"))
+        return (score, comment)
     }
 
     /// Typed to give up a round.

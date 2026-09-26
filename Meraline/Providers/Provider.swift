@@ -193,10 +193,12 @@ nonisolated enum ProviderKind: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    var symbol: String {
+    /// The mode's picture: a speech bubble, or Meraline's own robot head, a custom symbol in the asset
+    /// catalog that behaves like a system one.
+    var image: Image {
         switch self {
-        case .llm: "bubble.left"
-        case .agent: "terminal"
+        case .llm: Image(systemName: "bubble.left")
+        case .agent: Image("robot")
         }
     }
 

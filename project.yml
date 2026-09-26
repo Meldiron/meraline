@@ -72,6 +72,16 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.meldiron.meraline
             CFBundleURLSchemes: [meraline]
+        # Services › Ask Meraline brings the selected text, or the files and folders selected in Finder, into
+        # the window (AppDelegate.askAboutSelection).
+        NSServices:
+          - NSMenuItem:
+              default: Ask Meraline
+            NSMessage: askAboutSelection
+            NSPortName: Meraline
+            NSSendTypes: [public.utf8-plain-text]
+            NSSendFileTypes: [public.item]
+            NSRequiredContext: {}
         MeralineRepositoryURL: $(MERALINE_REPOSITORY_URL)
         SUFeedURL: $(MERALINE_FEED_URL)
         SUPublicEDKey: $(MERALINE_SPARKLE_PUBLIC_KEY)

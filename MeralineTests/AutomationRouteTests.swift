@@ -21,6 +21,12 @@ struct AutomationRouteTests {
         #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&send=0")!) == .ask(text: "hi", send: false))
     }
 
+    @Test func askWithASelection() {
+        let route = AutomationRoute(url: URL(string: "meraline://ask?selection=Bonjour%20tout%20le%20monde&text=Translate&send=1")!)
+        #expect(route == .ask(text: "Translate", selection: "Bonjour tout le monde", send: true))
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?selection=%20")!) == .ask(text: nil, send: false))
+    }
+
     @Test func otherRoutes() {
         #expect(AutomationRoute(url: URL(string: "meraline://new")!) == .newChat)
         #expect(AutomationRoute(url: URL(string: "MERALINE://Settings")!) == .settings(pane: nil))

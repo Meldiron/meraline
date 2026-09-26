@@ -1,4 +1,5 @@
 import AppKit
+import KeyboardShortcuts
 import Observation
 import SwiftUI
 
@@ -47,5 +48,31 @@ final class SettingsWindowController: NSWindowController {
         // text field, and a model field would pop open its suggestions.
         window?.makeFirstResponder(nil)
         DispatchQueue.main.async { [weak self] in self?.window?.makeFirstResponder(nil) }
+    }
+
+    /// Starts the shortcut recorder on the General pane, ready for a new shortcut. The pane may not be on
+    /// screen yet when Settings has just opened, so it looks for the recorder for a moment.
+    func focusShortcutRecorder() {
+        Task { [weak self] in
+            for _ in 0..<20 {
+                try? await Task.sleep(for: .milliseconds(50))
+                guard let window = self?.window else { return }
+                let recorder = window.contentView?.firstDescendant(of: KeyboardShortcuts.RecorderCocoa.self) { $0.shortcutName == .togglePanel }
+                if let recorder {
+                    window.makeFirstResponder(recorder)
+                    return
+                }
+            }
+        }
+    }
+}
+
+private extension NSView {
+    func firstDescendant<View: NSView>(of type: View.Type, where matches: (View) -> Bool) -> View? {
+        for subview in subviews {
+            if let view = subview as? View, matches(view) { return view }
+            if let view = subview.firstDescendant(of: type, where: matches) { return view }
+        }
+        return nil
     }
 }

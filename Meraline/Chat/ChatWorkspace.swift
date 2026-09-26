@@ -17,8 +17,15 @@ nonisolated struct ChatWorkspace: Equatable, Sendable {
         return ChatWorkspace(url: url)
     }
 
+    /// A copied project can be thousands of files, so the folder is moved aside at once and deleted in the
+    /// background. Whatever is left at quit goes with the rest of this process's workspaces.
     func remove() {
-        try? FileManager.default.removeItem(at: url)
+        let leaving = url.deletingLastPathComponent().appending(path: ".removing-\(UUID().uuidString)")
+        guard (try? FileManager.default.moveItem(at: url, to: leaving)) != nil else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        Task.detached(priority: .background) { try? FileManager.default.removeItem(at: leaving) }
     }
 
     /// Removes every workspace of this process, at quit.

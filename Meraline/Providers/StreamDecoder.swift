@@ -24,6 +24,8 @@ nonisolated enum Activity: Equatable, Sendable {
     case tool(String)
     /// A tool from one of the MCP servers set up in an agent, by server and tool name.
     case mcp(server: String, tool: String)
+    /// Meraline copying an attached folder into the workspace before the agent starts. Not a tool.
+    case copying(String)
 
     /// `knownServers` are the MCP servers the agent listed, so a tool can be shown under its server's
     /// name: Claude Code spells servers into tool names as `mcp__<server>__<tool>` and OpenCode as
@@ -62,6 +64,7 @@ nonisolated enum Activity: Equatable, Sendable {
         case .running: "Running a command"
         case .tool(let name): "Using \(name)"
         case .mcp(let server, let tool): tool.isEmpty ? "Asking \(server)" : "Asking \(server) to \(MCPServer.humanized(tool))"
+        case .copying(let folder): "Copying “\(folder)”"
         }
     }
 
@@ -76,6 +79,7 @@ nonisolated enum Activity: Equatable, Sendable {
         case .running: "run a command"
         case .tool(let name): "use \(name)"
         case .mcp(let server, let tool): tool.isEmpty ? "ask \(server)" : "ask \(server) to \(MCPServer.humanized(tool))"
+        case .copying(let folder): "copy \(folder)"
         }
     }
 
@@ -89,6 +93,7 @@ nonisolated enum Activity: Equatable, Sendable {
         case .running: "Command"
         case .tool(let name): name
         case .mcp(let server, let tool): tool.isEmpty ? server : "\(server): \(MCPServer.humanized(tool))"
+        case .copying(let folder): folder
         }
     }
 
@@ -100,6 +105,7 @@ nonisolated enum Activity: Equatable, Sendable {
         case .running: "terminal"
         case .tool: "wrench.and.screwdriver"
         case .mcp: "puzzlepiece.extension"
+        case .copying: "folder"
         }
     }
 

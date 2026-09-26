@@ -50,6 +50,19 @@ struct HistoryTests {
         #expect(session.history.isEmpty)
     }
 
+    @Test func forgettingEmptiesTheRecentChats() async {
+        let model = ScriptedModel(["One", "Two"])
+        let session = GameTestSupport.session(model)
+        await GameTestSupport.play("First?", in: session)
+        session.reset()
+        await GameTestSupport.play("Second?", in: session)
+        session.reset()
+        #expect(session.history.count == 2)
+        #expect(session.forgetHistory() == 2)
+        #expect(session.history.isEmpty)
+        #expect(session.forgetHistory() == 0)
+    }
+
     @Test func conversationMarkdownListsEveryAnsweredTurn() throws {
         var withImage = turn("", "A cat.")
         withImage = ChatSession.Turn(question: "", images: [ImageAttachment(mediaType: "image/png", data: Data([1]))])

@@ -140,16 +140,16 @@ nonisolated enum OddOneOut: GameRules {
             }
         }
         if game.count >= roundLimit {
-            let summary: String
+            let outcome: GameOutcome
             if score.you > score.model {
-                summary = "Game done: you win, \(score.you) to \(score.model)."
+                outcome = GameOutcome(text: "Game done: you win, \(score.you) to \(score.model).", youWon: true)
             } else if score.you < score.model {
-                summary = "Game done: the model wins, \(score.model) to \(score.you)."
+                outcome = GameOutcome(text: "Game done: the model wins, \(score.model) to \(score.you).", youWon: false)
             } else {
-                summary = "Game done: a draw, \(score.you) all."
+                outcome = GameOutcome(text: "Game done: a draw, \(score.you) all.", youWon: nil)
             }
             return GameState(
-                phase: .over(summary: summary + " Press Return for a new game.", rematch: Rematch(cue: newGame, placeholder: "Press Return for a new game…")),
+                phase: .over(outcome: outcome, rematch: Rematch(cue: newGame, placeholder: "Press Return for a new game…")),
                 status: "Game done · \(tally)"
             )
         }

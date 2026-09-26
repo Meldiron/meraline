@@ -14,6 +14,10 @@ final class ChatSession {
         let id = UUID()
         let question: String
         let images: [ImageAttachment]
+        /// Files for an agent, copied into the chat's workspace when the question was sent.
+        var files: [FileAttachment] = []
+        /// Text selected in other apps, or copied, that the question was asked about.
+        var selections: [SelectedText] = []
         var answer = ""
         var activity: Activity?
         /// The tools the model used for this answer, in order: searches, pages, commands, MCP tools.
@@ -43,7 +47,7 @@ final class ChatSession {
             let question = turns.first?.question ?? ""
             switch mode {
             case .chat:
-                return question.isEmpty ? "Image question" : question
+                return question.isEmpty ? turns.first?.selections.first?.excerpt ?? turns.first?.files.first?.name ?? "Image question" : question
             case .game(let game):
                 return game.rules.headline(of: turns).map { "\(game.title): \($0)" } ?? game.title
             }
@@ -54,6 +58,16 @@ final class ChatSession {
 
     var draft = ""
     private(set) var draftImages: [ImageAttachment] = []
+    private(set) var draftFiles: [FileAttachment] = []
+    /// Text selected in other apps, or copied, for the next question, in the order it came (see `bring(_:)`).
+    /// Only you put it here: the selection button, the clipboard button, the Services menu, or
+    /// `meraline://ask?selection=`.
+    private(set) var draftSelections: [SelectedText] = []
+    /// The text selected in the app in front when the shortcut opened the window. It stays out of the draft
+    /// until the selection button above the card adds it (see `toggleOfferedSelection()`).
+    private(set) var offeredSelection: SelectedText?
+    /// The images and files the last Finder selection brought (see `bring(files:)`), which the next one replaces.
+    @ObservationIgnored private var broughtAttachments: Set<UUID> = []
     private(set) var turns: [Turn] = []
     private(set) var history: [PastChat] = []
     private(set) var mode = Mode.chat
@@ -65,10 +79,27 @@ final class ChatSession {
     /// A friendly line from a game: its invitation, why a move came back, or that the round is over.
     /// Unlike `failure`, nothing went wrong.
     private(set) var nudge: String?
+    /// How each game has gone against the model since Meraline opened, for the rematch tray. In memory
+    /// only, like Recent Chats, so quitting forgets it.
+    private(set) var versus: [Game: Versus] = [:]
+    /// The game the rematch tray offers again once it ends: the one started or reopened last, until the
+    /// tray is put away.
+    private(set) var lastGame: Game?
+    /// Anonymous mode: the open chat skips Recent Chats when it ends, and its workspace goes with it. It
+    /// decides the fate of whatever chat is open when the chat ends, so turning it on mid-chat keeps that
+    /// chat out too. It lasts until turned off or until Meraline quits, and is never saved.
+    var isAnonymous = false {
+        didSet {
+            guard isAnonymous != oldValue else { return }
+            Log.chat.info("Anonymous mode \(isAnonymous ? "on" : "off")")
+        }
+    }
 
     @ObservationIgnored private var streamTask: Task<Void, Never>?
     /// The game move that came back last; sending it again unchanged insists on it.
     @ObservationIgnored private var insistedInput: String?
+    /// The answer Ask Again is replacing, which comes back if the new one brings no text.
+    @ObservationIgnored private var replacedTurn: Turn?
     /// How to answer each prompt the agent is waiting on, by the prompt's id.
     @ObservationIgnored private var responders: [String: AgentPromptResponder] = [:]
     @ObservationIgnored private let preferences: Preferences
@@ -89,7 +120,9 @@ final class ChatSession {
 
     var canSend: Bool {
         guard !isStreaming else { return false }
-        guard let gameState else { return !draft.trimmed.isEmpty || !draftImages.isEmpty }
+        guard let gameState else {
+            return fileNotice == nil && (!draft.trimmed.isEmpty || !draftImages.isEmpty || !draftFiles.isEmpty || !draftSelections.isEmpty)
+        }
         switch gameState.phase {
         case .modelMoves, .over: return true
         case .yourMove: return !draft.trimmed.isEmpty
@@ -117,6 +150,14 @@ final class ChatSession {
         turns.last(where: { !$0.answer.isEmpty })?.answer
     }
 
+    /// Why the draft waits: it has files, which only an agent reads, and the panel is asking an LLM.
+    /// Switching to Agent sends them as they are.
+    var fileNotice: String? {
+        guard preferences.mode == .llm, !draftFiles.isEmpty else { return nil }
+        let kinds = FileAttachment.kinds(of: draftFiles)
+        return "Only an agent can read \(kinds). Switch to Agent to send \(draftFiles.count == 1 ? "it" : "them")."
+    }
+
     func send() {
         guard canSend else { return }
         if let game {
@@ -129,15 +170,38 @@ final class ChatSession {
         }
         let question = draft.trimmed
         let images = draftImages
-        let request = makeRequest(asking: question, images: images, of: provider)
+        let files = draftFiles
+        let selections = draftSelections
+        let request = makeRequest(asking: SelectedText.message(question, about: selections), images: images, files: files, of: provider)
 
         draft = ""
         draftImages = []
+        draftFiles = []
+        draftSelections = []
         failure = nil
-        let turn = Turn(question: question, images: images)
+        let turn = Turn(question: question, images: images, files: files, selections: selections)
         turns.append(turn)
         isStreaming = true
-        Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))), turn \(turns.count), \(images.count) image(s)")
+        Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))), turn \(turns.count), \(images.count) image(s), \(files.count) file(s), \(selections.count) text(s)")
+        stream(request, for: turn.id)
+    }
+
+    /// Whether Ask Again can ask the last question once more: a chat, not a game, whose last answer is done.
+    var canAskAgain: Bool {
+        !isStreaming && !isPlaying && turns.last?.isComplete == true && preferences.activeProvider != nil
+    }
+
+    /// Asks the last question again, of the provider in use now, for an answer in place of the last one.
+    /// Whatever is typed in the input stays there.
+    func askAgain() {
+        guard canAskAgain, let provider = preferences.activeProvider, let last = turns.popLast() else { return }
+        replacedTurn = last
+        let request = makeRequest(asking: SelectedText.message(last.question, about: last.selections), images: last.images, files: last.files, of: provider)
+        failure = nil
+        let turn = Turn(question: last.question, images: last.images, files: last.files, selections: last.selections)
+        turns.append(turn)
+        isStreaming = true
+        Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))) again, turn \(turns.count)")
         stream(request, for: turn.id)
     }
 
@@ -197,9 +261,10 @@ final class ChatSession {
         switch game.rules.state(of: turns).phase {
         case .modelMoves(let cue) where asksModel:
             askModel(cue, in: game)
-        case .over(let summary, _):
+        case .over(let outcome, _):
             Log.chat.info("\(game.title): round over")
-            nudge = summary
+            versus[game, default: Versus()].record(outcome)
+            nudge = outcome.text
         default:
             break
         }
@@ -252,22 +317,22 @@ final class ChatSession {
     /// The request a question or a game move makes. A game sends its own prompt and the cue of each move
     /// the model made on its own; the prompt from Settings stays out of it. Two messages in a row from one
     /// side, which a game can leave, are joined into one.
-    func makeRequest(asking question: String, images: [ImageAttachment], of provider: Provider) -> ChatRequest {
+    func makeRequest(asking question: String, images: [ImageAttachment], files: [FileAttachment] = [], of provider: Provider) -> ChatRequest {
         var messages: [ChatMessage] = []
-        func add(_ role: ChatMessage.Role, _ text: String, _ images: [ImageAttachment] = []) {
-            guard !text.isEmpty || !images.isEmpty else { return }
+        func add(_ role: ChatMessage.Role, _ text: String, _ images: [ImageAttachment] = [], _ files: [FileAttachment] = []) {
+            guard !text.isEmpty || !images.isEmpty || !files.isEmpty else { return }
             if let previous = messages.last, previous.role == role {
                 let joined = [previous.text, text].filter { !$0.isEmpty }.joined(separator: "\n\n")
-                messages[messages.count - 1] = ChatMessage(role: role, text: joined, images: previous.images + images)
+                messages[messages.count - 1] = ChatMessage(role: role, text: joined, images: previous.images + images, files: previous.files + files)
             } else {
-                messages.append(ChatMessage(role: role, text: text, images: images))
+                messages.append(ChatMessage(role: role, text: text, images: images, files: files))
             }
         }
         for turn in turns where turn.isComplete {
-            add(.user, turn.cue ?? turn.question, turn.images)
+            add(.user, turn.cue ?? SelectedText.message(turn.question, about: turn.selections), turn.images, turn.files)
             add(.assistant, turn.answer)
         }
-        add(.user, question, images)
+        add(.user, question, images, files)
         return ChatRequest(
             provider: provider,
             settings: preferences[provider],
@@ -308,13 +373,18 @@ final class ChatSession {
         streamTask?.cancel()
     }
 
-    func reset() {
-        archiveCurrentChat()
+    /// Starts a new chat. The open one moves to Recent Chats, unless `keepingChat` is false or the chat is
+    /// anonymous.
+    func reset(keepingChat: Bool = true) {
+        archiveCurrentChat(keeping: keepingChat)
         streamTask?.cancel()
         streamTask = nil
         responders = [:]
+        replacedTurn = nil
         draft = ""
         draftImages = []
+        draftFiles = []
+        draftSelections = []
         turns = []
         mode = .chat
         isStreaming = false
@@ -324,10 +394,19 @@ final class ChatSession {
         insistedInput = nil
     }
 
+    /// Deletes the open chat or game: it skips Recent Chats, and its workspace goes with it. A game's score
+    /// against the model stays.
+    func deleteChat() {
+        let kind = isPlaying ? "Game" : "Chat"
+        reset(keepingChat: false)
+        Log.chat.info("\(kind) deleted")
+    }
+
     /// Starts a game in place of the open chat, which moves to Recent Chats first. The model moves first.
     func startGame(_ game: Game) {
         reset()
         mode = .game(game)
+        lastGame = game
         Log.chat.info("\(game.title) started")
         advance(game, asksModel: true)
         nudge = game.rules.invitation
@@ -349,6 +428,31 @@ final class ChatSession {
         Log.chat.info("\(game.title): hint shown")
     }
 
+    /// What the rematch tray offers: the game's next round once one is over, or the last game again on an
+    /// empty panel after it ended.
+    var rematch: RematchOffer? {
+        if let game, !isStreaming, case .over(let outcome, _)? = gameState?.phase {
+            return RematchOffer(game: game, message: nudge ?? outcome.text, versus: versus[game] ?? Versus(), isAfterGame: false)
+        }
+        guard !isPlaying, turns.isEmpty, let lastGame else { return nil }
+        return RematchOffer(game: lastGame, message: lastGame.title, versus: versus[lastGame] ?? Versus(), isAfterGame: true)
+    }
+
+    /// Play Again in the rematch tray: the next round, like Return, or the last game started over.
+    func playAgain() {
+        guard let rematch else { return }
+        if rematch.isAfterGame {
+            startGame(rematch.game)
+        } else {
+            send()
+        }
+    }
+
+    /// Takes the rematch tray off the empty panel until the next game. The tally stays.
+    func putAwayRematch() {
+        lastGame = nil
+    }
+
     func reopen(_ id: PastChat.ID) {
         guard let chat = history.first(where: { $0.id == id }) else { return }
         history.removeAll { $0.id == id }
@@ -363,7 +467,8 @@ final class ChatSession {
         turns = chat.turns
         mode = chat.mode
         workspace = chat.workspace
-        if case .over(let summary, _)? = gameState?.phase { nudge = summary }
+        if case .game(let game) = mode { lastGame = game }
+        if case .over(let outcome, _)? = gameState?.phase { nudge = outcome.text }
     }
 
     /// The window came back after being hidden for a long time: the chat moves to Recent Chats and the
@@ -379,11 +484,13 @@ final class ChatSession {
         insistedInput = nil
     }
 
-    /// Moves the chat to Recent Chats with its workspace. A workspace whose chat is not kept, and those
-    /// of the chats that drop off the end, are removed.
-    private func archiveCurrentChat() {
+    /// Moves the chat to Recent Chats with its workspace, unless the chat is anonymous or not `keeping`. A
+    /// workspace whose chat is not kept, and those of the chats that drop off the end, are removed.
+    private func archiveCurrentChat(keeping: Bool = true) {
         let previous = history
-        history = Self.archiving(turns, into: history, mode: mode, workspace: workspace)
+        if keeping && !isAnonymous {
+            history = Self.archiving(turns, into: history, mode: mode, workspace: workspace)
+        }
         let kept = Set(history.map(\.id))
         for chat in previous where !kept.contains(chat.id) { chat.workspace?.remove() }
         if let workspace, !history.contains(where: { $0.workspace == workspace }) { workspace.remove() }
@@ -404,9 +511,21 @@ final class ChatSession {
         return Array(([PastChat(turns: answered, date: date, mode: mode, workspace: workspace)] + history).prefix(historyLimit))
     }
 
+    /// Forgets the recent chats, workspaces and all, and says how many went. The open chat stays.
+    @discardableResult
+    func forgetHistory() -> Int {
+        let count = history.count
+        for chat in history { chat.workspace?.remove() }
+        history = []
+        if count > 0 { Log.chat.info("\(count) recent chat(s) forgotten") }
+        return count
+    }
+
     func clearDraft() {
         draft = ""
         draftImages = []
+        draftFiles = []
+        draftSelections = []
         failure = nil
     }
 
@@ -414,12 +533,157 @@ final class ChatSession {
         attach { try ImageAttachment.make(from: image) }
     }
 
+    /// A file from Finder or the pasteboard. An image goes in as one, for either mode; anything else, an
+    /// image Meraline can't read included, is a file for an agent.
     func attach(fileAt url: URL) {
-        attach { try ImageAttachment.load(from: url) }
+        // An image that can't go in is turned away before it is read, so pasting a hundred photos doesn't
+        // decode every one of them only to keep five.
+        if ImageAttachment.isImage(at: url), isPlaying || draftImages.count >= ImageAttachment.limit {
+            attach { try ImageAttachment.load(from: url) }
+            return
+        }
+        if let image = try? ImageAttachment.load(from: url) {
+            attach { image }
+            return
+        }
+        guard !isPlaying else {
+            nudge = Game.noImages
+            return
+        }
+        guard !draftFiles.contains(where: { $0.url.path == url.resolvingSymlinksInPath().path }) else { return }
+        do {
+            draftFiles.append(try FileAttachment.make(from: url, avoiding: fileNamesInUse))
+            failure = nil
+        } catch {
+            fail(with: error.localizedDescription)
+        }
     }
 
-    func removeImage(_ id: ImageAttachment.ID) {
+    /// The names taken in the chat's workspace: the chat's files, and whatever the agent keeps there.
+    private var fileNamesInUse: [String] {
+        let files = (turns.flatMap(\.files) + draftFiles).map(\.name)
+        let kept = workspace.flatMap { try? FileManager.default.contentsOfDirectory(atPath: $0.url.path) } ?? []
+        return files + kept
+    }
+
+    /// Text selected in another app, or copied, for the next question, after whatever text is there already.
+    /// The same text from the same place comes only once. A game has no use for it.
+    func bring(_ selection: SelectedText) {
+        guard !isPlaying, !draftSelections.contains(where: { $0.isSame(as: selection) }) else { return }
+        draftSelections.append(selection)
+        failure = nil
+    }
+
+    /// Leaves one text out of the next question.
+    func removeSelection(_ id: SelectedText.ID) {
+        draftSelections.removeAll { $0.id == id }
+    }
+
+    /// The shortcut opened the window with what is selected now. Selected text is only offered, for the
+    /// selection button to add; Finder files come into the draft in place of whatever an earlier selection
+    /// brought, and with nothing selected those go too, so the window never holds a selection you have since
+    /// let go of. Whatever you added yourself stays.
+    func bringCurrentSelection(text: SelectedText?, files: [URL]) {
+        guard !isPlaying else { return }
+        offeredSelection = text
+        bring(files: files)
+    }
+
+    /// The selection button: the offered text joins the draft, or leaves it when the same text is there
+    /// already. It stays on offer either way, so the button can bring it back. False when nothing is on offer.
+    @discardableResult
+    func toggleOfferedSelection() -> Bool {
+        guard !isPlaying, let offeredSelection else { return false }
+        if let added = draftSelections.first(where: { $0.isSame(as: offeredSelection) }) {
+            removeSelection(added.id)
+        } else {
+            bring(offeredSelection)
+        }
+        return true
+    }
+
+    /// Whether the offered text is in the draft already, so the selection button would take it out.
+    var isOfferedSelectionAdded: Bool {
+        guard let offeredSelection else { return false }
+        return draftSelections.contains { $0.isSame(as: offeredSelection) }
+    }
+
+    /// The window closed: what was selected when it opened is no longer on offer.
+    func withdrawOfferedSelection() {
+        offeredSelection = nil
+    }
+
+    /// What the clipboard button found: copied files and pictures come in as attachments, as ⌘V brings them,
+    /// and text waits in a card of its own, after any text there. Returns the draft's items that hold it now,
+    /// new or already there, so the button knows what to take out again. A game has no use for any of it.
+    @discardableResult
+    func addClipboard(_ content: ClipboardContent) -> Set<UUID> {
+        let before = draftContextIDs
+        switch content {
+        case .files(let urls):
+            urls.forEach(attach(fileAt:))
+            let paths = Set(urls.map { $0.resolvingSymlinksInPath().path })
+            let named = draftFiles.filter { paths.contains($0.url.path) }.map(\.id)
+            return draftContextIDs.subtracting(before).union(named)
+        case .image(let image):
+            attach(image)
+            return draftContextIDs.subtracting(before)
+        case .text(let text):
+            guard !isPlaying, let selection = SelectedText.clipboard(text) else { return [] }
+            bring(selection)
+            return Set(draftSelections.filter { $0.isSame(as: selection) }.map(\.id))
+        }
+    }
+
+    /// Files and folders selected in Finder, in place of whatever the last selection brought. An image comes as
+    /// one for either mode; anything else only while asking an agent, since an LLM can't read it, unless they
+    /// were handed over `deliberately` (the Services menu), which brings everything, like a drop. A game has
+    /// no use for them.
+    func bring(files urls: [URL], deliberately: Bool = false) {
+        guard !isPlaying else { return }
+        let usable = deliberately || preferences.mode == .agent ? urls : urls.filter(ImageAttachment.isImage(at:))
+        draftImages.removeAll { broughtAttachments.contains($0.id) }
+        draftFiles.removeAll { broughtAttachments.contains($0.id) }
+        let before = attachmentIDs
+        usable.forEach(attach(fileAt:))
+        broughtAttachments = attachmentIDs.subtracting(before)
+    }
+
+    private var attachmentIDs: Set<UUID> {
+        Set(draftImages.map(\.id) + draftFiles.map(\.id))
+    }
+
+    /// Every text, image, and file waiting in the draft.
+    var draftContextIDs: Set<UUID> {
+        attachmentIDs.union(draftSelections.map(\.id))
+    }
+
+    /// Takes texts, images, and files out of the draft.
+    func removeContext(_ ids: Set<UUID>) {
+        draftSelections.removeAll { ids.contains($0.id) }
+        draftImages.removeAll { ids.contains($0.id) }
+        draftFiles.removeAll { ids.contains($0.id) }
+    }
+
+    /// ⌫ in an empty input: takes out the last text, or else the last file or image, like a token in
+    /// Spotlight. False when there is nothing to take out.
+    func removeLastContext() -> Bool {
+        if !draftSelections.isEmpty {
+            draftSelections.removeLast()
+        } else if !draftFiles.isEmpty {
+            draftFiles.removeLast()
+        } else if !draftImages.isEmpty {
+            draftImages.removeLast()
+        } else {
+            return false
+        }
+        return true
+    }
+
+    /// Takes an image or a file out of the draft.
+    func removeAttachment(_ id: UUID) {
         draftImages.removeAll { $0.id == id }
+        draftFiles.removeAll { $0.id == id }
     }
 
     func copyLastAnswer() {
@@ -446,11 +710,15 @@ final class ChatSession {
         guard !answered.isEmpty else { return nil }
         return answered.map { turn in
             var question = turn.question
-            if !turn.images.isEmpty {
-                let note = turn.images.count == 1 ? "1 image attached" : "\(turn.images.count) images attached"
+            var attached: [String] = []
+            if !turn.images.isEmpty { attached.append(turn.images.count == 1 ? "1 image" : "\(turn.images.count) images") }
+            attached += turn.files.map(\.name)
+            if !attached.isEmpty {
+                let note = "\(attached.joined(separator: ", ")) attached"
                 question += question.isEmpty ? "_\(note)_" : " _(\(note))_"
             }
-            return "**You**\n\n\(question)\n\n**Assistant**\n\n\(turn.answer.trimmed)"
+            let asked = (turn.selections.map(\.markdownQuote) + [question]).filter { !$0.isEmpty }.joined(separator: "\n\n")
+            return "**You**\n\n\(asked)\n\n**Assistant**\n\n\(turn.answer.trimmed)"
         }.joined(separator: "\n\n---\n\n")
     }
 
@@ -504,6 +772,7 @@ final class ChatSession {
     /// rather than adding a second one; the same step with new details, like a second search, is added.
     nonisolated static func record(_ activity: Activity, in tools: inout [Activity]) {
         guard activity != .thinking else { return }
+        if case .copying = activity { return }
         if let last = tools.last, last.isSameStep(as: activity) {
             if last == activity || activity.isVague { return }
             if last.isVague {
@@ -519,6 +788,8 @@ final class ChatSession {
         isStreaming = false
         streamTask = nil
         responders = [:]
+        let replaced = replacedTurn
+        replacedTurn = nil
         let last = turns.count - 1
         turns[last].activity = nil
         turns[last].prompts.removeAll(where: \.isPending)
@@ -531,7 +802,7 @@ final class ChatSession {
             turns[last].isComplete = !turns[last].answer.isEmpty
             if turns[last].answer.isEmpty {
                 Log.chat.info("Answer stopped before any text arrived")
-                restoreDraft(from: turns.removeLast())
+                takeBackQuestion(restoring: replaced)
             } else {
                 Log.chat.info("Answer \(error == nil ? "complete" : "stopped"), \(turns[last].answer.count) characters")
             }
@@ -540,11 +811,22 @@ final class ChatSession {
         Log.chat.error("Answer failed: \(error.localizedDescription)")
 
         if turns[last].answer.isEmpty {
-            restoreDraft(from: turns.removeLast())
+            takeBackQuestion(restoring: replaced)
         } else {
             turns[last].isComplete = true
         }
         fail(with: error.localizedDescription, needsSettings: Self.needsSettings(error))
+    }
+
+    /// An answer that brought no text goes: its question returns to the input, or, when Ask Again asked it,
+    /// the answer it was to replace comes back and the input stays as it is.
+    private func takeBackQuestion(restoring replaced: Turn?) {
+        let turn = turns.removeLast()
+        if let replaced {
+            turns.append(replaced)
+        } else {
+            restoreDraft(from: turn)
+        }
     }
 
     /// A game move's reply is complete, stopped, or failed. A reply the game refuses sends the move back:
@@ -594,6 +876,8 @@ final class ChatSession {
     private func restoreDraft(from turn: Turn) {
         draft = turn.question
         draftImages = turn.images
+        draftFiles = turn.files
+        draftSelections = turn.selections
     }
 
     private func fail(with message: String, needsSettings: Bool = false) {

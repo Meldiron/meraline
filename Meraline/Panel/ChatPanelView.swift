@@ -2,20 +2,47 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ChatPanelView: View {
+    /// How long the card takes to grow or shrink when a row or card comes or goes, in seconds.
+    static let cardAnimation = 0.2
+    /// A selected text's card, which the rows under it make room for: it fades in once they have moved out of its
+    /// way and fades out before they move back over it, so the mode row never slides across its text.
+    static let cardRowTransition: AnyTransition = .asymmetric(
+        insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)).animation(.smooth(duration: 0.2).delay(0.1)),
+        removal: .opacity.animation(.easeOut(duration: 0.06))
+    )
+
     @Bindable var session: ChatSession
     let preferences: Preferences
     let whatsNew: WhatsNew
+    let shortcutSetup: ShortcutSetup
     let layout: PanelLayout
-    let onHeightChange: (CGFloat) -> Void
+    /// Fits the window: its height, and how much of it is room above the card for a panel of actions that
+    /// opens upward, which raises the window's top so the card itself stays where it is on the screen.
+    let onHeightChange: (_ height: CGFloat, _ roomAbove: CGFloat) -> Void
     let onClose: () -> Void
     /// Opens Settings, on a pane when one is given.
     let openSettings: (SettingsPane?) -> Void
+    /// Makes the window key after a drop. Finder keeps the keyboard through a drag, which leaves the panel's
+    /// controls drawn inactive and the input deaf to typing.
+    var takeKeyboard: () -> Void = {}
+    /// The screen the window is on, for the screenshot button above the card.
+    var screen: () -> NSScreen? = { NSScreen.main }
+    /// Where what the buttons above the card added came from.
+    var sources = ContextSources()
 
     @FocusState private var isInputFocused: Bool
     @State private var conversationHeight: CGFloat = 0
     @State private var isDropTargeted = false
+    /// How tall the card is with its margins, where an open panel of actions reaches, and the room the window
+    /// makes above the card for a panel that opens upward past the card's top.
+    @State private var cardHeight: CGFloat = 0
+    @State private var actionPanelSpan: ActionPanelSpan?
+    @State private var roomAbove: CGFloat = 0
 
     private var hasConversation: Bool { !session.turns.isEmpty }
+    private var context: PanelContext {
+        PanelContext(session: session, preferences: preferences, layout: layout, openSettings: openSettings)
+    }
     /// Who is asking when an agent stops to ask, for the prompt card.
     private var agentName: String { preferences.activeProvider?.name ?? "The agent" }
 
@@ -23,12 +50,33 @@ struct ChatPanelView: View {
         GlassEffectContainer {
             VStack(spacing: 0) {
                 inputRow
-                ModeBar(preferences: preferences, session: session) { isInputFocused = true }
+                if !session.draftSelections.isEmpty, !session.isPlaying {
+                    VStack(spacing: 8) {
+                        ForEach(session.draftSelections) { selection in
+                            SelectionCard(selection: selection) {
+                                session.removeSelection(selection.id)
+                                isInputFocused = true
+                            }
+                            .transition(Self.cardRowTransition)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                    .transition(Self.cardRowTransition)
+                }
+                ModeBar(preferences: preferences, session: session, layout: layout) { isInputFocused = true }
                     .padding(.leading, 14)
                     .padding(.trailing, 12)
                     .padding(.bottom, 12)
-                if !session.draftImages.isEmpty {
-                    DraftImageTray(images: session.draftImages, onRemove: session.removeImage)
+                if shortcutSetup.showsNotice && !hasConversation {
+                    ShortcutNotice(change: shortcutSetup.changeShortcut, dismiss: shortcutSetup.dismissNotice)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 12)
+                        .transition(.opacity)
+                }
+                if !session.draftImages.isEmpty || !session.draftFiles.isEmpty {
+                    AttachmentStrip(images: session.draftImages, files: session.draftFiles, size: 48, onRemove: session.removeAttachment)
                         .padding(.horizontal, 18)
                         .padding(.bottom, 12)
                         .transition(.opacity)
@@ -47,14 +95,36 @@ struct ChatPanelView: View {
                     FailureRow(message: failure, showsSettings: session.failureNeedsSettings) { openSettings(nil) }
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
+                } else if let notice = session.fileNotice {
+                    AgentFilesRow(message: notice) {
+                        preferences.mode = .agent
+                        isInputFocused = true
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
                 } else if !hasConversation && preferences.activeProvider == nil {
                     SetupRow(kind: preferences.mode) { openSettings(.provider(preferences.mode.providers[0])) }
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
+                } else if let rematch = session.rematch, !rematch.isAfterGame {
+                    rematchTray(rematch)
                 } else if let nudge = session.nudge {
                     NudgeRow(message: nudge, symbol: session.game?.symbol ?? "sparkle")
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
+                } else if showsSelectionHint {
+                    SelectionHintRow {
+                        onClose()
+                        SelectionAccess.shared.request()
+                    } dismiss: {
+                        SelectionAccess.shared.isHintDismissed = true
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                    .transition(.opacity)
+                }
+                if let rematch = session.rematch, rematch.isAfterGame {
+                    rematchTray(rematch)
                 }
                 if hasConversation {
                     footer
@@ -72,22 +142,82 @@ struct ChatPanelView: View {
             .shadow(color: .black.opacity(0.28), radius: 22, y: 10)
         }
         .padding(PanelController.margin)
+        .padding(.top, ContextButtons.roomAbove)
+        .overlay(alignment: .topLeading) {
+            // Lined up with the sparkle under them.
+            ContextButtons(session: session, preferences: preferences, sources: sources, screen: screen, close: onClose) { isInputFocused = true }
+                .padding(.leading, PanelController.margin + 18)
+                .padding(.top, ContextButtons.inset)
+        }
         .fixedSize(horizontal: false, vertical: true)
-        .onGeometryChange(for: CGFloat.self, of: \.size.height) { onHeightChange($0) }
+        .onGeometryChange(for: CGFloat.self, of: \.size.height) {
+            cardHeight = $0
+            fitWindow()
+        }
+        .padding(.top, roomAbove)
         .frame(maxHeight: .infinity, alignment: .top)
+        .overlayPreferenceValue(ActionPanelAnchors.self) { anchors in
+            ActionPanelHost(anchors: anchors, context: context, roomAbove: roomAbove) { span in
+                actionPanelSpan = span
+                // The span was laid out with the current room above; what the card alone would leave is the
+                // same whatever the room, so this settles at once.
+                roomAbove = span.map { max(0, ActionPanelHost.inset - ($0.top - roomAbove)) } ?? 0
+                fitWindow()
+            }
+        }
         .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted, perform: acceptDrop)
         .onChange(of: layout.focusRequest) { isInputFocused = true }
-        .onChange(of: session.isStreaming) { if !session.isStreaming { isInputFocused = true } }
-        .animation(.smooth(duration: 0.2), value: session.draftImages)
-        .animation(.smooth(duration: 0.2), value: session.failure)
-        .animation(.smooth(duration: 0.2), value: session.nudge)
-        .animation(.smooth(duration: 0.2), value: whatsNew.isExpanded)
-        .animation(.smooth(duration: 0.2), value: whatsNew.update)
+        .onChange(of: session.isStreaming) {
+            if !session.isStreaming && layout.actionPanel == nil { isInputFocused = true }
+        }
+        .onChange(of: hasConversation) {
+            if !hasConversation, layout.actionPanel?.kind == .chat { layout.actionPanel = nil }
+        }
+        .animation(.smooth(duration: Self.cardAnimation), value: session.draftImages)
+        .animation(.smooth(duration: Self.cardAnimation), value: session.draftFiles)
+        .animation(.smooth(duration: Self.cardAnimation), value: session.draftSelections)
+        .animation(.smooth(duration: Self.cardAnimation), value: session.fileNotice)
+        .animation(.smooth(duration: Self.cardAnimation), value: session.failure)
+        .animation(.smooth(duration: Self.cardAnimation), value: session.nudge)
+        .animation(.smooth(duration: Self.cardAnimation), value: session.rematch)
+        .animation(.smooth(duration: Self.cardAnimation), value: whatsNew.isExpanded)
+        .animation(.smooth(duration: Self.cardAnimation), value: whatsNew.update)
+        .animation(.smooth(duration: Self.cardAnimation), value: shortcutSetup.showsNotice)
+    }
+
+    /// Fits the window to the card, taller above it while a panel of actions opens upward past its top, and
+    /// lower while one reaches below it, with room for the panel's shadow.
+    private func fitWindow() {
+        let panelBottom = actionPanelSpan.map { $0.bottom + 28 } ?? 0
+        onHeightChange(max(roomAbove + cardHeight, panelBottom), roomAbove)
+    }
+
+    private func rematchTray(_ rematch: RematchOffer) -> some View {
+        RematchTray(offer: rematch) {
+            session.playAgain()
+            isInputFocused = true
+        } putAway: {
+            session.putAwayRematch()
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 12)
+        .transition(.opacity)
+    }
+
+    /// Until Meraline may read the selection, an empty panel says what the shortcut could bring.
+    private var showsSelectionHint: Bool {
+        let access = SelectionAccess.shared
+        return preferences.bringsSelection && !access.isGranted && !access.isHintDismissed
+            && !hasConversation && !session.isPlaying && session.draftSelections.isEmpty
     }
 
     private var placeholder: String {
         guard let state = session.gameState else {
-            return hasConversation ? "Ask a follow-up…" : "Ask anything…"
+            let texts = session.draftSelections
+            let ask = texts.count > 1 ? "Ask about them"
+                : texts.first.map { $0.isFromClipboard ? "Ask about the clipboard" : "Ask about the selection" }
+                ?? (hasConversation ? "Ask a follow-up" : "Ask anything")
+            return session.isAnonymous ? "\(ask) secretly…" : "\(ask)…"
         }
         switch state.phase {
         case .yourMove(let placeholder, _, _): return placeholder
@@ -99,7 +229,9 @@ struct ChatPanelView: View {
 
     private var inputRow: some View {
         HStack(alignment: .center, spacing: 12) {
-            ProviderMenu(preferences: preferences, session: session, openSettings: openSettings) { isInputFocused = true }
+            SparkleButton(session: session, isOpen: layout.actionPanel?.kind == .providers) {
+                layout.toggleActionPanel(.providers)
+            }
 
             TextField(placeholder, text: $session.draft.onOneLine)
                 .textFieldStyle(.plain)
@@ -128,6 +260,7 @@ struct ChatPanelView: View {
                         preferences.isPinned ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(),
                         in: .circle
                     )
+                    .contentShape(.circle)
                     .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
@@ -141,6 +274,7 @@ struct ChatPanelView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 32, height: 32)
                     .glassEffect(.regular.interactive(), in: .circle)
+                    .contentShape(.circle)
             }
             .buttonStyle(.plain)
             .keyboardShortcut(",")
@@ -203,49 +337,17 @@ struct ChatPanelView: View {
             }
             Spacer()
             if session.isStreaming {
-                Button(action: session.stop) {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.mini)
-                        Text("Stop")
-                        Text("esc").foregroundStyle(.tertiary)
-                    }
-                    .font(.system(size: 11, weight: .medium))
-                }
-                .buttonStyle(.glass)
-                .controlSize(.small)
-                .help("Stop answering")
-            } else if session.isPlaying {
-                if session.canHint {
-                    FooterButton(title: "Hint", symbol: "lightbulb", shortcut: KeyboardShortcut("i")) {
-                        session.hint()
-                        isInputFocused = true
-                    }
-                    .help("Show a hint for your move")
-                }
-                FooterButton(title: "Copy", symbol: "doc.on.clipboard", shortcut: KeyboardShortcut("c", modifiers: [.command, .shift])) {
-                    session.copyConversation()
-                }
-                .disabled(session.conversationMarkdown == nil)
-                .help("Copy the game as plain text")
-                FooterButton(title: "End Game", symbol: "square.and.pencil", shortcut: KeyboardShortcut("n")) {
-                    session.reset()
-                    isInputFocused = true
-                }
-            } else {
-                FooterButton(title: "Copy Answer", symbol: "doc.on.doc", shortcut: KeyboardShortcut("c", modifiers: [.command, .shift])) {
-                    session.copyLastAnswer()
-                }
-                .disabled(session.lastAnswer == nil)
-                FooterButton(title: "Copy Conversation", symbol: "doc.on.clipboard", shortcut: KeyboardShortcut("c", modifiers: [.command, .shift, .option])) {
-                    session.copyConversation()
-                }
-                .disabled(session.conversationMarkdown == nil)
-                .help("Copy the whole chat as Markdown")
-                FooterButton(title: "New Chat", symbol: "square.and.pencil", shortcut: KeyboardShortcut("n")) {
-                    session.reset()
-                    isInputFocused = true
-                }
+                ProgressView()
+                    .controlSize(.mini)
+                    .help("Answering")
             }
+            let menu = context.chatMenu
+            ActionBar(primary: menu?.primary, isOpen: layout.actionPanel?.kind == .chat, copyNotice: layout.copyNotice) {
+                if let primary = menu?.primary { context.run(primary, in: .chat) }
+            } openActions: {
+                layout.toggleActionPanel(.chat)
+            }
+            .actionPanelAnchor(.chat)
         }
         .padding(.leading, 20)
         .padding(.trailing, 12)
@@ -253,6 +355,7 @@ struct ChatPanelView: View {
     }
 
     private func acceptDrop(_ providers: [NSItemProvider]) -> Bool {
+        defer { takeKeyboard() }
         var accepted = false
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
@@ -275,65 +378,31 @@ struct ChatPanelView: View {
     }
 }
 
-/// The sparkle menu: the ready providers of the current mode, and Recent Chats. The toggle under the
-/// input switches modes, and the games have their own buttons beside it.
-private struct ProviderMenu: View {
-    let preferences: Preferences
+/// The sparkle at the start of the input row. A click opens its panel of actions: the ready providers of the
+/// current mode, the other mode, anonymous mode, and Settings (see `PanelContext.providersMenu`). The toggle
+/// under the input switches modes too, and the games and the recent chats have their own buttons beside it.
+private struct SparkleButton: View {
     let session: ChatSession
-    let openSettings: (SettingsPane?) -> Void
-    let focusInput: () -> Void
+    let isOpen: Bool
+    let toggle: () -> Void
 
     var body: some View {
-        Menu {
-            let kind = preferences.mode
-            let ready = preferences.readyProviders(for: kind)
-            let active = preferences.activeProvider
-            Section(kind.pluralTitle) {
-                if ready.isEmpty {
-                    Text("No \(kind.pluralTitle) are turned on")
-                    Button("Set Up \(kind.pluralTitle)…") { openSettings(.provider(kind.providers[0])) }
-                }
-                ForEach(ready) { provider in
-                    Toggle(isOn: Binding(
-                        get: { provider == active },
-                        set: { if $0 { preferences.provider = provider } }
-                    )) {
-                        Label(provider.name, systemImage: provider.symbol)
-                        let settings = preferences[provider]
-                        let model = settings.model.isEmpty ? "Default model" : settings.model
-                        let servers = settings.allowedMCPServers.count
-                        Text(servers > 0 ? "\(model) · \(servers) MCP server\(servers == 1 ? "" : "s")" : model)
-                    }
-                }
-            }
-            Section("Recent Chats") {
-                if session.history.isEmpty {
-                    Text("No recent chats")
-                }
-                ForEach(session.history) { chat in
-                    Button {
-                        session.reopen(chat.id)
-                        focusInput()
-                    } label: {
-                        Text(chat.title)
-                        Text(chat.date, format: .relative(presentation: .named))
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "sparkle")
-                .font(.system(size: 19, weight: .medium))
-                .foregroundStyle(.meraline)
-                .symbolEffect(.pulse, isActive: session.isStreaming)
+        Button(action: toggle) {
+            SparkleIcon(isStreaming: session.isStreaming, isAnonymous: session.isAnonymous)
                 .frame(width: 28, height: 28)
+                .background {
+                    if isOpen { Circle().fill(.primary.opacity(0.08)).padding(-3) }
+                }
                 .contentShape(.rect)
         }
-        .menuStyle(.button)
         .buttonStyle(.plain)
-        .menuIndicator(.hidden)
         .fixedSize()
-        .help("Choose a provider or reopen a recent chat")
+        .actionPanelAnchor(.providers)
+        .help(session.isAnonymous
+            ? "Anonymous mode is on: this chat won’t go to Recent Chats (⇧⌘N to turn it off)"
+            : "Providers, modes, and settings")
         .accessibilityLabel("Provider")
+        .accessibilityValue(session.isAnonymous ? "Anonymous mode on" : "")
     }
 }
 
@@ -345,16 +414,17 @@ private struct TurnView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            ForEach(turn.selections) { selection in
+                SelectionQuote(selection: selection)
+            }
             if !turn.question.isEmpty {
                 Text(turn.question)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
-            if !turn.images.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(turn.images) { AttachmentThumbnail(image: $0, size: 40) }
-                }
+            if !turn.images.isEmpty || !turn.files.isEmpty {
+                AttachmentStrip(images: turn.images, files: turn.files, size: 40)
             }
             if !turn.answer.isEmpty {
                 Text(MarkdownText.render(turn.answer))
@@ -749,6 +819,27 @@ private struct NudgeRow: View {
     }
 }
 
+/// Files in the draft while the panel asks an LLM: only an agent reads them, and the button switches.
+private struct AgentFilesRow: View {
+    let message: String
+    let switchToAgent: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "doc")
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.system(size: 13))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button("Switch to Agent", action: switchToAgent)
+                .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
+        }
+        .padding(12)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+}
+
 private struct ActivityRow: View {
     let activity: Activity?
 
@@ -800,28 +891,81 @@ private struct ThinkingStatusText: View {
     }
 }
 
-private struct DraftImageTray: View {
+/// A question's images and files, in a row that scrolls sideways when it runs long. In the draft, each has
+/// a cross to take it out again.
+private struct AttachmentStrip: View {
     let images: [ImageAttachment]
-    let onRemove: (ImageAttachment.ID) -> Void
+    let files: [FileAttachment]
+    let size: CGFloat
+    var onRemove: ((UUID) -> Void)?
 
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(images) { image in
-                AttachmentThumbnail(image: image, size: 48)
-                    .overlay(alignment: .topTrailing) {
-                        Button { onRemove(image.id) } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 8, weight: .bold))
-                                .frame(width: 18, height: 18)
-                                .glassEffect(.regular.interactive(), in: .circle)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Remove image")
-                        .offset(x: 6, y: -6)
-                    }
+        ScrollView(.horizontal) {
+            HStack(spacing: onRemove == nil ? 6 : 8) {
+                ForEach(images) { image in
+                    AttachmentThumbnail(image: image, size: size)
+                        .overlay(alignment: .topTrailing) { removeButton(for: image.id, label: "Remove image") }
+                }
+                ForEach(files) { file in
+                    FileChip(file: file, height: size)
+                        .overlay(alignment: .topTrailing) { removeButton(for: file.id, label: "Remove \(file.name)") }
+                }
             }
-            Spacer()
+            // Room for the crosses, which stand out over the top right corners.
+            .padding(.top, onRemove == nil ? 0 : 6)
+            .padding(.trailing, onRemove == nil ? 0 : 6)
         }
+        .scrollIndicators(.never)
+        .defaultScrollAnchor(.leading)
+        .padding(.top, onRemove == nil ? 0 : -6)
+    }
+
+    @ViewBuilder
+    private func removeButton(for id: UUID, label: String) -> some View {
+        if let onRemove {
+            Button { onRemove(id) } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .frame(width: 18, height: 18)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(label)
+            .offset(x: 6, y: -6)
+        }
+    }
+}
+
+/// A file for an agent: its Finder icon and its name, shortened in the middle when long.
+private struct FileChip: View {
+    let file: FileAttachment
+    let height: CGFloat
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: file.url.path))
+                .resizable()
+                .frame(width: height * 0.6, height: height * 0.6)
+            Text(Self.shortened(file.name))
+                .font(.system(size: 12))
+                .lineLimit(1)
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 12)
+        .frame(height: height)
+        .background(.primary.opacity(0.04), in: .rect(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(.separator) }
+        .help(file.name)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Attached file \(file.name)")
+    }
+
+    /// The row scrolls, so it offers a chip all the width it wants; a long name is cut here instead, keeping
+    /// its extension.
+    static func shortened(_ name: String) -> String {
+        guard name.count > 28 else { return name }
+        return "\(name.prefix(16))…\(name.suffix(11))"
     }
 }
 
@@ -875,7 +1019,7 @@ private struct SetupRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: kind == .agent ? "terminal" : "key.fill")
+            (kind == .agent ? kind.image : Image(systemName: "key.fill"))
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
                 Text(kind == .agent ? "Turn on an agent" : "Connect an AI provider")
@@ -892,38 +1036,6 @@ private struct SetupRow: View {
         }
         .padding(12)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
-    }
-}
-
-private struct FooterButton: View {
-    let title: String
-    let symbol: String
-    let shortcut: KeyboardShortcut
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Label(title, systemImage: symbol)
-                Text(shortcut.displayName)
-                    .foregroundStyle(.tertiary)
-            }
-            .font(.system(size: 11, weight: .medium))
-        }
-        .buttonStyle(.glass)
-        .controlSize(.small)
-        .keyboardShortcut(shortcut)
-    }
-}
-
-private extension KeyboardShortcut {
-    var displayName: String {
-        var result = ""
-        if modifiers.contains(.control) { result += "⌃" }
-        if modifiers.contains(.option) { result += "⌥" }
-        if modifiers.contains(.shift) { result += "⇧" }
-        if modifiers.contains(.command) { result += "⌘" }
-        return result + String(key.character).uppercased()
     }
 }
 

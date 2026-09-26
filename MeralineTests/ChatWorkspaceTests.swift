@@ -76,6 +76,23 @@ struct ChatWorkspaceTests {
         ChatWorkspace.removeAll(in: root)
     }
 
+    @Test func forgettingTheRecentChatsRemovesTheirWorkspaces() async throws {
+        let model = ScriptedModel(["One", "Two"])
+        let session = agentSession(model)
+        await GameTestSupport.play("First", in: session)
+        let first = try #require(session.workspace).url
+        session.reset()
+        await GameTestSupport.play("Second", in: session)
+        let second = try #require(session.workspace).url
+        #expect(session.forgetHistory() == 1)
+        #expect(session.history.isEmpty)
+        // The open chat keeps its own folder.
+        #expect(!exists(first))
+        #expect(exists(second))
+        #expect(session.workspace?.url == second)
+        ChatWorkspace.removeAll(in: root)
+    }
+
     @Test func workspacesLeaveWithTheirChats() async throws {
         let model = ScriptedModel(Array(repeating: "Ok", count: 7))
         let session = agentSession(model)

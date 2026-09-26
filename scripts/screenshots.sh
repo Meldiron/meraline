@@ -1,9 +1,10 @@
 #!/bin/zsh
 # Captures the README screenshots, in dark and light:
 #
-#   panel     an answered question in LLM mode, with the mode toggle and the games under the input
-#   game      Odd One Out after the model's first move, with its choice buttons
-#   menu      the sparkle menu: the providers of the current mode and Recent Chats
+#   panel     an answered question about selected text in LLM mode, with the buttons above the window and the
+#             mode toggle, the controller, and the clock under the input
+#   game      Odd One Out after the model's first move, with its choice buttons and the games unfolded
+#   menu      the panel of recent chats behind the clock, with the chat asked for the panel shot in it
 #   agent     Agent mode: an answer, its trail of MCP tools, and a request to write a file
 #   question  Agent mode: a question from the agent with its choices
 #   settings  Settings on the Claude Code page, with its MCP servers
@@ -115,7 +116,7 @@ backdrop_up() {  # appearance above|normal
 park() { "$tools/press" move $(( screen_w - 12 )) $(( screen_h - 12 )); sleep 0.3; }
 
 launch() {  # suite appearance
-  local args=(-hasLaunchedBefore NO -SUEnableAutomaticChecks NO)
+  local args=(-hasLaunchedBefore NO -hasChosenShortcut YES -SUEnableAutomaticChecks NO)
   [[ $2 == light ]] && args+=(-NSRequiresAquaSystemAppearance YES)
   MERALINE_DEFAULTS_SUITE=$1 "$binary" "${args[@]}" >/dev/null 2>&1 &
   pid=$!
@@ -154,7 +155,9 @@ wait_for() {  # pattern seconds
 }
 
 url() { mark; open -a "$app" "$1"; }
-ask() { url "meraline://ask?text=$(python3 -c 'import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))' "$1")&send=1"; }
+encode() { python3 -c 'import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))' "$1"; }
+ask() { url "meraline://ask?text=$(encode "$1")&send=1"; }
+ask_about() { url "meraline://ask?selection=$(encode "$1")&text=$(encode "$2")&send=1"; }  # selection question
 shoot_panel() {  # name [minimum height]
   wants $1 || return 0
   read -r x y w h <<< "$(window $pid panel)"
@@ -186,16 +189,19 @@ for appearance in $appearances; do
   prepare ${suites[1]} mode string llm provider string $llm claudeCode.enabled bool false
   [[ -n $model ]] && defaults write ${suites[1]} "$llm.model" -string "$model"
   launch ${suites[1]} $appearance
-  ask "What's the difference between a flat white and a latte?"
+  ask_about "A cortado is espresso cut with about the same amount of warm milk, which puts it between a macchiato and a flat white." "How is this different from a latte?"
   wait_for 'Answer (complete|failed)' 120
   since_mark | grep -q 'Answer complete' || { echo "The LLM did not answer." >&2; return 1; }
   sleep 1.5
   shoot_panel panel
 
-  # Odd One Out: its button is the fifth of six in the games group, 107 points below the window's top.
+  # Odd One Out: the controller (588 points from the window's left, 127 below its top) unfolds the games to
+  # its left, and its button is the fifth of eight, 130 points left of the games capsule's right edge.
   read -r x y w h <<< "$(window $pid panel)"
+  "$tools/press" $(( x + 588 )) $(( y + 127 )) 0.1
+  sleep 0.8
   mark
-  "$tools/press" $(( x + 619 )) $(( y + 107 )) 0.1
+  "$tools/press" $(( x + 474 )) $(( y + 127 )) 0.1
   park
   for attempt in 1 2 3; do
     wait_for 'Odd One Out: the model (moved|.s move failed|.s reply sent)' 90 || true
@@ -205,12 +211,12 @@ for appearance in $appearances; do
   sleep 1.5
   shoot_panel game
 
-  # The sparkle menu, held open by a long press. The chat asked above is in Recent Chats by now.
-  "$tools/press" $(( x + 66 )) $(( y + 62 )) 2.5 &
-  sleep 1.2
-  shoot_panel menu 420
-  wait $! 2>/dev/null || true
+  # The recent chats behind the clock at the row's right end: a click opens their panel inside the window,
+  # which grows when the panel reaches below the card. The chat asked above is in there by now.
+  "$tools/press" $(( x + 636 )) $(( y + 127 )) 0.1
   park
+  sleep 0.8
+  shoot_panel menu
   quit
   fi
 

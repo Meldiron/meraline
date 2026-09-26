@@ -85,7 +85,7 @@ nonisolated enum WordFootball: GameRules {
         if current.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if let ending = match.ending {
             return GameState(
-                phase: .over(summary: ending.text + " Press Return for a new match.", rematch: Rematch(cue: rematchCue, placeholder: "Press Return for a new match…")),
+                phase: .over(outcome: ending, rematch: Rematch(cue: rematchCue, placeholder: "Press Return for a new match…")),
                 status: status
             )
         }

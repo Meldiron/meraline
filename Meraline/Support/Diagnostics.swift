@@ -32,8 +32,9 @@ enum Diagnostics {
         lines.append("")
         lines.append("### Settings")
         lines.append("- Mode: \(preferences.mode.title), default LLM: \(preferences.defaultProvider(for: .llm)?.name ?? "none"), default agent: \(preferences.defaultProvider(for: .agent)?.name ?? "none")")
-        lines.append("- Shortcut: \(KeyboardShortcuts.getShortcut(for: .togglePanel)?.description ?? "none")")
+        lines.append("- Shortcut: \(KeyboardShortcuts.getShortcut(for: .togglePanel)?.description ?? "none")\(KeyboardShortcuts.isEnabled(for: .togglePanel) ? "" : ", not registered")")
         lines.append("- Window: \(preferences.placement.title), \(preferences.isPinned ? "stays open" : "closes when clicking elsewhere"), menu bar icon \(preferences.showsMenuBarIcon ? "on" : "off")")
+        lines.append("- Selected text: \(preferences.bringsSelection ? "on" : "off"), Accessibility access \(SelectionAccess.shared.isGranted ? "allowed" : "not allowed")")
         lines.append("- System prompt: \(preferences.systemPrompt == Preferences.defaultSystemPrompt ? "default" : "customized")")
         if updates.isAvailable {
             let lastCheck = updates.lastCheck.map { $0.formatted(.iso8601) } ?? "never"

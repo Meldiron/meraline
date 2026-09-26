@@ -6,7 +6,7 @@ struct GameRulesTests {
     private typealias Support = GameTestSupport
 
     @Test func everyGameIsReadyForTheMenu() {
-        #expect(Game.allCases.count == 6)
+        #expect(Game.allCases.count == 8)
         #expect(Set(Game.allCases.map(\.title)).count == Game.allCases.count)
         for game in Game.allCases {
             #expect(!game.summary.isEmpty, "\(game) needs a line for the menu")
@@ -39,12 +39,12 @@ struct GameRulesTests {
     }
 
     @Test func aScoreIsFoundInAnyWording() throws {
-        let score = try #require(AddAWord.score(in: "Score: 7/10 — a bold claim."))
+        let score = try #require(GameText.score(in: "Score: 7/10 — a bold claim."))
         #expect(score.score == 7)
         #expect(score.comment == "a bold claim")
-        #expect(AddAWord.score(in: "I’d say 4 out of 10")?.score == 4)
-        #expect(AddAWord.score(in: "moon.") == nil)
-        #expect(AddAWord.score(in: "Score: 12/10") == nil)
+        #expect(GameText.score(in: "I’d say 4 out of 10")?.score == 4)
+        #expect(GameText.score(in: "moon.") == nil)
+        #expect(GameText.score(in: "Score: 12/10") == nil)
     }
 
     @Test func aModelThatRepeatsTheSentenceGetsItsNewWord() {
@@ -118,7 +118,7 @@ struct GamePlayTests {
         #expect(session.gameState?.status == "Kitchen · 2 of 12")
 
         await Support.play("pass", in: session)
-        #expect(session.nudge == "You passed, so the model takes this round. Press Return for a new category.")
+        #expect(session.nudge == "You passed, so the model takes this round.")
         session.send()
         await Support.settle(session)
         #expect(session.turns.last?.cue == Categories.nextCategory)
@@ -150,7 +150,7 @@ struct GamePlayTests {
         #expect(session.draft == "tzzq")
 
         await Support.play("tiger", in: session)
-        #expect(session.nudge == "Foul! “salmon” doesn’t start with “R”. You win! Press Return for a new match.")
+        #expect(session.nudge == "Foul! “salmon” doesn’t start with “R”. You win!")
         guard case .over = session.gameState?.phase else {
             Issue.record("the foul should end the match")
             return
@@ -235,11 +235,11 @@ struct GamePlayTests {
                 turns.append(Support.turn("pear, plum, piano", reply: "piano: not a fruit", outcome: GameOutcome(text: "Got it", youWon: false)))
             }
         }
-        guard case .over(let summary, let rematch) = OddOneOut.state(of: turns).phase else {
+        guard case .over(let outcome, let rematch) = OddOneOut.state(of: turns).phase else {
             Issue.record("six rounds should end the game")
             return
         }
-        #expect(summary.hasPrefix("Game done: a draw, 3 all."))
+        #expect(outcome == GameOutcome(text: "Game done: a draw, 3 all.", youWon: nil))
         #expect(rematch.cue == OddOneOut.newGame)
     }
 

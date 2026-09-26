@@ -36,7 +36,7 @@ nonisolated enum RhymeDuel: GameRules {
     private static let cues: Set<String> = [opening, rematchCue]
 
     static let invitation = "The model starts a story. Finish each of its lines with a rhyme, and it carries on with a new word; four lines each. Stuck? Hint shows a rhyme."
-    static let done = "Duel done, and the last word was yours. Press Return for a rematch, or Esc to let it go."
+    static let done = "Duel done, and the last word was yours."
     /// The nudge when the model's reply has no line in it: the opening is asked for again, your line comes back.
     static let noOpening = "The model had no line to open with. Press Return to ask again."
     static let lostTheThread = "The model lost the thread. Press Return to send your line again."
@@ -63,7 +63,7 @@ nonisolated enum RhymeDuel: GameRules {
         let status = status(linesPlayed: played)
         if duel.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if played >= lineLimit {
-            return GameState(phase: .over(summary: done, rematch: Rematch(cue: rematchCue, placeholder: "Press Return for a rematch…")), status: status)
+            return GameState(phase: .over(outcome: GameOutcome(text: done, youWon: nil), rematch: Rematch(cue: rematchCue, placeholder: "Press Return for a rematch…")), status: status)
         }
         let previous = lastVerse(of: duel)
         let placeholder = previous.flatMap { rhymeWord(of: $0.line) }.map { "Rhyme with “\($0)”…" } ?? "Your line…"

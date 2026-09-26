@@ -49,7 +49,7 @@ nonisolated enum AddAWord: GameRules {
     static func parse(_ reply: String) -> Reply {
         var parsed = Reply()
         for line in GameText.lines(reply).map(GameText.unwrapped) {
-            if parsed.score == nil, let found = score(in: line) {
+            if parsed.score == nil, let found = GameText.score(in: line) {
                 parsed.score = found.score
                 parsed.comment = found.comment
             } else if parsed.words.isEmpty {
@@ -57,14 +57,6 @@ nonisolated enum AddAWord: GameRules {
             }
         }
         return parsed
-    }
-
-    /// "Score: 7/10, a bold claim" as 7 and "a bold claim".
-    static func score(in line: String) -> (score: Int, comment: String)? {
-        guard let match = line.firstMatch(of: #/(\d{1,2})\s*(?:\/|out of)\s*10\b/#),
-              let score = Int(match.1), (0...10).contains(score) else { return nil }
-        let comment = line[match.range.upperBound...].trimmingCharacters(in: CharacterSet(charactersIn: " -–—:.,;)"))
-        return (score, comment)
     }
 
     static func endsSentence(_ word: String) -> Bool {
@@ -100,10 +92,10 @@ nonisolated enum AddAWord: GameRules {
         if sentence.isFinished {
             let rematch = Rematch(cue: nextSentence, placeholder: "Press Return for the next sentence…")
             guard let score = sentence.score else {
-                return GameState(phase: .over(summary: "Sentence done. Press Return for the next one; the story carries on.", rematch: rematch), status: "Sentence \(number) done")
+                return GameState(phase: .over(outcome: GameOutcome(text: "Sentence done. The story carries on in the next one.", youWon: nil), rematch: rematch), status: "Sentence \(number) done")
             }
             return GameState(
-                phase: .over(summary: "Sentence done: \(score) out of 10 for sense. Press Return for the next one; the story carries on.", rematch: rematch),
+                phase: .over(outcome: GameOutcome(text: "Sentence done: \(score) out of 10 for sense. The story carries on in the next one.", youWon: nil), rematch: rematch),
                 status: "Sentence \(number) · \(score)/10"
             )
         }

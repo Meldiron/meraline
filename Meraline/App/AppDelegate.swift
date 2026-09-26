@@ -8,10 +8,19 @@ enum MeralineApp {
         // An agent that has already exited must not take Meraline down when an answer is written to it.
         signal(SIGPIPE, SIG_IGN)
         let application = NSApplication.shared
+        application.setActivationPolicy(.accessory)
+        // Hosting the tests, Meraline runs without starting: no Keychain, shortcut, menu bar item, or updater.
+        // An agent's test build is often signed ad-hoc, which macOS treats as a new app on every build, so
+        // reading the API keys asked for the Keychain password on every test run.
+        guard !isHostingTests else { return application.run() }
         let delegate = AppDelegate()
         application.delegate = delegate
-        application.setActivationPolicy(.accessory)
         withExtendedLifetime(delegate) { application.run() }
+    }
+
+    /// Whether xcodebuild launched this process to host the test bundle.
+    static var isHostingTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
 }
 
@@ -20,7 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let updater = Updater(preferences: .shared)
     private lazy var session = ChatSession(preferences: preferences)
     private let whatsNew = WhatsNew()
-    private lazy var panel: PanelController = PanelController(session: session, preferences: preferences, whatsNew: whatsNew) { [weak self] pane in
+    private let shortcutSetup = ShortcutSetup()
+    private lazy var panel: PanelController = PanelController(session: session, preferences: preferences, whatsNew: whatsNew, shortcutSetup: shortcutSetup) { [weak self] pane in
         self?.panel.close()
         self?.settings.show(pane)
     }
@@ -31,14 +41,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.app.info("Meraline \(Bundle.main.shortVersion) (\(Bundle.main.buildNumber)) launched")
         ChatWorkspace.removeStale()
         NSApp.mainMenu = makeMainMenu()
-        KeyboardShortcuts.onKeyUp(for: .togglePanel) { [weak self] in self?.panel.toggle() }
+        KeyboardShortcuts.onKeyUp(for: .togglePanel) { [weak self] in self?.panel.toggleBringingSelection() }
+        NSApp.servicesProvider = self
+        NSUpdateDynamicServices()
         observeMenuBarPreference()
         MCPServerRegistry.shared.refreshAll(preferences)
+        shortcutSetup.onChangeShortcut = { [weak self] in
+            self?.panel.close()
+            self?.settings.show(.general)
+            self?.settings.focusShortcutRecorder()
+        }
 
         let defaults = UserDefaults.standard
         if !defaults.bool(forKey: "hasLaunchedBefore") {
             defaults.set(true, forKey: "hasLaunchedBefore")
             defaults.set(Bundle.main.shortVersion, forKey: "lastRunVersion")
+            // Before the shortcut is ever pressed: ⌥ Space may already belong to another app.
+            shortcutSetup.presentIfNeeded()
             panel.show()
         } else {
             announceUpdate()
@@ -53,9 +72,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 continue
             }
             switch route {
-            case .ask(let text, let send):
-                Log.app.info("URL route: ask\(text == nil ? "" : " with text")\(send ? ", send" : "")")
+            case .ask(let text, let selection, let send):
+                Log.app.info("URL route: ask\(text == nil ? "" : " with text")\(selection == nil ? "" : " with a selection")\(send ? ", send" : "")")
                 panel.show()
+                if let selection = selection.flatMap({ SelectedText($0) }) { session.bring(selection) }
                 if let text { session.draft = text }
                 if send { session.send() }
             case .newChat:
@@ -69,6 +89,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 settings.show(pane)
             }
         }
+    }
+
+    /// Services › Ask Meraline, in the app where text or files are selected: they come into the window as with
+    /// the shortcut, without the Accessibility access the shortcut needs. Declared as `NSServices` in
+    /// project.yml.
+    @objc func askAboutSelection(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        let files = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        if !files.isEmpty {
+            Log.app.info("Services: Ask Meraline, \(files.count) file(s) or folder(s)")
+            session.bring(files: Array(files.prefix(SelectionReader.fileLimit)), deliberately: true)
+        } else {
+            let app = NSWorkspace.shared.frontmostApplication.flatMap { $0.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : $0 }
+            guard let text = pasteboard.string(forType: .string),
+                  let selection = SelectedText(text, appName: app?.localizedName, appURL: app?.bundleURL) else { return }
+            Log.app.info("Services: Ask Meraline, \(selection.text.count) characters")
+            session.bring(selection)
+        }
+        panel.show()
     }
 
     /// After an update, the panel offers the notes Sparkle carried for the running version, or a

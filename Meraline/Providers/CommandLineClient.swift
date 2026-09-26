@@ -162,18 +162,27 @@ nonisolated enum CommandLineClient {
     }
 
     static func transcript(of messages: [ChatMessage]) -> String {
-        guard messages.count > 1 else { return messages.last?.text ?? "" }
+        guard messages.count > 1 else { return messages.last.map(text(of:)) ?? "" }
         let history = messages.dropLast().map { message in
             let speaker = message.role == .user ? "User" : "Assistant"
-            return "\(speaker): \(message.text)"
+            return "\(speaker): \(text(of: message))"
         }.joined(separator: "\n\n")
         return """
         <conversation>
         \(history)
         </conversation>
 
-        \(messages.last?.text ?? "")
+        \(messages.last.map(text(of:)) ?? "")
         """
+    }
+
+    /// A message's text, followed by the names of the files and folders attached to it, which the agent finds
+    /// copied into its working directory. A folder's name ends in a slash.
+    private static func text(of message: ChatMessage) -> String {
+        guard !message.files.isEmpty else { return message.text }
+        let names = message.files.map { "- \($0.name)\($0.isFolder ? "/" : "")" }
+        let note = (["Attached, copied into the working directory:"] + names).joined(separator: "\n")
+        return message.text.isEmpty ? note : "\(message.text)\n\n\(note)"
     }
 
     private static func prompt(for request: ChatRequest) -> String {
@@ -202,7 +211,8 @@ nonisolated enum CommandLineClient {
 
     /// Runs the agent in the chat's workspace, or in a folder for this run alone when the request has
     /// none. Attached images are written there for the run and removed afterwards; the workspace itself
-    /// stays, since it is the chat's.
+    /// stays, since it is the chat's. The files and folders attached to the question are copied in and stay
+    /// with it, so a follow-up can come back to them.
     static func stream(_ request: ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> {
         AsyncThrowingStream { continuation in
             let process = Process()
@@ -221,6 +231,14 @@ nonisolated enum CommandLineClient {
                     let servers = request.settings.allowedMCPServers.count
                     Log.commandLine.info("Running \(invocation.executable.path) for \(request.provider.name)\(servers > 0 ? " with \(servers) MCP server(s)" : "")\(request.workspace == nil ? "" : " in the chat's workspace")")
                     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    if let files = request.messages.last?.files, !files.isEmpty {
+                        // A folder can take a few seconds; the panel says so rather than murmur.
+                        let folder = files.first(where: \.isFolder)
+                        if let folder { continuation.yield(.activity(.copying(folder.name))) }
+                        try await FileAttachment.copy(files, into: directory)
+                        if folder != nil { continuation.yield(.activity(.thinking)) }
+                        Log.commandLine.info("Copied \(files.count) attachment(s) in for \(request.provider.name)")
+                    }
                     for (name, data) in invocation.files {
                         let file = directory.appending(path: name)
                         try data.write(to: file)

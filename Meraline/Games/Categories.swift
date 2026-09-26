@@ -69,7 +69,7 @@ nonisolated enum Categories: GameRules {
         if current.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if let ending = round.ending {
             return GameState(
-                phase: .over(summary: ending.text + " Press Return for a new category.", rematch: Rematch(cue: nextCategory, placeholder: "Press Return for a new category…")),
+                phase: .over(outcome: ending, rematch: Rematch(cue: nextCategory, placeholder: "Press Return for a new category…")),
                 status: status
             )
         }
