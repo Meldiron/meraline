@@ -92,10 +92,9 @@ struct ChatPanelView: View {
         HStack(alignment: .center, spacing: 12) {
             ProviderMenu(preferences: preferences, session: session, openSettings: openSettings) { isInputFocused = true }
 
-            TextField(placeholder, text: $session.draft, axis: .vertical)
+            TextField(placeholder, text: $session.draft.onOneLine)
                 .textFieldStyle(.plain)
                 .font(.system(size: 20))
-                .lineLimit(1...8)
                 .focused($isInputFocused)
                 .tint(.meralinePink)
                 .onSubmit(session.send)
@@ -451,7 +450,7 @@ private struct PromptCard: View {
                     }
                 }
             }
-            TextField("Something else…", text: typedBinding(question))
+            TextField("Something else…", text: typedBinding(question).onOneLine)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .tint(.meralinePink)

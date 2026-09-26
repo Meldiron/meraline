@@ -166,7 +166,8 @@ final class PanelController: NSObject {
                 self.session.send()
                 return nil
             }
-            if modifiers == .command, event.charactersIgnoringModifiers == "v", self.pasteImages(from: .general) {
+            if modifiers == .command, event.charactersIgnoringModifiers == "v",
+               self.pasteImages(from: .general) || (self.panel.firstResponder as? NSTextView)?.pasteOnOneLine(from: .general) == true {
                 return nil
             }
             return event
