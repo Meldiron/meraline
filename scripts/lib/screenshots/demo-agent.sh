@@ -7,7 +7,17 @@
 #   demo-agent.sh mcp list     the demo servers, in the format of `claude mcp list`
 #   demo-agent.sh --print …    reads one user message on stdin and plays a scripted run. A message that
 #                              mentions a changelog gets a question with two choices; anything else
-#                              searches two MCP servers, answers, and asks to write notes.md.
+#                              searches two MCP servers, answers, and asks to write notes.md. The short
+#                              run behind Why? (ToolReason's system prompt) gets its one-line reason.
+
+case " $* " in
+    *"You explain why an AI agent"*)
+        cat > /dev/null
+        sleep 1
+        echo "It saves the three issues it found to notes.md in the chat's folder, as you asked, and changes no other file."
+        exit 0
+        ;;
+esac
 
 if [ "$1" = "mcp" ] && [ "$2" = "list" ]; then
     cat <<'LIST'

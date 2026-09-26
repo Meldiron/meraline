@@ -3,9 +3,13 @@
 #
 #   panel     an answered question about selected text in LLM mode, with the buttons above the window and the
 #             mode toggle, the controller, and the clock under the input
+#   actions   the chat's panel of actions (⌘K) over that answer: Insert Answer into TextEdit and the rewrites
 #   game      Odd One Out after the model's first move, with its choice buttons and the games unfolded
 #   menu      the panel of recent chats behind the clock, with the chat asked for the panel shot in it
-#   agent     Agent mode: an answer, its trail of MCP tools, and a request to write a file
+#   privacy   Apple Intelligence's answer in a pinned window left in the background: "on this Mac" and the
+#             pin counting down. Not Hide from Screen Sharing: screencapture honors it, and the picture comes
+#             out empty.
+#   agent     Agent mode: an answer, its trail of MCP tools, and a request to write a file with its Why?
 #   question  Agent mode: a question from the agent with its choices
 #   settings  Settings on the Claude Code page, with its MCP servers
 #
@@ -20,7 +24,9 @@
 # The LLM shots ask a real provider: MERALINE_SHOT_LLM (a Provider raw value, default openRouter) with its
 # key from the Keychain and MERALINE_SHOT_MODEL (default: the model you set for it). The agent shots run
 # scripts/lib/screenshots/demo-agent.sh as the Claude Code command, a stand-in that speaks Claude Code's
-# protocol with scripted demo MCP servers and answers, so no picture shows your own servers or files.
+# protocol with scripted demo MCP servers and answers, so no picture shows your own servers or files. The
+# privacy shot asks Apple Intelligence, so it needs a Mac where it is on. The actions and privacy shots put a
+# blank TextEdit document in front, behind the backdrop, and close TextEdit after if it wasn't open.
 #
 #   scripts/screenshots.sh [--wait-idle] [dark|light|both] [output directory]
 #
@@ -78,10 +84,15 @@ frame_key="NSWindow Frame MeralineSettings"
 saved_frame=$(defaults read com.meldiron.meraline "$frame_key" 2>/dev/null || true)
 read -r screen_w screen_h <<< "$(window screen)"
 
-suites=(com.meldiron.meraline.screenshots.llm com.meldiron.meraline.screenshots.agent)
+suites=(com.meldiron.meraline.screenshots.llm com.meldiron.meraline.screenshots.agent com.meldiron.meraline.screenshots.private)
 pid="" backdrop="" logger=""
+textedit_was_open=0
+pgrep -xq TextEdit && textedit_was_open=1
 cleanup() {
   for p in $pid $backdrop $logger; do kill $p 2>/dev/null || true; done
+  if (( ! textedit_was_open )) && pgrep -xq TextEdit; then
+    osascript -e 'tell application "TextEdit" to quit saving no' >/dev/null 2>&1 || true
+  fi
   for suite in $suites; do defaults delete $suite >/dev/null 2>&1 || true; done
   if [[ -n $saved_frame ]]; then defaults write com.meldiron.meraline "$frame_key" "$saved_frame"
   else defaults delete com.meldiron.meraline "$frame_key" >/dev/null 2>&1 || true; fi
@@ -114,6 +125,16 @@ backdrop_up() {  # appearance above|normal
 
 # Moves the pointer to a corner of the backdrop, so no tooltip shows up in a picture.
 park() { "$tools/press" move $(( screen_w - 12 )) $(( screen_h - 12 )); sleep 0.3; }
+
+# Clicks the first button of the throwaway copy whose title starts with $1, found through Accessibility.
+click() { "$tools/press" button $pid "$1"; }
+
+# Puts a blank TextEdit document in front, behind the backdrop: the app Insert Answer offers to paste into,
+# and a way to leave the window without the keyboard, as clicking another app does.
+textedit_front() {
+  osascript -e 'tell application "TextEdit"' -e 'make new document' -e 'activate' -e 'end tell' >/dev/null 2>&1
+  sleep 1
+}
 
 launch() {  # suite appearance
   local args=(-hasLaunchedBefore NO -hasChosenShortcut YES -SUEnableAutomaticChecks NO)
@@ -184,7 +205,7 @@ for appearance in $appearances; do
   backdrop_up $appearance above
   park
 
-  if wants panel || wants game || wants menu; then
+  if wants panel || wants actions || wants game || wants menu; then
   # LLM mode, with a real provider.
   prepare ${suites[1]} mode string llm provider string $llm claudeCode.enabled bool false
   [[ -n $model ]] && defaults write ${suites[1]} "$llm.model" -string "$model"
@@ -194,6 +215,17 @@ for appearance in $appearances; do
   since_mark | grep -q 'Answer complete' || { echo "The LLM did not answer." >&2; return 1; }
   sleep 1.5
   shoot_panel panel
+
+  # The chat's actions, with TextEdit in front for Insert Answer; the same click puts them away.
+  if wants actions; then
+    textedit_front
+    click Actions
+    park
+    sleep 1
+    shoot_panel actions
+    click Actions
+    sleep 1.2
+  fi
 
   # Odd One Out: the controller (588 points from the window's left, 127 below its top) unfolds the games to
   # its left, and its button is the fifth of eight, 130 points left of the games capsule's right edge.
@@ -220,6 +252,21 @@ for appearance in $appearances; do
   quit
   fi
 
+  # Apple Intelligence in a pinned window, left for TextEdit so its pin counts down.
+  if wants privacy; then
+  backdrop_up $appearance above
+  prepare ${suites[3]} mode string llm provider string apple claudeCode.enabled bool false
+  launch ${suites[3]} $appearance
+  ask_about "cant make the review thursday, my doctor moved my appointment. friday ok?" "Rewrite this as a short, polite message to my manager, without a greeting or sign-off."
+  wait_for 'Answer (complete|failed)' 120
+  since_mark | grep -q 'Answer complete' || { echo "Apple Intelligence did not answer." >&2; return 1; }
+  textedit_front
+  park
+  sleep 1.5
+  shoot_panel privacy
+  quit
+  fi
+
   # Agent mode, with the demo stand-in as Claude Code.
   backdrop_up $appearance above
   prepare ${suites[2]} mode string agent provider string claudeCode claudeCode.enabled bool true claudeCode.baseURL string $demo/claude
@@ -229,6 +276,11 @@ for appearance in $appearances; do
   ask "Which open issues mention the menu bar icon? Save a summary to notes.md."
   wait_for 'Agent asks for leave' 60
   sleep 1.2
+  mark
+  click "Why?"
+  park
+  wait_for "Agent's reason for its ask shown" 30
+  sleep 1
   shoot_panel agent
 
   url "meraline://new"
