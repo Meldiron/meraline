@@ -81,7 +81,7 @@ struct ChatPanelView: View {
             return hasConversation ? "Ask a follow-up…" : "Ask anything…"
         }
         switch state.phase {
-        case .yourMove(let placeholder, _): return placeholder
+        case .yourMove(let placeholder, _, _): return placeholder
         case .waiting: return "The model is thinking…"
         case .modelMoves: return "Press Return for the model’s move…"
         case .over(_, let rematch): return rematch.placeholder
@@ -198,6 +198,13 @@ struct ChatPanelView: View {
                 .controlSize(.small)
                 .help("Stop answering")
             } else if session.isPlaying {
+                if session.canHint {
+                    FooterButton(title: "Hint", symbol: "lightbulb", shortcut: KeyboardShortcut("i")) {
+                        session.hint()
+                        isInputFocused = true
+                    }
+                    .help("Show a hint for your move")
+                }
                 FooterButton(title: "Copy", symbol: "doc.on.clipboard", shortcut: KeyboardShortcut("c", modifiers: [.command, .shift])) {
                     session.copyConversation()
                 }

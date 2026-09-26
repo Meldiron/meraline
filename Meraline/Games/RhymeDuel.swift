@@ -1,26 +1,33 @@
 import Foundation
 
-/// Rhyme duel: the model opens with a line of verse, you answer with one that rhymes, and so on, four
-/// lines each, so the last word is yours. Your line is a turn's question and the model's line its answer;
-/// the opening turn has only a cue and the closing turn no answer.
+/// Rhyme duel: a story told in rhyming couplets. The model writes a line that ends on a short word, you
+/// finish the couplet with a line that rhymes with it, and the model carries the story on with a line that
+/// ends on a new word; four lines each, so the last word is yours. Your line is a turn's question and the
+/// model's line its answer; the opening turn has only a cue and the closing turn no answer.
+///
+/// A few words that rhyme with the model's ending travel after a bar in its reply ("The cat sat waiting by
+/// the door | floor, more, four"), hidden. Hint shows one of them, and a line that ends on one of them
+/// rhymes whatever this Mac's ear says.
 nonisolated enum RhymeDuel: GameRules {
     static let title = "Rhyme Duel"
-    static let summary = "Trade rhyming lines, four each"
+    static let summary = "Tell a story in rhyming couplets, four lines each"
     static let symbol = "music.mic"
 
     /// How many lines each side plays.
     static let linesPerSide = 4
     static let lineLimit = linesPerSide * 2
 
-    /// What the model answers when it cannot find a rhyme, so the line comes back instead of being spent.
-    static let pass = "PASS"
-
     static let systemPrompt = """
-    You are playing a rhyme duel. You and the user take turns writing one line of verse each, and you go first. \
-    When asked to open, write one fresh line of verse that is easy to rhyme with; for a new duel, pick a new subject. \
-    After that, answer each line the user writes with exactly one line that rhymes with it, in the same spirit and \
-    about the same length. No preamble, no quotation marks, no Markdown, no explanation: nothing but the line. \
-    If you cannot find a rhyme, answer with exactly \(pass).
+    You are playing a rhyme duel: you and the user tell a short story in verse, one line each, and you go first. \
+    Every line you write ends on a short, common word of one syllable that is easy to rhyme with. \
+    The user answers each of your lines with one that rhymes with it. \
+    When asked to open, write the first line of a story; for a new duel, pick a new subject. \
+    After each line the user writes, write the next line of the story: carry on from the user's line, in the same \
+    spirit and about the same length, but end on a new word that rhymes with none of the lines so far. \
+    Pick each ending word at random, and never end on the same word twice. \
+    After your line, write “ | ” and six common words that rhyme with your last word, separated by commas. \
+    For example: The cat sat waiting by the door | floor, more, four, shore, roar, core. \
+    One line only: no preamble, no quotation marks, no Markdown, no explanation.
     """
 
     /// What the model is asked for its opening line. Nothing of yours is sent for it.
@@ -28,18 +35,24 @@ nonisolated enum RhymeDuel: GameRules {
     static let rematchCue = "Start a new duel: open it with a fresh first line on a new subject."
     private static let cues: Set<String> = [opening, rematchCue]
 
-    static let invitation = "The model opens. Answer each line with one that rhymes; four lines each, and Esc ends it."
+    static let invitation = "The model starts a story. Finish each of its lines with a rhyme, and it carries on with a new word; four lines each. Stuck? Hint shows a rhyme."
     static let done = "Duel done, and the last word was yours. Press Return for a rematch, or Esc to let it go."
+    /// The nudge when the model's reply has no line in it: the opening is asked for again, your line comes back.
+    static let noOpening = "The model had no line to open with. Press Return to ask again."
+    static let lostTheThread = "The model lost the thread. Press Return to send your line again."
+
+    /// A line of the model's: the verse, and the words it hid after the bar that rhyme with its last word.
+    struct Verse: Equatable {
+        var line: String
+        var rhymes: [String] = []
+
+        /// The reply as the game keeps it, which is also how the model sees it later.
+        var kept: String { rhymes.isEmpty ? line : "\(line) | \(rhymes.joined(separator: ", "))" }
+    }
 
     /// The footer's count: which line comes next, or that the duel is over.
     static func status(linesPlayed: Int) -> String {
         linesPlayed >= lineLimit ? "Duel done" : "Line \(linesPlayed + 1) of \(lineLimit)"
-    }
-
-    /// The nudge when the model gives up on a line, which comes back to the input, or on the opening.
-    static func passed(on word: String?) -> String {
-        if let word { return "The model couldn’t find a rhyme for “\(word)”. Try another line." }
-        return "The model had no line to open with. Press Return to ask again."
     }
 
     static func state(of turns: [ChatSession.Turn]) -> GameState {
@@ -52,15 +65,16 @@ nonisolated enum RhymeDuel: GameRules {
         if played >= lineLimit {
             return GameState(phase: .over(summary: done, rematch: Rematch(cue: rematchCue, placeholder: "Press Return for a rematch…")), status: status)
         }
-        let placeholder = lastLine(of: duel).flatMap(rhymeWord(of:)).map { "Rhyme with “\($0)”…" } ?? "Your line…"
-        return GameState(phase: .yourMove(placeholder: placeholder), status: status)
+        let previous = lastVerse(of: duel)
+        let placeholder = previous.flatMap { rhymeWord(of: $0.line) }.map { "Rhyme with “\($0)”…" } ?? "Your line…"
+        return GameState(phase: .yourMove(placeholder: placeholder, hints: previous.map(hints(for:)) ?? []), status: status)
     }
 
     static func play(_ input: String, in turns: [ChatSession.Turn], insisting: Bool) -> GameMove {
         let duel = turns.since(cues) ?? []
         let line = line(from: input)
         guard !line.isEmpty else { return .reject("Write a line first.") }
-        if !insisting, let previous = lastLine(of: duel), let complaint = complaint(about: line, after: previous) {
+        if !insisting, let previous = lastVerse(of: duel), let complaint = complaint(about: line, after: previous) {
             return .reject(complaint)
         }
         // The last word is yours: the model does not answer it.
@@ -68,10 +82,9 @@ nonisolated enum RhymeDuel: GameRules {
     }
 
     static func judge(_ reply: String, in turns: [ChatSession.Turn]) -> GameReply {
-        let line = cleanedAnswer(reply)
-        guard line.isEmpty else { return .accept(line) }
-        let question = turns.last?.question ?? ""
-        return .refuse(passed(on: question.isEmpty ? nil : rhymeWord(of: question)))
+        let verse = verse(from: reply)
+        guard verse.line.isEmpty else { return .accept(verse.kept) }
+        return .refuse(turns.last?.question.isEmpty == false ? lostTheThread : noOpening)
     }
 
     static func lines(for turns: [ChatSession.Turn]) -> [GameLine] {
@@ -80,7 +93,7 @@ nonisolated enum RhymeDuel: GameRules {
             if index > 0 { lines.note("Rematch") }
             for turn in duel {
                 if !turn.question.isEmpty { lines.you(turn.question) }
-                if let reply = turn.reply { lines.model(reply) }
+                if let reply = turn.reply { lines.model(verse(from: reply).line) }
             }
         }
         return lines.all
@@ -89,13 +102,13 @@ nonisolated enum RhymeDuel: GameRules {
     /// The poem: every line in order, a blank line between duels.
     static func transcript(of turns: [ChatSession.Turn]) -> String? {
         let duels = turns.rounds(cues)
-            .map { duel in duel.flatMap { [$0.question, $0.reply ?? ""] }.filter { !$0.isEmpty }.joined(separator: "\n") }
+            .map { duel in duel.flatMap { [$0.question, $0.reply.map { verse(from: $0).line } ?? ""] }.filter { !$0.isEmpty }.joined(separator: "\n") }
             .filter { !$0.isEmpty }
         return duels.isEmpty ? nil : duels.joined(separator: "\n\n")
     }
 
     static func headline(of turns: [ChatSession.Turn]) -> String? {
-        turns.first?.reply
+        turns.first?.reply.map { verse(from: $0).line }
     }
 
     /// Lines played: yours as soon as it is sent, the model's once it is judged.
@@ -104,8 +117,13 @@ nonisolated enum RhymeDuel: GameRules {
     }
 
     /// The model's last line, which your next one has to rhyme with.
-    private static func lastLine(of duel: [ChatSession.Turn]) -> String? {
-        duel.last { $0.reply != nil }?.reply
+    private static func lastVerse(of duel: [ChatSession.Turn]) -> Verse? {
+        duel.last { $0.reply != nil }?.reply.map(verse(from:))
+    }
+
+    /// What Hint shows for a line of the model's, one at a time.
+    static func hints(for verse: Verse) -> [String] {
+        verse.rhymes.map { "Try ending your line on “\($0)”." }
     }
 
     /// The first non-empty line of what was typed or answered: a duel goes one line at a time.
@@ -113,14 +131,33 @@ nonisolated enum RhymeDuel: GameRules {
         GameText.firstLine(text)
     }
 
-    /// The model's line without the decoration models add: extra lines, wrapping quotes. A pass becomes
-    /// an empty line, which the session treats as no answer at all.
-    static func cleanedAnswer(_ answer: String) -> String {
-        var line = line(from: answer)
+    /// The model's reply without the decoration models add: extra lines, wrapping quotes. The rhymes after
+    /// the bar may sit on a line of their own; the line's own last word is not one of them.
+    static func verse(from reply: String) -> Verse {
+        let (shown, hidden) = GameText.split(reply)
+        var line = line(from: shown)
         while line.count >= 2, let first = line.first, let last = line.last, quotes.contains(first), quotes.contains(last) {
             line = String(line.dropFirst().dropLast()).trimmed
         }
-        return line.filter(\.isLetter).uppercased() == pass ? "" : line
+        let ending = rhymeWord(of: line).map(GameText.key)
+        return Verse(line: line, rhymes: hidden.map(words(in:))?.filter { GameText.key($0) != ending } ?? [])
+    }
+
+    /// The rhymes after the bar: "floor, more, four", "Rhymes: floor, more", or "floor more four". Only
+    /// single words count, each once.
+    static func words(in list: String) -> [String] {
+        var list = line(from: list)
+        if let colon = list.lastIndex(of: ":") { list = String(list[list.index(after: colon)...]) }
+        var parts = list.split { ",;·•/".contains($0) }.map(String.init)
+        if parts.count == 1 { parts = parts[0].split(whereSeparator: \.isWhitespace).map(String.init) }
+        var words: [String] = []
+        for part in parts {
+            let word = GameText.withoutEndPunctuation(GameText.unwrapped(part)).lowercased()
+            guard word.contains(where: \.isLetter), word.allSatisfy({ $0.isLetter || apostrophes.contains($0) }),
+                  !words.contains(word) else { continue }
+            words.append(word)
+        }
+        return words
     }
 
     /// The word the next line has to rhyme with: the last word of a line, as typed, without punctuation.
@@ -131,16 +168,17 @@ nonisolated enum RhymeDuel: GameRules {
     }
 
     /// Why a line cannot go to the model yet, or nil when it can. A line after one with no word to rhyme
-    /// with always can; the first line of a duel is never checked.
-    static func complaint(about line: String, after previous: String) -> String? {
-        guard let target = rhymeWord(of: previous) else { return nil }
+    /// with always can; the first line of a duel is never checked. A word the model gave as a rhyme counts
+    /// as one, and so does a word that rhymes with one of those: "pour" answers "door" by way of "four".
+    static func complaint(about line: String, after previous: Verse) -> String? {
+        guard let target = rhymeWord(of: previous.line) else { return nil }
         guard let word = rhymeWord(of: line) else {
             return "End the line with a word that rhymes with “\(target)”."
         }
         if word.lowercased() == target.lowercased() {
             return "“\(target)” again? Find another rhyme for it, or send the line again as it is."
         }
-        guard rhymes(word, with: target) else {
+        guard rhymes(word, with: target) || previous.rhymes.contains(where: { GameText.key($0) == GameText.key(word) || rhymes(word, with: $0) }) else {
             return "“\(word)” doesn’t rhyme with “\(target)”, not to my ear. Try another ending, or send the line again as it is."
         }
         return nil

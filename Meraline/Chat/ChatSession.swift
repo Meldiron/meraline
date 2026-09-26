@@ -110,6 +110,9 @@ final class ChatSession {
     /// The game is waiting for you.
     var isYourMove: Bool { !isStreaming && gameState?.isYourMove == true }
 
+    /// The game has a hint for your move.
+    var canHint: Bool { isYourMove && gameState?.hints.isEmpty == false }
+
     var lastAnswer: String? {
         turns.last(where: { !$0.answer.isEmpty })?.answer
     }
@@ -335,6 +338,15 @@ final class ChatSession {
         guard isYourMove else { return }
         draft = choice
         send()
+    }
+
+    /// Shows one of the game's hints for your move at random, never the one showing already.
+    func hint() {
+        guard let game, isYourMove, let hints = gameState?.hints else { return }
+        let others = hints.filter { $0 != nudge }
+        guard let hint = (others.isEmpty ? hints : others).randomElement() else { return }
+        nudge = hint
+        Log.chat.info("\(game.title): hint shown")
     }
 
     func reopen(_ id: PastChat.ID) {

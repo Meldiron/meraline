@@ -71,8 +71,8 @@ nonisolated struct GameState: Equatable, Sendable {
         case modelMoves(cue: String)
         /// The model is moving.
         case waiting
-        /// Your move. `choices` show as buttons that play themselves.
-        case yourMove(placeholder: String, choices: [String] = [])
+        /// Your move. `choices` show as buttons that play themselves; Hint shows one of `hints` at a time.
+        case yourMove(placeholder: String, choices: [String] = [], hints: [String] = [])
         /// The round is over, and Return starts the next one.
         case over(summary: String, rematch: Rematch)
     }
@@ -86,7 +86,11 @@ nonisolated struct GameState: Equatable, Sendable {
     }
 
     var choices: [String] {
-        if case .yourMove(_, let choices) = phase { choices } else { [] }
+        if case .yourMove(_, let choices, _) = phase { choices } else { [] }
+    }
+
+    var hints: [String] {
+        if case .yourMove(_, _, let hints) = phase { hints } else { [] }
     }
 }
 

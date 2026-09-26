@@ -32,14 +32,25 @@ struct RhymeDuelRulesTests {
     }
 
     @Test func aComplaintNamesBothWords() throws {
-        let opening = "I went out walking in the rain"
+        let opening = RhymeDuel.Verse(line: "I went out walking in the rain")
         let complaint = try #require(RhymeDuel.complaint(about: "And then I saw the sun", after: opening))
         #expect(complaint.contains("“sun”"))
         #expect(complaint.contains("“rain”"))
         #expect(RhymeDuel.complaint(about: "It fell like tears upon the plane", after: opening) == nil)
-        #expect(RhymeDuel.complaint(about: opening, after: opening)?.contains("again") == true)
+        #expect(RhymeDuel.complaint(about: opening.line, after: opening)?.contains("again") == true)
         #expect(RhymeDuel.complaint(about: "…", after: opening)?.contains("“rain”") == true)
-        #expect(RhymeDuel.complaint(about: "Anything goes", after: "1, 2, 3") == nil, "nothing to rhyme with lets the line through")
+        #expect(RhymeDuel.complaint(about: "Anything goes", after: .init(line: "1, 2, 3")) == nil, "nothing to rhyme with lets the line through")
+    }
+
+    @Test func aRhymeTheModelGaveCountsWhateverTheEarSays() {
+        #expect(!RhymeDuel.rhymes("more", with: "door"), "spelling alone misses this one")
+        let bare = RhymeDuel.Verse(line: "A cat sat waiting by the door")
+        let hinted = RhymeDuel.Verse(line: bare.line, rhymes: ["floor", "more"])
+        #expect(RhymeDuel.complaint(about: "She wanted nothing more", after: bare) != nil)
+        #expect(RhymeDuel.complaint(about: "She wanted nothing More!", after: hinted) == nil)
+        #expect(RhymeDuel.complaint(about: "Until the clouds began to pour", after: bare) != nil)
+        #expect(RhymeDuel.complaint(about: "Until the clouds began to pour", after: .init(line: bare.line, rhymes: ["four"])) == nil, "by way of “four”")
+        #expect(RhymeDuel.complaint(about: "And then I saw the sun", after: hinted)?.contains("“door”") == true)
     }
 
     @Test func onlyTheFirstLineCounts() {
@@ -48,10 +59,20 @@ struct RhymeDuelRulesTests {
     }
 
     @Test func modelAnswersAreCleanedUp() {
-        #expect(RhymeDuel.cleanedAnswer("“It fell like tears upon the plane.”\n\nWant another?") == "It fell like tears upon the plane.")
-        #expect(RhymeDuel.cleanedAnswer("PASS") == "")
-        #expect(RhymeDuel.cleanedAnswer(" *pass.* ") == "")
-        #expect(RhymeDuel.cleanedAnswer("Pass the salt, the soup is bland") == "Pass the salt, the soup is bland")
+        #expect(RhymeDuel.verse(from: "“It fell like tears upon the plane.”\n\nWant another?") == .init(line: "It fell like tears upon the plane."))
+        #expect(RhymeDuel.verse(from: "Pass the salt, the soup is bland") == .init(line: "Pass the salt, the soup is bland"))
+        #expect(RhymeDuel.verse(from: " | floor, more").line.isEmpty)
+    }
+
+    @Test func theRhymesAfterTheBarStayHidden() {
+        let verse = RhymeDuel.verse(from: "“A cat sat waiting by the door.” | Floor, *more*, four, door, floor, no more.\n\nWant another?")
+        #expect(verse.line == "A cat sat waiting by the door.")
+        #expect(verse.rhymes == ["floor", "more", "four"], "the line's own word, repeats, and phrases are left out")
+        #expect(verse.kept == "A cat sat waiting by the door. | floor, more, four")
+        #expect(RhymeDuel.verse(from: verse.kept) == verse)
+        #expect(RhymeDuel.verse(from: "The sun came up to greet the day\n| Rhymes: play, stay, may").rhymes == ["play", "stay", "may"])
+        #expect(RhymeDuel.verse(from: "The sun came up to greet the day | play stay may").rhymes == ["play", "stay", "may"])
+        #expect(RhymeDuel.hints(for: verse).first == "Try ending your line on “floor”.")
     }
 
     @Test func statusCountsLinesAndEnds() {
@@ -60,13 +81,13 @@ struct RhymeDuelRulesTests {
         #expect(RhymeDuel.status(linesPlayed: 8) == "Duel done")
     }
 
-    @Test func thePromptHasTheModelOpenWithOneLineOrPass() {
+    @Test func thePromptAsksForShortEndingsANewWordEachLineAndHiddenRhymes() {
         #expect(RhymeDuel.systemPrompt.contains("you go first"))
-        #expect(RhymeDuel.systemPrompt.contains("one line"))
-        #expect(RhymeDuel.systemPrompt.contains(RhymeDuel.pass))
+        #expect(RhymeDuel.systemPrompt.contains("short, common word of one syllable"))
+        #expect(RhymeDuel.systemPrompt.contains("end on a new word"))
+        #expect(RhymeDuel.systemPrompt.contains("“ | ”"))
+        #expect(RhymeDuel.systemPrompt.contains("One line only"))
         #expect(!RhymeDuel.opening.isEmpty)
-        #expect(RhymeDuel.passed(on: nil).contains("open"))
-        #expect(RhymeDuel.passed(on: "rain").contains("“rain”"))
     }
 }
 
@@ -74,25 +95,27 @@ struct RhymeDuelRulesTests {
 struct RhymeDuelSessionTests {
     private typealias Support = GameTestSupport
 
-    private let opening = "I went out walking in the rain"
+    private let opening = "A cat sat waiting by the door"
+    /// The opening as the game keeps it, with the rhymes the model hid.
+    private let openingReply = "A cat sat waiting by the door | floor, more, four"
     private let exchanges = [
-        ("It fell like tears upon the plane", "And soaked the fields of golden grain"),
-        ("It hit me later like a train", "I said it once, I’ll say again"),
-        ("The puddles gathered in the lane", "And washed the worries from my brain")
+        ("Until the clouds began to pour", "She heard a knock and then a shout"),
+        ("A tiny voice said let me out", "A soggy dog stood in the light"),
+        ("His fur was dripping, what a sight", "She let him in to share her mat")
     ]
-    private let closing = "So here I am, out in the rain"
+    private let closing = "And that is how he met the cat"
 
     /// A duel as it is remembered: the model's opening line, the exchanges after it (your line, then the
     /// model's), and your closing line, which gets no reply.
     private func duel(exchanges: [(String, String)] = [], closing: String? = nil) -> ChatSession.PastChat {
-        var turns = [Support.turn(cue: RhymeDuel.opening, reply: opening)]
+        var turns = [Support.turn(cue: RhymeDuel.opening, reply: openingReply)]
         turns += exchanges.map { Support.turn($0.0, reply: $0.1) }
         if let closing { turns.append(Support.turn(closing)) }
         return ChatSession.PastChat(turns: turns, date: .now, mode: .game(.rhymeDuel))
     }
 
     @Test func startingADuelAsksTheModelToOpen() async {
-        let model = ScriptedModel([opening])
+        let model = ScriptedModel([openingReply])
         let session = Support.session(model)
         session.draft = "half a question"
         session.startGame(.rhymeDuel)
@@ -127,7 +150,7 @@ struct RhymeDuelSessionTests {
         let session = Support.session(model)
         session.reopen(duel())
         #expect(session.isYourMove)
-        #expect(session.gameState?.phase == .yourMove(placeholder: "Rhyme with “rain”…"))
+        #expect(session.gameState?.phase == .yourMove(placeholder: "Rhyme with “door”…", hints: RhymeDuel.hints(for: .init(line: opening, rhymes: ["floor", "more", "four"]))))
         session.draft = "And then I saw the sun"
         session.send()
         #expect(model.requests.isEmpty)
@@ -150,23 +173,62 @@ struct RhymeDuelSessionTests {
     }
 
     @Test func theModelsLineIsCleanedUp() async {
-        let model = ScriptedModel(["“And soaked the fields of golden grain.”\n\nWant another?"])
+        let model = ScriptedModel(["“She heard a knock and then a shout.”\n\nWant another?"])
         let session = Support.session(model)
         session.reopen(duel())
         await Support.play(exchanges[0].0, in: session)
-        #expect(session.turns.last?.answer == "And soaked the fields of golden grain.")
+        #expect(session.turns.last?.answer == "She heard a knock and then a shout.")
         #expect(model.requests.first?.messages.map(\.role) == [.user, .assistant, .user])
-        #expect(model.lastMessages == [RhymeDuel.opening, opening, exchanges[0].0])
+        #expect(model.lastMessages == [RhymeDuel.opening, openingReply, exchanges[0].0], "the model sees the rhymes it hid")
     }
 
-    @Test func aPassSendsTheLineBack() async {
-        let model = ScriptedModel(["PASS"])
+    @Test func theModelCarriesTheStoryOnWithANewWord() async throws {
+        let model = ScriptedModel(["She heard a knock and then a shout | out, about, doubt, sprout"])
         let session = Support.session(model)
         session.reopen(duel())
         await Support.play(exchanges[0].0, in: session)
-        #expect(session.turns.count == 1, "the pass did not cost a turn")
+        #expect(session.isYourMove)
+        #expect(session.gameState?.status == "Line 4 of 8")
+        let state = try #require(session.gameState)
+        #expect(state.phase == .yourMove(placeholder: "Rhyme with “shout”…", hints: RhymeDuel.hints(for: .init(line: "", rhymes: ["out", "about", "doubt", "sprout"]))))
+        #expect(RhymeDuel.lines(for: session.turns).map(\.text) == [opening, exchanges[0].0, exchanges[0].1], "the rhymes stay hidden")
+    }
+
+    @Test func aReplyWithoutALineSendsYourLineBack() async {
+        let model = ScriptedModel(["| out, about"])
+        let session = Support.session(model)
+        session.reopen(duel())
+        await Support.play(exchanges[0].0, in: session)
+        #expect(session.turns.count == 1, "it did not cost a turn")
         #expect(session.draft == exchanges[0].0)
-        #expect(session.nudge == RhymeDuel.passed(on: "plane"))
+        #expect(session.nudge == RhymeDuel.lostTheThread)
+    }
+
+    @Test func aHintShowsOneOfTheModelsRhymesAtATime() throws {
+        let session = Support.session(ScriptedModel())
+        session.reopen(duel())
+        #expect(session.canHint)
+        let hints = RhymeDuel.hints(for: .init(line: opening, rhymes: ["floor", "more", "four"]))
+        session.hint()
+        let first = try #require(session.nudge)
+        #expect(hints.contains(first))
+        for _ in 0..<10 {
+            let shown = session.nudge
+            session.hint()
+            #expect(session.nudge != shown, "a second hint is a different one")
+            #expect(session.nudge.map(hints.contains) == true)
+        }
+    }
+
+    @Test func noHintsWithoutTheModelsRhymesOrOffYourMove() {
+        let session = Support.session(ScriptedModel())
+        session.reopen(ChatSession.PastChat(turns: [Support.turn(cue: RhymeDuel.opening, reply: opening)], date: .now, mode: .game(.rhymeDuel)))
+        #expect(session.isYourMove)
+        #expect(!session.canHint)
+        session.reopen(duel(exchanges: exchanges, closing: closing))
+        #expect(!session.canHint, "the duel is over")
+        session.hint()
+        #expect(session.nudge == RhymeDuel.done)
     }
 
     @Test func theLastWordIsYoursAndReturnStartsARematch() {
