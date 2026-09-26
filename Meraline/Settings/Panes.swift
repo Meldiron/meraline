@@ -49,23 +49,34 @@ struct GeneralPane: View {
             }
 
             Section {
-                Picker("Default provider", selection: $preferences.provider) {
-                    if preferences.readyProviders.isEmpty {
-                        Text("None").tag(Provider?.none)
+                ForEach(ProviderKind.allCases) { kind in
+                    let ready = preferences.readyProviders(for: kind)
+                    Picker("Default \(kind.title)", selection: defaultProvider(for: kind)) {
+                        if ready.isEmpty {
+                            Text("None").tag(Provider?.none)
+                        }
+                        ForEach(ready) { provider in
+                            Label(provider.name, systemImage: provider.symbol).tag(Provider?.some(provider))
+                        }
                     }
-                    ForEach(preferences.readyProviders) { provider in
-                        Label(provider.name, systemImage: provider.symbol).tag(Provider?.some(provider))
-                    }
+                    .disabled(ready.isEmpty)
                 }
-                .disabled(preferences.readyProviders.isEmpty)
             } header: {
-                Text("Provider")
+                Text("Providers")
             } footer: {
                 Text("Chats live only in memory and are never written to disk. Quitting Meraline forgets them.")
             }
         }
         .formStyle(.grouped)
         .onAppear { loginItemStatus = SMAppService.mainApp.status }
+    }
+
+    /// A mode's provider. Picking here leaves the panel in the mode it is in.
+    private func defaultProvider(for kind: ProviderKind) -> Binding<Provider?> {
+        Binding(
+            get: { preferences.defaultProvider(for: kind) },
+            set: { preferences.setDefaultProvider($0, for: kind) }
+        )
     }
 
     private var launchAtLogin: Binding<Bool> {
@@ -128,6 +139,7 @@ struct ProviderPane: View {
     }
 
     private var settings: ProviderSettings { preferences[provider] }
+    private var registry: MCPServerRegistry { .shared }
 
     private var modelPlaceholder: String {
         if provider.isCommandLine { return "Default" }
@@ -166,6 +178,13 @@ struct ProviderPane: View {
                         Text(provider == .claudeCode
                             ? "Lets Claude search and read web pages for current information. Answers take longer."
                             : "Lets Codex search the web for current information. Answers take longer.")
+                    }
+                    .tint(.meralinePink)
+                }
+                if provider.supportsMCP {
+                    Toggle(isOn: binding(\.allowsMCP)) {
+                        Text("Allow MCP servers")
+                        Text("Lets \(provider.name) use the MCP servers set up in it. Each tool it calls shows up while it answers and under the answer.")
                     }
                     .tint(.meralinePink)
                 }
@@ -218,6 +237,26 @@ struct ProviderPane: View {
                 }
             }
 
+            if provider.supportsMCP {
+                Section {
+                    mcpServers
+                } header: {
+                    Text("MCP Servers")
+                } footer: {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Meraline asks \(provider.name) for this list and never changes its setup. Add a server with “\(settings.baseURL.trimmed) mcp add”, and turn one off here to keep it out of your questions.")
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        if registry.refreshing.contains(provider) {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Button("Refresh") { registry.refresh(provider, preferences: preferences) }
+                                .disabled(!settings.isReady(for: provider))
+                        }
+                    }
+                }
+            }
+
             Section {
                 LabeledContent {
                     HStack(spacing: 8) {
@@ -229,8 +268,8 @@ struct ProviderPane: View {
                     Text("Status")
                     Text(settings.isReady(for: provider) ? "Ready to answer" : "Not set up")
                 }
-                if settings.isReady(for: provider) && preferences.activeProvider != provider {
-                    LabeledContent("Default provider") {
+                if settings.isReady(for: provider) && preferences.defaultProvider(for: provider.kind) != provider {
+                    LabeledContent("Default \(provider.kind.title)") {
                         Button("Use \(provider.name)") { preferences.provider = provider }
                     }
                 }
@@ -238,9 +277,73 @@ struct ProviderPane: View {
         }
         .formStyle(.grouped)
         .onChange(of: settings) { test = .idle }
+        .task(id: provider) {
+            if provider.supportsMCP, !registry.hasListed(provider), settings.isReady(for: provider) {
+                registry.refresh(provider, preferences: preferences)
+            }
+        }
     }
 
     private var onDeviceModelIsAvailable: Bool { AppleIntelligenceClient.isAvailable }
+
+    /// One toggle per server the agent listed, or what stands in its place: the wait for the list, why
+    /// it failed, or how to add a first server.
+    @ViewBuilder
+    private var mcpServers: some View {
+        if let servers = registry.servers[provider], !servers.isEmpty {
+            ForEach(servers) { server in
+                Toggle(isOn: serverBinding(server)) {
+                    Text(server.name)
+                    Text(server.target.isEmpty ? server.status.title : "\(server.status.title) · \(server.target)")
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .tint(.meralinePink)
+                .disabled(!settings.allowsMCP || !server.status.isUsable)
+            }
+        } else if registry.refreshing.contains(provider) {
+            LabeledContent {
+                ProgressView().controlSize(.small)
+            } label: {
+                Text("Asking \(provider.name) for its servers…")
+            }
+        } else if let failure = registry.failures[provider] {
+            LabeledContent {
+                Button("Try Again") { registry.refresh(provider, preferences: preferences) }
+            } label: {
+                Text("Couldn’t list the servers")
+                Text(failure)
+            }
+        } else if !settings.isReady(for: provider) {
+            Text("Turn on \(provider.name) to see its MCP servers.")
+                .foregroundStyle(.secondary)
+        } else {
+            LabeledContent {
+                if let portal = provider.mcpPortal {
+                    Link("Learn More", destination: portal)
+                }
+            } label: {
+                Text("No MCP servers")
+                Text("\(provider.name) has none set up yet.")
+            }
+        }
+    }
+
+    private func serverBinding(_ server: MCPServer) -> Binding<Bool> {
+        Binding(
+            get: { server.status.isUsable && !preferences[provider].disabledMCPServers.contains(server.name) },
+            set: { isOn in
+                var updated = preferences[provider]
+                if isOn {
+                    updated.disabledMCPServers.remove(server.name)
+                } else {
+                    updated.disabledMCPServers.insert(server.name)
+                }
+                preferences[provider] = updated
+                Log.settings.info("\(provider.name) MCP server \(isOn ? "on" : "off"): \(server.name)")
+            }
+        )
+    }
 
     @ViewBuilder
     private var availabilityStatus: some View {
@@ -296,7 +399,9 @@ struct ProviderPane: View {
         )
         Task {
             do {
-                for try await _ in LLMClient.stream(request) {}
+                for try await output in LLMClient.stream(request) {
+                    if case .prompt(_, let responder?) = output { responder(.deny) }
+                }
                 test = .succeeded
             } catch {
                 test = .failed(error.localizedDescription)

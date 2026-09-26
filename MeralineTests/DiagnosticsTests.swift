@@ -31,7 +31,7 @@ struct DiagnosticsTests {
         #expect(!report.contains(secret))
         #expect(report.contains("| Anthropic | ready | claude-opus-5 | api.anthropic.com |"))
         #expect(report.contains("beta channel"))
-        #expect(report.contains("Default provider: Anthropic"))
+        #expect(report.contains("Mode: LLM, default LLM: Anthropic, default agent: none"))
         #expect(report.contains("[chat] info: Asking Anthropic"))
         #expect(!report.contains(NSHomeDirectory()))
     }

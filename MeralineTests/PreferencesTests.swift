@@ -63,6 +63,26 @@ struct PreferencesTests {
         #expect(reloaded.idleReset == .oneHour)
     }
 
+    @Test func mcpChoicesPersist() {
+        let defaults = makeDefaults()
+        let preferences = Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: false)
+        #expect(preferences[.claudeCode].allowsMCP)
+        #expect(preferences[.claudeCode].knownMCPServers.isEmpty)
+        var claude = preferences[.claudeCode]
+        claude.knownMCPServers = ["knowledge-rag", "vencord"]
+        claude.disabledMCPServers = ["vencord"]
+        preferences[.claudeCode] = claude
+        var codex = preferences[.codex]
+        codex.allowsMCP = false
+        preferences[.codex] = codex
+
+        let reloaded = Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: false)
+        #expect(reloaded[.claudeCode].knownMCPServers == ["knowledge-rag", "vencord"])
+        #expect(reloaded[.claudeCode].disabledMCPServers == ["vencord"])
+        #expect(reloaded[.claudeCode].allowedMCPServers == ["knowledge-rag"])
+        #expect(!reloaded[.codex].allowsMCP)
+    }
+
     @Test func idleResetDefaultsToHalfAnHourAndExpiresHiddenChats() {
         let preferences = Preferences(defaults: makeDefaults(), secrets: noSecrets, onDeviceModelAvailable: false)
         #expect(preferences.idleReset == .thirtyMinutes)
@@ -97,6 +117,56 @@ struct PreferencesTests {
         let reloaded = Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: true)
         #expect(!reloaded[.apple].isEnabled)
         #expect(reloaded.activeProvider == nil)
+    }
+
+    @Test func eachModeKeepsItsOwnProvider() {
+        let defaults = makeDefaults()
+        let preferences = Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: true)
+        #expect(preferences.mode == .llm)
+        #expect(preferences.activeProvider == .apple)
+
+        var claude = preferences[.claudeCode]
+        claude.isEnabled = true
+        preferences[.claudeCode] = claude
+        #expect(preferences.mode == .llm, "turning an agent on leaves the mode alone")
+        #expect(preferences.activeProvider == .apple)
+        #expect(preferences.readyProviders(for: .agent) == [.claudeCode])
+        #expect(preferences.readyProviders(for: .llm) == [.apple])
+
+        preferences.mode = .agent
+        #expect(preferences.activeProvider == .claudeCode)
+        #expect(preferences.provider == .claudeCode)
+
+        preferences.provider = .apple
+        #expect(preferences.mode == .llm, "picking a provider of the other kind switches the mode")
+        #expect(preferences.defaultProvider(for: .agent) == .claudeCode)
+
+        preferences.setDefaultProvider(.claudeCode, for: .llm)
+        #expect(preferences.defaultProvider(for: .llm) == .apple, "a provider only fits its own mode")
+
+        let reloaded = Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: true)
+        #expect(reloaded.mode == .llm)
+        #expect(reloaded.activeProvider == .apple)
+        #expect(reloaded.defaultProvider(for: .agent) == .claudeCode)
+        reloaded.mode = .agent
+        #expect(Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: true).activeProvider == .claudeCode)
+    }
+
+    @Test func aModeWithNothingReadyHasNoProvider() {
+        let preferences = Preferences(defaults: makeDefaults(), secrets: noSecrets, onDeviceModelAvailable: true)
+        preferences.mode = .agent
+        #expect(preferences.activeProvider == nil)
+        #expect(preferences.defaultProvider(for: .llm) == .apple)
+    }
+
+    @Test func theSavedProviderStillPicksTheMode() {
+        let defaults = makeDefaults()
+        defaults.set("codex", forKey: "provider")
+        defaults.set(true, forKey: "codex.enabled")
+        let preferences = Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: true)
+        #expect(preferences.mode == .agent)
+        #expect(preferences.activeProvider == .codex)
+        #expect(preferences.defaultProvider(for: .llm) == .apple)
     }
 
     @Test func disablingTheActiveProviderClearsIt() {

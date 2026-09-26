@@ -31,7 +31,7 @@ nonisolated enum LLMClient {
                             continuation.yield(.activity(activity))
                         case .finished:
                             return true
-                        case .ignored:
+                        case .ignored, .prompt:
                             break
                         }
                         return false

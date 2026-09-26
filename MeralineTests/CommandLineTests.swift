@@ -38,7 +38,7 @@ struct CommandLineTests {
         }
     }
 
-    @Test func claudeCodeSendsOneStreamJSONMessageWithoutTools() throws {
+    @Test func claudeCodeSendsOneStreamJSONMessageAndAsksOverStdin() throws {
         let invocation = try CommandLineClient.invocation(for: request(
             .claudeCode,
             model: "sonnet",
@@ -46,7 +46,11 @@ struct CommandLineTests {
         ))
         #expect(invocation.arguments.contains("--no-session-persistence"))
         let tools = try #require(invocation.arguments.firstIndex(of: "--tools"))
-        #expect(invocation.arguments[tools + 1] == "WebSearch,WebFetch")
+        #expect(invocation.arguments[tools + 1] == "WebSearch,WebFetch,Read,Write,Edit,Glob,Grep,AskUserQuestion")
+        let prompts = try #require(invocation.arguments.firstIndex(of: "--permission-prompt-tool"))
+        #expect(invocation.arguments[prompts + 1] == "stdio")
+        let allowed = try #require(invocation.arguments.firstIndex(of: "--allowedTools"))
+        #expect(Array(invocation.arguments[(allowed + 1)...(allowed + 2)]) == ["WebSearch", "WebFetch"])
         let model = try #require(invocation.arguments.firstIndex(of: "--model"))
         #expect(invocation.arguments[model + 1] == "sonnet")
         #expect(!invocation.arguments.contains("--effort"))
@@ -67,7 +71,7 @@ struct CommandLineTests {
             messages: [ChatMessage(role: .user, text: "Hi")]
         ))
         let tools = try #require(invocation.arguments.firstIndex(of: "--tools"))
-        #expect(invocation.arguments[tools + 1] == "")
+        #expect(invocation.arguments[tools + 1] == "Read,Write,Edit,Glob,Grep,AskUserQuestion")
         #expect(!invocation.arguments.contains("--allowedTools"))
         let effort = try #require(invocation.arguments.firstIndex(of: "--effort"))
         #expect(invocation.arguments[effort + 1] == "low")
@@ -97,13 +101,13 @@ struct CommandLineTests {
         #expect(Activity.searching("Prague events").title == "Searching for “Prague events”")
     }
 
-    @Test func codexRunsEphemerallyInAReadOnlySandbox() throws {
+    @Test func codexRunsEphemerallyInAWorkspaceWriteSandbox() throws {
         let invocation = try CommandLineClient.invocation(for: request(
             .codex,
             messages: [ChatMessage(role: .user, text: "Hi", images: [image])]
         ))
         #expect(invocation.arguments == [
-            "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--sandbox", "read-only",
+            "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--sandbox", "workspace-write",
             "--config", "web_search=\"live\"",
             "--image", "image-1.png", "-"
         ])
@@ -190,5 +194,21 @@ struct CommandLineTests {
             }
             #expect(answer.lowercased().contains("ready"), "\(provider.name) answered: \(answer)")
         }
+    }
+}
+
+struct LineReaderTests {
+    /// A line reaches the reader while the writer is still open, as an agent's question does while it
+    /// waits for the answer.
+    @Test(.timeLimit(.minutes(1))) func linesArriveBeforeThePipeCloses() async throws {
+        let pipe = Pipe()
+        var lines = CommandLineClient.lines(of: pipe.fileHandleForReading).makeAsyncIterator()
+        try pipe.fileHandleForWriting.write(contentsOf: Data("{\"type\":\"control_request\"}\npart".utf8))
+        #expect(await lines.next() == #"{"type":"control_request"}"#)
+        try pipe.fileHandleForWriting.write(contentsOf: Data("ial é\r\nlast".utf8))
+        #expect(await lines.next() == "partial é")
+        try pipe.fileHandleForWriting.close()
+        #expect(await lines.next() == "last")
+        #expect(await lines.next() == nil)
     }
 }

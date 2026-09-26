@@ -38,18 +38,18 @@ There are no chat lists, no history, and no projects. Nothing is saved to disk. 
 
 🖼️ **Understands images.** Paste a screenshot or drop an image into the window and ask about it.
 
-🎲 **Plays word games.** The sparkle menu's Play section has six quick games against the model: Rhyme Duel, Add-a-Word, Categories, Word Football, Odd One Out, and Fix the Typo. The model moves first, a move that breaks the rules comes back to you instead of costing a turn, and <kbd>Esc</kbd> forgets the game like any other chat.
+🎲 **Plays word games.** The controller buttons under the input start six quick games against the model: Rhyme Duel, Add-a-Word, Categories, Word Football, Odd One Out, and Fix the Typo. The model moves first, a move that breaks the rules comes back to you instead of costing a turn, and <kbd>Esc</kbd> forgets the game like any other chat.
 
 🍎 **Works out of the box.** On a Mac with Apple Intelligence, the on-device model built into macOS answers the moment you install. No key, no account, and nothing leaves your Mac.
 
-🔌 **Uses the AI you already have.** Click the sparkle in the window to switch between the providers you've turned on, start a game, or reopen one of your last five chats. Recent chats stay in memory until you quit Meraline.
+🔌 **Uses the AI you already have.** The toggle under the input switches between asking an LLM and asking an agent (<kbd>⌘</kbd> <kbd>1</kbd> and <kbd>⌘</kbd> <kbd>2</kbd>). Click the sparkle to pick among that mode's providers you've turned on, or to reopen one of your last five chats. Recent chats stay in memory until you quit Meraline.
 
 | | Works with |
 | --- | --- |
 | **On this Mac** | Apple Intelligence, the on-device model in macOS 26 |
 | **API keys** | Anthropic, OpenAI, Google Gemini, OpenRouter |
 | **Local models** | Ollama, LM Studio, or any OpenAI-compatible server |
-| **Command-line agents** | Claude Code, Codex, OpenCode, using the account they're signed in to |
+| **Command-line agents** | Claude Code, Codex, OpenCode, using the account they're signed in to and the MCP servers set up in them |
 
 🔒 **Stays private.** API keys live in your Keychain. Conversations exist only in memory. OpenAI requests ask not to be stored, and command-line agents run in an empty temporary folder without saving a session. When you do want to keep something, copy the answer or the whole conversation as Markdown.
 
@@ -113,7 +113,7 @@ Meraline is built so you don't have to take its word for any of this.
 - **No account and no server in between.** Questions go straight from your Mac to the provider you chose. Meraline has no backend, no analytics, and no crash reporting. The only other connection is a once-a-day update check against `github.com`, which you can turn off in Settings. Watch the traffic with any network monitor and you'll see nothing else.
 - **Nothing on disk.** Conversations and games live in memory and are gone when you quit. The preferences file (`defaults read com.meldiron.meraline`) holds settings only: shortcut, window placement, and which providers are on.
 - **Keys in the Keychain.** API keys are stored as Keychain items under the service `com.meldiron.meraline.api-keys`, where Keychain Access can show and delete them. They never appear in preferences, logs, or diagnostics.
-- **Command-line agents stay in charge of their own sign-in.** Meraline runs the unmodified `claude`, `codex`, and `opencode` commands in an empty temporary folder that is deleted afterwards, with session persistence off. It never reads or copies their tokens.
+- **Command-line agents stay in charge of their own sign-in.** Meraline runs the unmodified `claude`, `codex`, and `opencode` commands in an empty temporary folder that is deleted afterwards, with session persistence off. It never reads or copies their tokens. The MCP servers set up in an agent are available to it here too, as the agent reports them; **Settings › Agents** lists them and lets you turn any of them off for Meraline alone, without touching the agent's own configuration. Each chat gives its agent an empty scratch folder in the temporary directory, removed when the chat is forgotten or Meraline quits. When Claude Code wants to write there, or has a question of its own, Meraline shows it and waits for you.
 - **On-device means on-device.** Apple Intelligence answers come from the model inside macOS. Nothing is sent anywhere.
 - **It's all open source.** Search the code for `URLSession`, `Process`, and `Keychain` to see every place Meraline talks to anything.
 

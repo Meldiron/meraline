@@ -39,7 +39,7 @@ final class PanelController: NSObject {
     private var isApplyingFrame = false
     private var hiddenAt: Date?
 
-    init(session: ChatSession, preferences: Preferences, openSettings: @escaping () -> Void) {
+    init(session: ChatSession, preferences: Preferences, openSettings: @escaping (SettingsPane?) -> Void) {
         self.session = session
         self.preferences = preferences
         panel = FloatingPanel(

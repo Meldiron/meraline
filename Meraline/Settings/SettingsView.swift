@@ -54,8 +54,8 @@ struct SettingsView: View {
         NavigationSplitView {
             List(selection: $navigation.selection) {
                 sidebarSection([.general, .prompt, .softwareUpdate, .about])
-                sidebarSection(Provider.services.map(SettingsPane.provider), title: "Providers")
-                sidebarSection(Provider.commandLineTools.map(SettingsPane.provider), title: "Command-Line Tools")
+                sidebarSection(Provider.services.map(SettingsPane.provider), title: "LLMs")
+                sidebarSection(Provider.commandLineTools.map(SettingsPane.provider), title: "Agents")
             }
             .searchable(text: $search, placement: .sidebar, prompt: "Search")
             .navigationSplitViewColumnWidth(215)
@@ -87,7 +87,7 @@ struct SettingsView: View {
     }
 
     private func badge(for pane: SettingsPane) -> Text? {
-        guard case .provider(let provider) = pane, preferences.activeProvider == provider else { return nil }
+        guard case .provider(let provider) = pane, preferences.defaultProvider(for: provider.kind) == provider else { return nil }
         return Text("Default")
     }
 

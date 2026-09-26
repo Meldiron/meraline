@@ -5,6 +5,8 @@ nonisolated struct CommandInvocation: Equatable, Sendable {
     var arguments: [String]
     var input: Data?
     var files: [String: Data] = [:]
+    /// Variables added to the agent's environment, on top of Meraline's own and `PATH`.
+    var environment: [String: String] = [:]
 }
 
 nonisolated enum CommandLineClient {
@@ -43,7 +45,8 @@ nonisolated enum CommandLineClient {
         guard let executable = resolve(request.settings.baseURL) else {
             throw LLMError.commandNotFound(request.provider, request.settings.baseURL.trimmed)
         }
-        let model = request.settings.model.trimmed
+        let settings = request.settings
+        let model = settings.model.trimmed
         let images = request.messages.flatMap(\.images)
 
         switch request.provider {
@@ -55,16 +58,33 @@ nonisolated enum CommandLineClient {
                 "--verbose",
                 "--include-partial-messages",
                 "--no-session-persistence",
-                "--strict-mcp-config",
                 "--system-prompt", request.systemPrompt
             ]
             if !model.isEmpty { arguments += ["--model", model] }
-            if request.settings.effort != .automatic { arguments += ["--effort", request.settings.effort.rawValue] }
-            if request.settings.allowsWebSearch {
-                arguments += ["--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch", "WebFetch"]
-            } else {
-                arguments += ["--tools", ""]
+            if settings.effort != .automatic { arguments += ["--effort", settings.effort.rawValue] }
+            // Built-in tools: the web when allowed, the file tools for the chat's workspace, and
+            // AskUserQuestion. Anything not allowed by name below is asked about over stdin and stdout
+            // (`--permission-prompt-tool stdio`), which is how a write to the workspace or a question of
+            // claude's own reaches the panel. MCP servers come from claude's own configuration; an allow
+            // rule must name its server (`mcp__*` is ignored), so the servers listed last time are named
+            // one by one. A server turned off in Settings is denied by name, which also hides its tools.
+            // With no server to name, `--strict-mcp-config` keeps claude from starting any.
+            var tools = Self.claudeCodeWorkspaceTools
+            var allowed: [String] = []
+            if settings.allowsWebSearch {
+                tools = ["WebSearch", "WebFetch"] + tools
+                allowed += ["WebSearch", "WebFetch"]
             }
+            arguments += ["--tools", tools.joined(separator: ","), "--permission-prompt-tool", "stdio"]
+            let servers = settings.allowedMCPServers
+            if servers.isEmpty {
+                arguments.append("--strict-mcp-config")
+            } else {
+                allowed += servers.map { "mcp__\(MCPServer.toolPrefix(for: $0))" }
+            }
+            if !allowed.isEmpty { arguments += ["--allowedTools"] + allowed }
+            let denied = servers.isEmpty ? [] : settings.knownMCPServers.filter { settings.disabledMCPServers.contains($0) }
+            if !denied.isEmpty { arguments += ["--disallowedTools"] + denied.map { "mcp__\(MCPServer.toolPrefix(for: $0))" } }
             var content: [[String: Any]] = images.map { image in
                 ["type": "image", "source": ["type": "base64", "media_type": image.mediaType, "data": image.base64]]
             }
@@ -76,14 +96,26 @@ nonisolated enum CommandLineClient {
 
         case .codex:
             let files = attachmentFiles(for: images)
-            var arguments = ["exec", "--json", "--ephemeral", "--skip-git-repo-check", "--sandbox", "read-only"]
+            // Commands may write inside the chat's workspace (and the temporary folder) and nowhere
+            // else; the sandbox keeps them off the network. Codex's exec mode cannot ask for approval,
+            // so anything beyond that fails on its own.
+            var arguments = ["exec", "--json", "--ephemeral", "--skip-git-repo-check", "--sandbox", "workspace-write"]
             if !model.isEmpty { arguments += ["--model", model] }
-            if request.settings.effort != .automatic {
-                arguments += ["--config", "model_reasoning_effort=\"\(request.settings.effort.rawValue)\""]
+            if settings.effort != .automatic {
+                arguments += ["--config", "model_reasoning_effort=\"\(settings.effort.rawValue)\""]
             }
             // Codex's search modes are disabled, cached, indexed, and live. Live is the only one that
             // asks the web for anything newer than the model's index.
-            arguments += ["--config", "web_search=\"\(request.settings.allowsWebSearch ? "live" : "disabled")\""]
+            arguments += ["--config", "web_search=\"\(settings.allowsWebSearch ? "live" : "disabled")\""]
+            // Codex loads the MCP servers in its config.toml on its own. These overrides turn off the ones
+            // turned off in Settings, or all of them, for this run only; the file is never touched.
+            if !settings.allowsMCP {
+                arguments += ["--config", "mcp_servers={}"]
+            } else {
+                for name in settings.disabledMCPServers.sorted() {
+                    arguments += ["--config", "mcp_servers.\(tomlKey(name)).enabled=false"]
+                }
+            }
             for name in files.keys.sorted() { arguments += ["--image", name] }
             arguments.append("-")
             let prompt = prompt(for: request)
@@ -93,14 +125,39 @@ nonisolated enum CommandLineClient {
             let files = attachmentFiles(for: images)
             var arguments = ["run", "--format", "json"]
             if !model.isEmpty { arguments += ["--model", model] }
-            if request.settings.effort != .automatic { arguments += ["--variant", request.settings.effort.rawValue] }
+            if settings.effort != .automatic { arguments += ["--variant", settings.effort.rawValue] }
             for name in files.keys.sorted() { arguments += ["--file", name] }
             arguments += ["--", prompt(for: request)]
-            return CommandInvocation(executable: executable, arguments: arguments, files: files)
+            // OpenCode merges OPENCODE_CONFIG_CONTENT over its configuration files, so a server can be
+            // turned off for this run alone while its definition stays where it is.
+            var off = settings.disabledMCPServers
+            if !settings.allowsMCP { off.formUnion(settings.knownMCPServers) }
+            var environment: [String: String] = [:]
+            if !off.isEmpty { environment["OPENCODE_CONFIG_CONTENT"] = try openCodeOverrides(disabling: off.sorted()) }
+            return CommandInvocation(executable: executable, arguments: arguments, files: files, environment: environment)
 
         default:
             preconditionFailure("\(request.provider) is not a command-line tool")
         }
+    }
+
+    /// Claude Code's built-in tools for the chat's workspace. Reading inside it needs no leave; a write
+    /// or an edit is asked about, and AskUserQuestion is how claude asks something of its own.
+    static let claudeCodeWorkspaceTools = ["Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
+
+    /// A TOML key for a server name: bare when it can be, quoted otherwise.
+    static func tomlKey(_ name: String) -> String {
+        let bare = !name.isEmpty && name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
+        if bare { return name }
+        let escaped = name.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
+    }
+
+    /// The inline OpenCode configuration that turns the named servers off: `{"mcp":{"name":{"enabled":false}}}`.
+    static func openCodeOverrides(disabling servers: [String]) throws -> String {
+        let mcp = Dictionary(uniqueKeysWithValues: servers.map { ($0, ["enabled": false]) })
+        let data = try JSONSerialization.data(withJSONObject: ["mcp": mcp], options: [.sortedKeys])
+        return String(decoding: data, as: UTF8.self)
     }
 
     static func transcript(of messages: [ChatMessage]) -> String {
@@ -134,18 +191,39 @@ nonisolated enum CommandLineClient {
         })
     }
 
+    /// Meraline's own environment with the agent's folder and the usual install folders on `PATH`.
+    static func environment(for executable: URL) -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = ([executable.deletingLastPathComponent().path] + searchPaths).joined(separator: ":")
+        environment["NO_COLOR"] = "1"
+        return environment
+    }
+
+    /// Runs the agent in the chat's workspace, or in a folder for this run alone when the request has
+    /// none. Attached images are written there for the run and removed afterwards; the workspace itself
+    /// stays, since it is the chat's.
     static func stream(_ request: ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> {
         AsyncThrowingStream { continuation in
             let process = Process()
             let task = Task {
-                let directory = FileManager.default.temporaryDirectory.appending(path: "Meraline-\(UUID().uuidString)")
-                defer { try? FileManager.default.removeItem(at: directory) }
+                let directory = request.workspace ?? FileManager.default.temporaryDirectory.appending(path: "Meraline-\(UUID().uuidString)")
+                var written: [URL] = []
+                defer {
+                    if request.workspace == nil {
+                        try? FileManager.default.removeItem(at: directory)
+                    } else {
+                        for file in written { try? FileManager.default.removeItem(at: file) }
+                    }
+                }
                 do {
                     let invocation = try invocation(for: request)
-                    Log.commandLine.info("Running \(invocation.executable.path) for \(request.provider.name)")
+                    let servers = request.settings.allowedMCPServers.count
+                    Log.commandLine.info("Running \(invocation.executable.path) for \(request.provider.name)\(servers > 0 ? " with \(servers) MCP server(s)" : "")\(request.workspace == nil ? "" : " in the chat's workspace")")
                     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                     for (name, data) in invocation.files {
-                        try data.write(to: directory.appending(path: name))
+                        let file = directory.appending(path: name)
+                        try data.write(to: file)
+                        written.append(file)
                     }
 
                     let output = Pipe()
@@ -157,25 +235,26 @@ nonisolated enum CommandLineClient {
                     process.standardOutput = output
                     process.standardError = errors
                     process.standardInput = invocation.input == nil ? FileHandle.nullDevice : input
-                    var environment = ProcessInfo.processInfo.environment
-                    environment["PATH"] = ([invocation.executable.deletingLastPathComponent().path] + searchPaths).joined(separator: ":")
-                    environment["NO_COLOR"] = "1"
-                    process.environment = environment
+                    process.environment = environment(for: invocation.executable).merging(invocation.environment) { $1 }
 
                     let exit = AsyncStream<Int32> { stream in
                         process.terminationHandler = { stream.yield($0.terminationStatus); stream.finish() }
                     }
                     try process.run()
+                    // Claude Code takes answers to its prompts on stdin, so its stdin stays open until
+                    // the result; the others read their prompt to the end of stdin first.
+                    let writer = input.fileHandleForWriting
+                    let answersOnInput = request.provider == .claudeCode
                     if let data = invocation.input {
-                        try input.fileHandleForWriting.write(contentsOf: data)
-                        try input.fileHandleForWriting.close()
+                        try writer.write(contentsOf: data)
+                        if !answersOnInput { try writer.close() }
                     }
 
                     async let diagnostics = tail(of: errors.fileHandleForReading)
                     var receivedText = false
                     var needsSeparator = false
-                    for try await line in output.fileHandleForReading.bytes.lines {
-                        switch try StreamDecoder.decode(line, from: request.provider) {
+                    for try await line in lines(of: output.fileHandleForReading) {
+                        switch try StreamDecoder.decode(line, from: request.provider, knownServers: request.settings.knownMCPServers) {
                         case .text(let text):
                             if needsSeparator { continuation.yield(.text("\n\n")) }
                             continuation.yield(.text(text))
@@ -184,10 +263,27 @@ nonisolated enum CommandLineClient {
                         case .activity(let activity):
                             needsSeparator = false
                             continuation.yield(.activity(activity))
-                        case .finished, .ignored:
+                        case .prompt(let prompt):
+                            needsSeparator = false
+                            var responder: AgentPromptResponder?
+                            if prompt.isPending && answersOnInput {
+                                responder = AgentPromptResponder { answer in
+                                    do {
+                                        try writer.write(contentsOf: try prompt.claudeCodeResponse(answer))
+                                        Log.commandLine.info("Answer sent to \(request.provider.name)")
+                                    } catch {
+                                        Log.commandLine.error("Couldn’t answer \(request.provider.name): \(error.localizedDescription)")
+                                    }
+                                }
+                            }
+                            continuation.yield(.prompt(prompt, responder))
+                        case .finished:
+                            if answersOnInput { try? writer.close() }
+                        case .ignored:
                             break
                         }
                     }
+                    if answersOnInput { try? writer.close() }
 
                     var status: Int32 = 0
                     for await code in exit { status = code }
@@ -210,6 +306,95 @@ nonisolated enum CommandLineClient {
                 if process.isRunning { process.terminate() }
             }
         }
+    }
+
+    /// Runs a command to completion and returns what it printed, for `mcp list` and the like. The
+    /// command is stopped after `timeout`, or when the task is cancelled.
+    static func output(of executable: URL, arguments: [String], timeout: Duration) async throws -> String {
+        let process = Process()
+        let output = Pipe()
+        let errors = Pipe()
+        process.executableURL = executable
+        process.arguments = arguments
+        process.currentDirectoryURL = FileManager.default.temporaryDirectory
+        process.standardOutput = output
+        process.standardError = errors
+        process.standardInput = FileHandle.nullDevice
+        process.environment = environment(for: executable)
+        let exit = AsyncStream<Int32> { stream in
+            process.terminationHandler = { stream.yield($0.terminationStatus); stream.finish() }
+        }
+        try process.run()
+        let watchdog = Task {
+            try await Task.sleep(for: timeout)
+            if process.isRunning { process.terminate() }
+        }
+        defer { watchdog.cancel() }
+        return try await withTaskCancellationHandler {
+            async let printed = contents(of: output.fileHandleForReading)
+            async let diagnostics = tail(of: errors.fileHandleForReading)
+            var status: Int32 = 0
+            for await code in exit { status = code }
+            let text = await printed
+            let message = await diagnostics
+            guard status == 0 else {
+                throw LLMError.provider(message.isEmpty ? "\(executable.lastPathComponent) exited with status \(status)." : message)
+            }
+            return text
+        } onCancel: {
+            if process.isRunning { process.terminate() }
+        }
+    }
+
+    /// Each line from a pipe the moment its newline arrives. `FileHandle.bytes.lines` holds lines back
+    /// until more bytes come or the pipe closes, which deadlocks an agent that prints a question and
+    /// then waits for the answer. Lines are split on bytes, so a character is never cut in two.
+    static func lines(of handle: FileHandle) -> AsyncStream<String> {
+        AsyncStream { continuation in
+            let pending = PendingBytes()
+            handle.readabilityHandler = { handle in
+                let data = handle.availableData
+                guard !data.isEmpty else {
+                    handle.readabilityHandler = nil
+                    if let rest = pending.drain() { continuation.yield(rest) }
+                    continuation.finish()
+                    return
+                }
+                for line in pending.append(data) { continuation.yield(line) }
+            }
+            continuation.onTermination = { _ in handle.readabilityHandler = nil }
+        }
+    }
+
+    /// The bytes after the last newline, waiting for the rest of their line. The readability handler
+    /// that owns it runs one call at a time.
+    private final class PendingBytes: @unchecked Sendable {
+        private var buffer = Data()
+
+        func append(_ data: Data) -> [String] {
+            buffer.append(data)
+            var lines: [String] = []
+            while let newline = buffer.firstIndex(of: 0x0A) {
+                var line = buffer[buffer.startIndex..<newline]
+                if line.last == 0x0D { line = line.dropLast() }
+                lines.append(String(decoding: line, as: UTF8.self))
+                buffer.removeSubrange(buffer.startIndex...newline)
+            }
+            return lines
+        }
+
+        func drain() -> String? {
+            defer { buffer = Data() }
+            return buffer.isEmpty ? nil : String(decoding: buffer, as: UTF8.self)
+        }
+    }
+
+    private static func contents(of handle: FileHandle) async -> String {
+        var data = Data()
+        do {
+            for try await byte in handle.bytes { data.append(byte) }
+        } catch {}
+        return String(decoding: data, as: UTF8.self)
     }
 
     private static func tail(of handle: FileHandle) async -> String {

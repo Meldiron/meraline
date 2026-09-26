@@ -17,11 +17,17 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
 
     var isCommandLine: Bool { Self.commandLineTools.contains(self) }
 
+    /// Which of the panel's two modes the provider answers in.
+    var kind: ProviderKind { isCommandLine ? .agent : .llm }
+
     /// Runs on this Mac through Apple's Foundation Models framework: no key, no server, no command.
     var isOnDevice: Bool { self == .apple }
 
     /// Providers that can search the web when asked to.
     var supportsWebSearch: Bool { self == .claudeCode || self == .codex }
+
+    /// The agents, which can use the MCP servers set up in them.
+    var supportsMCP: Bool { isCommandLine }
 
     var id: String { rawValue }
 
@@ -48,9 +54,9 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .openRouter: "One key for hundreds of models from many labs."
         case .ollama: "Local models running on this Mac. No key needed."
         case .custom: "Any server that speaks the OpenAI Chat Completions API, such as LM Studio."
-        case .claudeCode: "Answers from the claude command, using the account it’s signed in to. Tools stay off."
-        case .codex: "Answers from the codex command, using the account it’s signed in to, in a read-only sandbox."
-        case .opencode: "Answers from the opencode command, using the providers configured in OpenCode."
+        case .claudeCode: "Answers from the claude command, using the account it’s signed in to and the MCP servers set up in it."
+        case .codex: "Answers from the codex command, using the account it’s signed in to and its MCP servers, in a sandbox that writes only to the chat’s workspace and temporary folders."
+        case .opencode: "Answers from the opencode command, using the providers and MCP servers configured in OpenCode."
         case .apple: "The on-device model built into macOS. Private, works offline, and needs no key. Best for short questions; it can’t browse the web."
         }
     }
@@ -147,10 +153,59 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         }
     }
 
+    /// Where the agent explains MCP servers, for the MCP Servers section in Settings.
+    var mcpPortal: URL? {
+        switch self {
+        case .claudeCode: URL(string: "https://code.claude.com/docs/en/mcp")
+        case .codex: URL(string: "https://developers.openai.com/codex/mcp")
+        case .opencode: URL(string: "https://opencode.ai/docs/mcp-servers")
+        default: nil
+        }
+    }
+
     enum KeyPolicy {
         case required
         case optional
         case none
+    }
+}
+
+/// The panel's two modes: a model answering through its API or on this Mac, or an agent on this Mac that
+/// can use tools. The toggle under the input switches between them, and each keeps its own provider.
+nonisolated enum ProviderKind: String, CaseIterable, Identifiable, Sendable {
+    case llm
+    case agent
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .llm: "LLM"
+        case .agent: "Agent"
+        }
+    }
+
+    /// The Settings sidebar section, and the sparkle menu's header.
+    var pluralTitle: String {
+        switch self {
+        case .llm: "LLMs"
+        case .agent: "Agents"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .llm: "bubble.left"
+        case .agent: "terminal"
+        }
+    }
+
+    /// The providers of this kind, in the order Settings lists them.
+    var providers: [Provider] {
+        switch self {
+        case .llm: Provider.services
+        case .agent: Provider.commandLineTools
+        }
     }
 }
 
@@ -161,6 +216,19 @@ nonisolated struct ProviderSettings: Equatable, Sendable {
     var isEnabled: Bool
     var allowsWebSearch = true
     var effort = ReasoningEffort.automatic
+    /// Agents only: whether the MCP servers set up in the agent may help answer questions asked here.
+    var allowsMCP = true
+    /// Servers turned off in Settings, by name. They stay set up in the agent.
+    var disabledMCPServers: Set<String> = []
+    /// The servers the agent listed the last time Meraline asked, so a question can name them right
+    /// after launch, before the list is refreshed.
+    var knownMCPServers: [String] = []
+
+    /// The servers a question may use: the known ones, minus those turned off here.
+    var allowedMCPServers: [String] {
+        guard allowsMCP else { return [] }
+        return knownMCPServers.filter { !disabledMCPServers.contains($0) }
+    }
 
     func isReady(for provider: Provider) -> Bool {
         if provider.isOnDevice { return isEnabled }

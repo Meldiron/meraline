@@ -6,7 +6,7 @@ import Foundation
 nonisolated enum FixTheTypo: GameRules {
     static let title = "Fix the Typo"
     static let summary = "Find the misspelled word and fix it"
-    static let symbol = "text.badge.checkmark"
+    static let symbol = "character.cursor.ibeam"
 
     static let roundLimit = 5
 

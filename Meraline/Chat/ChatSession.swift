@@ -16,12 +16,19 @@ final class ChatSession {
         let images: [ImageAttachment]
         var answer = ""
         var activity: Activity?
+        /// The tools the model used for this answer, in order: searches, pages, commands, MCP tools.
+        var tools: [Activity] = []
+        /// What the agent stopped to ask during this answer, each with how it was settled.
+        var prompts: [AgentPrompt] = []
         var isComplete = false
         var startsOverOnNextText = false
         /// In a game, what the model was asked when it moved on its own; nil for a move of yours.
         var cue: String?
         /// In a game, how the round settled on this Mac.
         var outcome: GameOutcome?
+
+        /// The ask the agent is waiting on, if any.
+        var pendingPrompt: AgentPrompt? { prompts.last(where: \.isPending) }
     }
 
     struct PastChat: Identifiable, Equatable {
@@ -29,6 +36,8 @@ final class ChatSession {
         let turns: [Turn]
         let date: Date
         var mode = Mode.chat
+        /// The folder an agent worked in, kept with the chat so reopening it brings the files back.
+        var workspace: ChatWorkspace?
 
         var title: String {
             let question = turns.first?.question ?? ""
@@ -48,6 +57,8 @@ final class ChatSession {
     private(set) var turns: [Turn] = []
     private(set) var history: [PastChat] = []
     private(set) var mode = Mode.chat
+    /// The folder an agent works in for this chat, made on the first question to one.
+    private(set) var workspace: ChatWorkspace?
     private(set) var isStreaming = false
     private(set) var failure: String?
     private(set) var failureNeedsSettings = false
@@ -58,12 +69,21 @@ final class ChatSession {
     @ObservationIgnored private var streamTask: Task<Void, Never>?
     /// The game move that came back last; sending it again unchanged insists on it.
     @ObservationIgnored private var insistedInput: String?
+    /// How to answer each prompt the agent is waiting on, by the prompt's id.
+    @ObservationIgnored private var responders: [String: AgentPromptResponder] = [:]
     @ObservationIgnored private let preferences: Preferences
+    @ObservationIgnored private let workspaceRoot: URL
     @ObservationIgnored private let streamReplies: @MainActor (ChatRequest) -> AsyncThrowingStream<StreamOutput, Error>
 
-    /// `stream` talks to the provider; tests pass one that replies on its own.
-    init(preferences: Preferences, stream: @escaping @MainActor (ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> = LLMClient.stream) {
+    /// `stream` talks to the provider; tests pass one that replies on its own, and their own
+    /// `workspaceRoot` so they never touch the app's workspaces.
+    init(
+        preferences: Preferences,
+        workspaceRoot: URL = ChatWorkspace.defaultRoot,
+        stream: @escaping @MainActor (ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> = LLMClient.stream
+    ) {
         self.preferences = preferences
+        self.workspaceRoot = workspaceRoot
         streamReplies = stream
     }
 
@@ -101,7 +121,7 @@ final class ChatSession {
             return
         }
         guard let provider = preferences.activeProvider else {
-            fail(with: "Connect an AI provider in Settings to start asking.", needsSettings: true)
+            fail(with: setupMessage(to: "start asking"), needsSettings: true)
             return
         }
         let question = draft.trimmed
@@ -138,7 +158,7 @@ final class ChatSession {
                 insistedInput = input
             case .ask(let line):
                 guard let provider = preferences.activeProvider else {
-                    fail(with: "Connect an AI provider in Settings to play.", needsSettings: true)
+                    fail(with: setupMessage(to: "play"), needsSettings: true)
                     return
                 }
                 let request = makeRequest(asking: line, images: [], of: provider)
@@ -186,7 +206,7 @@ final class ChatSession {
     /// Return asks again.
     private func askModel(_ cue: String, in game: Game) {
         guard let provider = preferences.activeProvider else {
-            fail(with: "Connect an AI provider in Settings to play.", needsSettings: true)
+            fail(with: setupMessage(to: "play"), needsSettings: true)
             return
         }
         let request = makeRequest(asking: cue, images: [], of: provider)
@@ -197,6 +217,14 @@ final class ChatSession {
         isStreaming = true
         Log.chat.info("\(game.title): \(provider.name) (\(modelName(for: provider))) moves, turn \(turns.count)")
         stream(request, for: turn.id)
+    }
+
+    /// What to set up when the current mode has nothing ready.
+    private func setupMessage(to goal: String) -> String {
+        switch preferences.mode {
+        case .llm: "Connect an AI provider in Settings to \(goal)."
+        case .agent: "Turn on an agent in Settings to \(goal), or switch to LLM."
+        }
     }
 
     private func modelName(for provider: Provider) -> String {
@@ -241,8 +269,35 @@ final class ChatSession {
             provider: provider,
             settings: preferences[provider],
             systemPrompt: game?.rules.systemPrompt ?? preferences.systemPrompt,
-            messages: messages
+            messages: messages,
+            workspace: provider.isCommandLine ? workspaceForAgents()?.url : nil
         )
+    }
+
+    /// The chat's workspace, made on the first question to an agent.
+    private func workspaceForAgents() -> ChatWorkspace? {
+        if let workspace { return workspace }
+        do {
+            workspace = try ChatWorkspace.make(in: workspaceRoot)
+            Log.chat.info("Workspace made for this chat")
+        } catch {
+            Log.chat.error("Couldn’t make a workspace: \(error.localizedDescription)")
+        }
+        return workspace
+    }
+
+    /// Answers the ask an agent is waiting on: leave to use a tool, or its question.
+    func answer(_ promptID: AgentPrompt.ID, with answer: AgentAnswer) {
+        guard let responder = responders.removeValue(forKey: promptID),
+              let last = turns.indices.last,
+              let index = turns[last].prompts.firstIndex(where: { $0.id == promptID }) else { return }
+        turns[last].prompts[index].resolution = answer.resolution
+        switch answer {
+        case .allow: Log.chat.info("Agent's ask allowed")
+        case .deny: Log.chat.info("Agent's ask denied")
+        case .answers: Log.chat.info("Agent's question answered")
+        }
+        responder(answer)
     }
 
     func stop() {
@@ -254,6 +309,7 @@ final class ChatSession {
         archiveCurrentChat()
         streamTask?.cancel()
         streamTask = nil
+        responders = [:]
         draft = ""
         draftImages = []
         turns = []
@@ -288,10 +344,13 @@ final class ChatSession {
     }
 
     /// Makes a past chat the open one, in the mode it was in. Whatever was open moves to Recent Chats.
+    /// The chat leaves Recent Chats, so its workspace belongs to one chat only.
     func reopen(_ chat: PastChat) {
+        history.removeAll { $0.id == chat.id }
         reset()
         turns = chat.turns
         mode = chat.mode
+        workspace = chat.workspace
         if case .over(let summary, _)? = gameState?.phase { nudge = summary }
     }
 
@@ -308,21 +367,29 @@ final class ChatSession {
         insistedInput = nil
     }
 
+    /// Moves the chat to Recent Chats with its workspace. A workspace whose chat is not kept, and those
+    /// of the chats that drop off the end, are removed.
     private func archiveCurrentChat() {
-        history = Self.archiving(turns, into: history, mode: mode)
+        let previous = history
+        history = Self.archiving(turns, into: history, mode: mode, workspace: workspace)
+        let kept = Set(history.map(\.id))
+        for chat in previous where !kept.contains(chat.id) { chat.workspace?.remove() }
+        if let workspace, !history.contains(where: { $0.workspace == workspace }) { workspace.remove() }
+        workspace = nil
     }
 
-    static func archiving(_ turns: [Turn], into history: [PastChat], mode: Mode = .chat, at date: Date = .now) -> [PastChat] {
+    static func archiving(_ turns: [Turn], into history: [PastChat], mode: Mode = .chat, at date: Date = .now, workspace: ChatWorkspace? = nil) -> [PastChat] {
         let answered = turns
             .filter { !$0.answer.isEmpty || $0.isComplete }
             .map { turn in
                 var turn = turn
                 turn.activity = nil
+                turn.prompts.removeAll(where: \.isPending)
                 turn.isComplete = true
                 return turn
             }
         guard !answered.isEmpty else { return history }
-        return Array(([PastChat(turns: answered, date: date, mode: mode)] + history).prefix(historyLimit))
+        return Array(([PastChat(turns: answered, date: date, mode: mode, workspace: workspace)] + history).prefix(historyLimit))
     }
 
     func clearDraft() {
@@ -398,6 +465,7 @@ final class ChatSession {
         switch output {
         case .activity(let activity):
             turns[last].activity = activity
+            Self.record(activity, in: &turns[last].tools)
             turns[last].startsOverOnNextText = !turns[last].answer.isEmpty
         case .text(let text):
             if turns[last].startsOverOnNextText {
@@ -407,15 +475,41 @@ final class ChatSession {
                 turns[last].answer += text
             }
             turns[last].activity = nil
+        case .prompt(let prompt, let responder):
+            turns[last].prompts.append(prompt)
+            turns[last].activity = nil
+            if let responder {
+                responders[prompt.id] = responder
+                Log.chat.info("Agent asks \(prompt.kind.logDescription)")
+            } else {
+                Log.chat.info("Agent turned down its own ask \(prompt.kind.logDescription)")
+            }
         }
+    }
+
+    /// Keeps the trail of tools an answer used. Thinking is not a tool. An agent often announces a tool
+    /// twice, first by name and then with what it was asked, so a repeat of the last step fills it in
+    /// rather than adding a second one; the same step with new details, like a second search, is added.
+    nonisolated static func record(_ activity: Activity, in tools: inout [Activity]) {
+        guard activity != .thinking else { return }
+        if let last = tools.last, last.isSameStep(as: activity) {
+            if last == activity || activity.isVague { return }
+            if last.isVague {
+                tools[tools.count - 1] = activity
+                return
+            }
+        }
+        tools.append(activity)
     }
 
     private func finishStreaming(_ id: Turn.ID, error: Error?) {
         guard isStreaming, turns.last?.id == id else { return }
         isStreaming = false
         streamTask = nil
+        responders = [:]
         let last = turns.count - 1
         turns[last].activity = nil
+        turns[last].prompts.removeAll(where: \.isPending)
         if let game {
             finishMove(in: game, error: error)
             return

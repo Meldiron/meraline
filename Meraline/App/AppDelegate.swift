@@ -5,6 +5,8 @@ import Observation
 @main
 enum MeralineApp {
     static func main() {
+        // An agent that has already exited must not take Meraline down when an answer is written to it.
+        signal(SIGPIPE, SIG_IGN)
         let application = NSApplication.shared
         let delegate = AppDelegate()
         application.delegate = delegate
@@ -17,8 +19,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferences = Preferences.shared
     private let updater = Updater(preferences: .shared)
     private lazy var session = ChatSession(preferences: preferences)
-    private lazy var panel = PanelController(session: session, preferences: preferences) { [weak self] in
-        self?.showSettings(nil)
+    private lazy var panel: PanelController = PanelController(session: session, preferences: preferences) { [weak self] pane in
+        self?.panel.close()
+        self?.settings.show(pane)
     }
     private lazy var settings = SettingsWindowController(preferences: preferences, updater: updater)
     private var statusItem: NSStatusItem?
@@ -26,9 +29,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.app.info("Meraline \(Bundle.main.shortVersion) (\(Bundle.main.buildNumber)) launched")
+        ChatWorkspace.removeStale()
         NSApp.mainMenu = makeMainMenu()
         KeyboardShortcuts.onKeyUp(for: .togglePanel) { [weak self] in self?.panel.toggle() }
         observeMenuBarPreference()
+        MCPServerRegistry.shared.refreshAll(preferences)
 
         let defaults = UserDefaults.standard
         if !defaults.bool(forKey: "hasLaunchedBefore") {
@@ -86,6 +91,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        ChatWorkspace.removeAll()
+    }
 
     @objc private func showPanel(_ sender: Any?) { panel.show() }
 

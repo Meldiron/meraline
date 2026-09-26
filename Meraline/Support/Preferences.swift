@@ -85,10 +85,33 @@ final class Preferences {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let secrets: SecretStore
 
-    var provider: Provider? {
+    /// Whether the panel asks an LLM or an agent. The toggle under the input switches it.
+    var mode: ProviderKind {
         didSet {
-            defaults.set(provider?.rawValue, forKey: "provider")
-            if provider != oldValue { Log.settings.info("Default provider: \(provider?.name ?? "none")") }
+            guard mode != oldValue else { return }
+            saveChoices()
+            Log.settings.info("Mode: \(mode.title)")
+        }
+    }
+    /// The provider picked for each mode, from the sparkle menu or Settings. A mode without a pick, or
+    /// whose pick is not ready, answers with its first ready provider.
+    private var choices: [ProviderKind: Provider] {
+        didSet { saveChoices() }
+    }
+
+    /// The provider picked for the current mode. Picking one of the other kind switches the mode too.
+    var provider: Provider? {
+        get { choices[mode] }
+        set {
+            guard let newValue else {
+                choices[mode] = nil
+                return
+            }
+            if choices[newValue.kind] != newValue {
+                choices[newValue.kind] = newValue
+                Log.settings.info("Default \(newValue.kind.title): \(newValue.name)")
+            }
+            mode = newValue.kind
         }
     }
     var placement: PanelPlacement {
@@ -120,7 +143,17 @@ final class Preferences {
     ) {
         self.defaults = defaults
         self.secrets = secrets
-        provider = defaults.string(forKey: "provider").flatMap(Provider.init(rawValue:))
+        // "provider" is the provider of the current mode, as it was before there were modes. It wins over
+        // the per-mode keys, so older preferences and `-provider claudeCode` on the command line still pick.
+        let current = defaults.string(forKey: "provider").flatMap(Provider.init(rawValue:))
+        var choices: [ProviderKind: Provider] = [:]
+        for kind in ProviderKind.allCases {
+            let saved = defaults.string(forKey: "provider.\(kind.rawValue)").flatMap(Provider.init(rawValue:))
+            choices[kind] = saved?.kind == kind ? saved : nil
+        }
+        if let current { choices[current.kind] = current }
+        self.choices = choices
+        mode = current?.kind ?? defaults.string(forKey: "mode").flatMap(ProviderKind.init(rawValue:)) ?? .llm
         placement = defaults.string(forKey: "placement").flatMap(PanelPlacement.init(rawValue:)) ?? .screenCenter
         isPinned = defaults.bool(forKey: "isPinned")
         showsMenuBarIcon = defaults.object(forKey: "showsMenuBarIcon") as? Bool ?? true
@@ -135,11 +168,16 @@ final class Preferences {
                 isEnabled: defaults.object(forKey: "\(provider.rawValue).enabled") as? Bool
                     ?? (provider.isOnDevice && onDeviceModelAvailable),
                 allowsWebSearch: defaults.object(forKey: "\(provider.rawValue).webSearch") as? Bool ?? true,
-                effort: defaults.string(forKey: "\(provider.rawValue).effort").flatMap(ReasoningEffort.init(rawValue:)) ?? .automatic
+                effort: defaults.string(forKey: "\(provider.rawValue).effort").flatMap(ReasoningEffort.init(rawValue:)) ?? .automatic,
+                allowsMCP: defaults.object(forKey: "\(provider.rawValue).mcp") as? Bool ?? true,
+                disabledMCPServers: Set(defaults.stringArray(forKey: "\(provider.rawValue).mcpOff") ?? []),
+                knownMCPServers: defaults.stringArray(forKey: "\(provider.rawValue).mcpServers") ?? []
             ))
         })
-        if let provider, !readyProviders.contains(provider) {
-            self.provider = readyProviders.first
+        for kind in ProviderKind.allCases {
+            if let chosen = self.choices[kind], !providerSettings[chosen]!.isReady(for: chosen) {
+                self.choices[kind] = readyProviders(for: kind).first
+            }
         }
     }
 
@@ -154,23 +192,53 @@ final class Preferences {
             defaults.set(newValue.isEnabled, forKey: "\(provider.rawValue).enabled")
             defaults.set(newValue.allowsWebSearch, forKey: "\(provider.rawValue).webSearch")
             defaults.set(newValue.effort.rawValue, forKey: "\(provider.rawValue).effort")
+            defaults.set(newValue.allowsMCP, forKey: "\(provider.rawValue).mcp")
+            defaults.set(newValue.disabledMCPServers.sorted(), forKey: "\(provider.rawValue).mcpOff")
+            defaults.set(newValue.knownMCPServers, forKey: "\(provider.rawValue).mcpServers")
             if old.apiKey != newValue.apiKey { secrets.write(provider.rawValue, newValue.apiKey.trimmed) }
-            reconcileActiveProvider()
+            reconcile(provider.kind)
         }
     }
 
+    /// Every ready provider. A cloud provider comes before Apple Intelligence, so a configured one
+    /// outranks the on-device fallback.
     var readyProviders: [Provider] {
         Provider.allCases.filter { providerSettings[$0]!.isReady(for: $0) }
     }
 
-    var activeProvider: Provider? {
-        guard let provider, providerSettings[provider]!.isReady(for: provider) else { return readyProviders.first }
-        return provider
+    func readyProviders(for kind: ProviderKind) -> [Provider] {
+        readyProviders.filter { $0.kind == kind }
     }
 
-    private func reconcileActiveProvider() {
-        let ready = readyProviders
-        if let provider, ready.contains(provider) { return }
-        provider = ready.first
+    /// The provider that answers in the current mode, or nil when none of its kind is ready.
+    var activeProvider: Provider? { defaultProvider(for: mode) }
+
+    /// The provider a mode answers with: its pick when ready, otherwise its first ready provider.
+    func defaultProvider(for kind: ProviderKind) -> Provider? {
+        if let chosen = choices[kind], providerSettings[chosen]!.isReady(for: chosen) { return chosen }
+        return readyProviders(for: kind).first
+    }
+
+    /// Picks a mode's provider without switching to that mode, as the pickers in Settings › General do.
+    func setDefaultProvider(_ provider: Provider?, for kind: ProviderKind) {
+        guard provider == nil || provider?.kind == kind, choices[kind] != provider else { return }
+        choices[kind] = provider
+        Log.settings.info("Default \(kind.title): \(provider?.name ?? "none")")
+    }
+
+    /// After a provider's settings change: a mode whose pick is no longer ready, or that has none yet,
+    /// takes its first ready provider.
+    private func reconcile(_ kind: ProviderKind) {
+        if let chosen = choices[kind], providerSettings[chosen]!.isReady(for: chosen) { return }
+        let first = readyProviders(for: kind).first
+        if choices[kind] != first { choices[kind] = first }
+    }
+
+    private func saveChoices() {
+        defaults.set(mode.rawValue, forKey: "mode")
+        defaults.set(choices[mode]?.rawValue, forKey: "provider")
+        for kind in ProviderKind.allCases {
+            defaults.set(choices[kind]?.rawValue, forKey: "provider.\(kind.rawValue)")
+        }
     }
 }

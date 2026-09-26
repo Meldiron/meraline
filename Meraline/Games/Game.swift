@@ -1,6 +1,6 @@
 import Foundation
 
-/// The games in the sparkle menu's Play section. A game is the open chat in another mode: every move the
+/// The games behind the controller in the row under the input. A game is the open chat in another mode: every move the
 /// model makes is a turn of the chat, so Esc and New Chat forget a game exactly as they forget a question,
 /// and nothing about it is written anywhere. Each game's rules live in their own type. `ChatSession` asks
 /// them where the game stands, what a line typed into the input does, and what to make of a reply.
@@ -37,7 +37,7 @@ nonisolated enum Game: String, CaseIterable, Identifiable, Sendable {
 /// what you typed, its answer the model's reply once judged, and its `outcome` how a move settled on this Mac.
 nonisolated protocol GameRules {
     static var title: String { get }
-    /// The line under the title in the sparkle menu.
+    /// The tooltip of the game's button.
     static var summary: String { get }
     static var symbol: String { get }
     /// Replaces the prompt from Settings for the game's requests, and only for those.

@@ -16,6 +16,8 @@ nonisolated struct ChatRequest: Sendable {
     let settings: ProviderSettings
     let systemPrompt: String
     let messages: [ChatMessage]
+    /// The chat's folder for an agent to work in. Without one, an agent gets a folder for this run alone.
+    var workspace: URL?
 
     static let maximumOutputTokens = 16_000
 

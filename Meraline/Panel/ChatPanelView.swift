@@ -7,18 +7,25 @@ struct ChatPanelView: View {
     let layout: PanelLayout
     let onHeightChange: (CGFloat) -> Void
     let onClose: () -> Void
-    let openSettings: () -> Void
+    /// Opens Settings, on a pane when one is given.
+    let openSettings: (SettingsPane?) -> Void
 
     @FocusState private var isInputFocused: Bool
     @State private var conversationHeight: CGFloat = 0
     @State private var isDropTargeted = false
 
     private var hasConversation: Bool { !session.turns.isEmpty }
+    /// Who is asking when an agent stops to ask, for the prompt card.
+    private var agentName: String { preferences.activeProvider?.name ?? "The agent" }
 
     var body: some View {
         GlassEffectContainer {
             VStack(spacing: 0) {
                 inputRow
+                ModeBar(preferences: preferences, session: session) { isInputFocused = true }
+                    .padding(.leading, 14)
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 12)
                 if !session.draftImages.isEmpty {
                     DraftImageTray(images: session.draftImages, onRemove: session.removeImage)
                         .padding(.horizontal, 18)
@@ -30,11 +37,11 @@ struct ChatPanelView: View {
                     conversation
                 }
                 if let failure = session.failure {
-                    FailureRow(message: failure, showsSettings: session.failureNeedsSettings, openSettings: openSettings)
+                    FailureRow(message: failure, showsSettings: session.failureNeedsSettings) { openSettings(nil) }
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
                 } else if !hasConversation && preferences.activeProvider == nil {
-                    SetupRow(openSettings: openSettings)
+                    SetupRow(kind: preferences.mode) { openSettings(.provider(preferences.mode.providers[0])) }
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
                 } else if let nudge = session.nudge {
@@ -83,7 +90,7 @@ struct ChatPanelView: View {
 
     private var inputRow: some View {
         HStack(alignment: .center, spacing: 12) {
-            ProviderMenu(preferences: preferences, session: session) { isInputFocused = true }
+            ProviderMenu(preferences: preferences, session: session, openSettings: openSettings) { isInputFocused = true }
 
             TextField(placeholder, text: $session.draft, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -111,7 +118,7 @@ struct ChatPanelView: View {
             .help(preferences.isPinned ? "Unpin: close when clicking elsewhere (⌘P)" : "Pin: stay open when clicking elsewhere (⌘P)")
             .accessibilityLabel(preferences.isPinned ? "Unpin" : "Pin")
 
-            Button(action: openSettings) {
+            Button { openSettings(nil) } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -135,14 +142,22 @@ struct ChatPanelView: View {
                     GameTranscript(
                         lines: game.rules.lines(for: session.turns),
                         choices: session.isYourMove ? session.gameState?.choices ?? [] : [],
-                        activity: session.isStreaming ? .some(session.turns.last?.activity) : nil
+                        activity: session.isStreaming ? .some(session.turns.last?.activity) : nil,
+                        prompt: session.isStreaming ? session.turns.last?.pendingPrompt : nil,
+                        agent: agentName,
+                        answer: { session.answer($0, with: $1) }
                     ) { choice in
                         session.choose(choice)
                         isInputFocused = true
                     }
                 } else {
                     ForEach(session.turns) { turn in
-                        TurnView(turn: turn, isAnswering: session.isStreaming && turn.id == session.turns.last?.id)
+                        TurnView(
+                            turn: turn,
+                            isAnswering: session.isStreaming && turn.id == session.turns.last?.id,
+                            agent: agentName,
+                            answer: { session.answer($0, with: $1) }
+                        )
                     }
                 }
             }
@@ -236,36 +251,34 @@ struct ChatPanelView: View {
     }
 }
 
+/// The sparkle menu: the ready providers of the current mode, and Recent Chats. The toggle under the
+/// input switches modes, and the games have their own buttons beside it.
 private struct ProviderMenu: View {
     let preferences: Preferences
     let session: ChatSession
+    let openSettings: (SettingsPane?) -> Void
     let focusInput: () -> Void
 
     var body: some View {
         Menu {
+            let kind = preferences.mode
+            let ready = preferences.readyProviders(for: kind)
             let active = preferences.activeProvider
-            if preferences.readyProviders.isEmpty {
-                Text("No providers are turned on")
-            }
-            ForEach(preferences.readyProviders) { provider in
-                Toggle(isOn: Binding(
-                    get: { provider == active },
-                    set: { if $0 { preferences.provider = provider } }
-                )) {
-                    Label(provider.name, systemImage: provider.symbol)
-                    let model = preferences[provider].model
-                    Text(model.isEmpty ? "Default model" : model)
+            Section(kind.pluralTitle) {
+                if ready.isEmpty {
+                    Text("No \(kind.pluralTitle) are turned on")
+                    Button("Set Up \(kind.pluralTitle)…") { openSettings(.provider(kind.providers[0])) }
                 }
-            }
-            Divider()
-            Section("Play") {
-                ForEach(Game.allCases) { game in
-                    Button {
-                        session.startGame(game)
-                        focusInput()
-                    } label: {
-                        Label(game.title, systemImage: game.symbol)
-                        Text(game.summary)
+                ForEach(ready) { provider in
+                    Toggle(isOn: Binding(
+                        get: { provider == active },
+                        set: { if $0 { preferences.provider = provider } }
+                    )) {
+                        Label(provider.name, systemImage: provider.symbol)
+                        let settings = preferences[provider]
+                        let model = settings.model.isEmpty ? "Default model" : settings.model
+                        let servers = settings.allowedMCPServers.count
+                        Text(servers > 0 ? "\(model) · \(servers) MCP server\(servers == 1 ? "" : "s")" : model)
                     }
                 }
             }
@@ -295,7 +308,7 @@ private struct ProviderMenu: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Choose a provider, play a game, or reopen a recent chat")
+        .help("Choose a provider or reopen a recent chat")
         .accessibilityLabel("Provider")
     }
 }
@@ -303,6 +316,8 @@ private struct ProviderMenu: View {
 private struct TurnView: View {
     let turn: ChatSession.Turn
     let isAnswering: Bool
+    let agent: String
+    let answer: (AgentPrompt.ID, AgentAnswer) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -324,11 +339,274 @@ private struct TurnView: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if isAnswering && (turn.answer.isEmpty || turn.activity != nil) {
+            if let prompt = turn.pendingPrompt {
+                PromptCard(prompt: prompt, agent: agent) { answer(prompt.id, $0) }
+            } else if isAnswering && (turn.answer.isEmpty || turn.activity != nil) {
                 ActivityRow(activity: turn.activity)
+            }
+            let settled = turn.prompts.filter { !$0.isPending }
+            if !settled.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(settled) { PromptOutcomeRow(prompt: $0, agent: agent) }
+                }
+            }
+            if !turn.tools.isEmpty && !turn.answer.isEmpty {
+                ToolTrail(tools: turn.tools)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// An agent's ask, with the means to settle it: Allow and Deny for a tool, or a question's choices as
+/// buttons and a field for an answer of your own. One question with single choices is answered by the
+/// first tap; several, or several choices, wait for Done. Neutral glass, with the panel's faint pink on
+/// the default choice.
+private struct PromptCard: View {
+    let prompt: AgentPrompt
+    let agent: String
+    let answer: (AgentAnswer) -> Void
+    /// The labels picked so far, by question.
+    @State private var picks: [String: [String]] = [:]
+    /// Answers typed instead of picked, by question.
+    @State private var typed: [String: String] = [:]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            switch prompt.kind {
+            case .permission(let activity, let detail):
+                permission(activity, detail: detail)
+            case .question(let questions):
+                ForEach(questions) { question in
+                    self.question(question, of: questions)
+                }
+                if questions.count > 1 || questions.contains(where: \.multiSelect) {
+                    HStack {
+                        Spacer()
+                        Button("Done") { send(questions) }
+                            .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(!isComplete(questions))
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func permission(_ activity: Activity, detail: String?) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: activity.symbol)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(agent) asks to \(activity.request)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                if let detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+            }
+            Spacer(minLength: 8)
+            Button("Deny") { answer(.deny) }
+                .buttonStyle(.glass)
+            Button("Allow") { answer(.allow) }
+                .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
+                .keyboardShortcut(.defaultAction)
+        }
+    }
+
+    private func question(_ question: AgentPrompt.Question, of questions: [AgentPrompt.Question]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !question.header.isEmpty {
+                Text(question.header)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            Text(question.text)
+                .font(.system(size: 13, weight: .semibold))
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+            if !question.options.isEmpty {
+                FlowLayout(spacing: 8) {
+                    ForEach(question.options) { option in
+                        let picked = picks[question.id, default: []].contains(option.label)
+                        Button(option.label) { pick(option.label, for: question, of: questions) }
+                            .buttonStyle(.glass(picked ? .regular.tint(.meralinePink.opacity(0.18)) : .regular))
+                            .help(option.detail ?? option.label)
+                    }
+                }
+            }
+            TextField("Something else…", text: typedBinding(question))
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .tint(.meralinePink)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .glassEffect(.regular, in: .rect(cornerRadius: 10))
+                .onSubmit { if isComplete(questions) { send(questions) } }
+        }
+    }
+
+    private func typedBinding(_ question: AgentPrompt.Question) -> Binding<String> {
+        Binding(get: { typed[question.id] ?? "" }, set: { typed[question.id] = $0 })
+    }
+
+    private func pick(_ label: String, for question: AgentPrompt.Question, of questions: [AgentPrompt.Question]) {
+        if question.multiSelect {
+            var labels = picks[question.id, default: []]
+            if let index = labels.firstIndex(of: label) { labels.remove(at: index) } else { labels.append(label) }
+            picks[question.id] = labels
+        } else {
+            picks[question.id] = [label]
+            if questions.count == 1 { send(questions) }
+        }
+    }
+
+    /// The typed answer when there is one, otherwise the picks in the order they were made.
+    private func answerText(for question: AgentPrompt.Question) -> String {
+        let text = (typed[question.id] ?? "").trimmed
+        return text.isEmpty ? picks[question.id, default: []].joined(separator: ", ") : text
+    }
+
+    private func isComplete(_ questions: [AgentPrompt.Question]) -> Bool {
+        questions.allSatisfy { !answerText(for: $0).isEmpty }
+    }
+
+    private func send(_ questions: [AgentPrompt.Question]) {
+        answer(.answers(Dictionary(uniqueKeysWithValues: questions.map { ($0.text, answerText(for: $0)) })))
+    }
+}
+
+/// How an ask was settled, in one quiet line under the answer.
+private struct PromptOutcomeRow: View {
+    let prompt: AgentPrompt
+    let agent: String
+
+    var body: some View {
+        Label {
+            Text(text)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        } icon: {
+            Image(systemName: symbol)
+        }
+        .font(.system(size: 12))
+        .foregroundStyle(.tertiary)
+        .help(text)
+    }
+
+    private var text: String {
+        switch (prompt.kind, prompt.resolution) {
+        case (.permission(let activity, let detail), .allowed?):
+            "You let \(agent) \(activity.request)\(Self.suffix(detail))"
+        case (.permission(let activity, let detail), .denied?):
+            "You didn’t let \(agent) \(activity.request)\(Self.suffix(detail))"
+        case (.permission(let activity, let detail), .declinedByAgent?):
+            "\(agent) wanted to \(activity.request)\(Self.suffix(detail)) but turned itself down: its run mode can’t ask"
+        case (.question(let questions), .answered(let answers)?):
+            "You answered: \(questions.compactMap { answers[$0.text] }.joined(separator: ", "))"
+        case (.question, .denied?):
+            "You didn’t answer \(agent)’s question"
+        default:
+            ""
+        }
+    }
+
+    private var symbol: String {
+        switch prompt.resolution {
+        case .allowed?: "checkmark.circle"
+        case .denied?: "xmark.circle"
+        case .answered?: "text.bubble"
+        case .declinedByAgent?: "hand.raised"
+        case nil: "questionmark.circle"
+        }
+    }
+
+    private static func suffix(_ detail: String?) -> String {
+        guard let detail, !detail.isEmpty else { return "" }
+        return " (\(detail))"
+    }
+}
+
+/// The tools an answer used, as small capsules under it: a web search, a page, a command, or an MCP tool
+/// under its server's name. Hovering shows the full line. Neutral glass, like everything else here.
+private struct ToolTrail: View {
+    let tools: [Activity]
+
+    var body: some View {
+        FlowLayout(spacing: 6, maximumItemWidth: 260) {
+            ForEach(Array(tools.enumerated()), id: \.offset) { _, tool in
+                Label(tool.label, systemImage: tool.symbol)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .glassEffect(.regular, in: .capsule)
+                    .help(tool.title)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Used \(tools.map(\.label).formatted(.list(type: .and)))")
+    }
+}
+
+/// Lays children out left to right and wraps to the next line when the row is full. Each child is
+/// offered at most `maximumItemWidth`, so a long label truncates instead of taking a whole row.
+private nonisolated struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+    var maximumItemWidth: CGFloat?
+
+    private func itemProposal(in width: CGFloat) -> ProposedViewSize {
+        ProposedViewSize(width: min(maximumItemWidth ?? width, width), height: nil)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        let item = itemProposal(in: width)
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var widest: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(item)
+            if x > 0 && x + size.width > width {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            widest = max(widest, x - spacing)
+        }
+        return CGSize(width: width.isFinite ? width : widest, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let item = itemProposal(in: bounds.width)
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(item)
+            if x > bounds.minX && x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: item)
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }
 
@@ -339,12 +617,18 @@ private struct GameTranscript: View {
     let choices: [String]
     /// Set while the model is moving: what it is doing, if the provider says.
     let activity: Activity??
+    /// An agent's ask while it moves, if it stopped to ask.
+    let prompt: AgentPrompt?
+    let agent: String
+    let answer: (AgentPrompt.ID, AgentAnswer) -> Void
     let choose: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(lines) { GameLineView(line: $0) }
-            if let activity {
+            if let prompt {
+                PromptCard(prompt: prompt, agent: agent) { answer(prompt.id, $0) }
+            } else if let activity {
                 ActivityRow(activity: activity)
             }
             if !choices.isEmpty {
@@ -560,17 +844,21 @@ private struct FailureRow: View {
     }
 }
 
+/// What to do when the current mode has nothing ready: connect an LLM, or turn on an agent.
 private struct SetupRow: View {
+    let kind: ProviderKind
     let openSettings: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "key.fill")
+            Image(systemName: kind == .agent ? "terminal" : "key.fill")
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Connect an AI provider")
+                Text(kind == .agent ? "Turn on an agent" : "Connect an AI provider")
                     .font(.system(size: 13, weight: .semibold))
-                Text("Add an API key or turn on a local model to start asking.")
+                Text(kind == .agent
+                    ? "Install Claude Code, Codex, or OpenCode, then turn it on in Settings."
+                    : "Add an API key or turn on a local model to start asking.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }

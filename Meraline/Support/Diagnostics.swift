@@ -31,7 +31,7 @@ enum Diagnostics {
         lines.append("- Generated \(now.formatted(.iso8601))")
         lines.append("")
         lines.append("### Settings")
-        lines.append("- Default provider: \(preferences.activeProvider?.name ?? "none")")
+        lines.append("- Mode: \(preferences.mode.title), default LLM: \(preferences.defaultProvider(for: .llm)?.name ?? "none"), default agent: \(preferences.defaultProvider(for: .agent)?.name ?? "none")")
         lines.append("- Shortcut: \(KeyboardShortcuts.getShortcut(for: .togglePanel)?.description ?? "none")")
         lines.append("- Window: \(preferences.placement.title), \(preferences.isPinned ? "stays open" : "closes when clicking elsewhere"), menu bar icon \(preferences.showsMenuBarIcon ? "on" : "off")")
         lines.append("- System prompt: \(preferences.systemPrompt == Preferences.defaultSystemPrompt ? "default" : "customized")")
@@ -81,11 +81,18 @@ enum Diagnostics {
     private static func endpoint(of settings: ProviderSettings, for provider: Provider) -> String {
         let value = settings.baseURL.trimmed
         if provider.isCommandLine {
-            if let path = CommandLineClient.resolve(value)?.path { return redactingHome(path) }
-            return "not found (\(value))"
+            let path = CommandLineClient.resolve(value).map { redactingHome($0.path) } ?? "not found (\(value))"
+            return "\(path), \(mcpSummary(of: settings))"
         }
         guard let url = URL(string: value), let host = url.host() else { return value.isEmpty ? "default" : "invalid" }
         return url.port.map { "\(host):\($0)" } ?? host
+    }
+
+    /// How many of the agent's MCP servers a question may use. Counts only, never names.
+    private static func mcpSummary(of settings: ProviderSettings) -> String {
+        guard settings.allowsMCP else { return "MCP off" }
+        guard !settings.knownMCPServers.isEmpty else { return "no MCP servers listed" }
+        return "MCP \(settings.allowedMCPServers.count) of \(settings.knownMCPServers.count) server(s)"
     }
 
     private static func redactingHome(_ path: String) -> String {
