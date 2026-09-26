@@ -12,6 +12,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Meldiron/meraline/releases/latest/download/Meraline.dmg"><img src="https://img.shields.io/github/v/release/Meldiron/meraline?style=for-the-badge&logo=apple&logoColor=white&label=Download%20for%20Mac&color=1C1C1E" height="40" alt="Download Meraline for Mac"></a>
+  <br>
+  <sub>macOS 26 or later · <a href="https://github.com/Meldiron/meraline/releases/latest">What's new</a></sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/Meldiron/meraline/actions/workflows/ci.yml"><img src="https://github.com/Meldiron/meraline/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/macOS-26%2B-8E6CF0" alt="macOS 26 or later">
   <img src="https://img.shields.io/badge/Swift-6-F89BCD" alt="Swift 6">

@@ -204,8 +204,12 @@ jobs:
           set -euo pipefail
           flags=(--draft --verify-tag --title "Meraline $VERSION" --notes-file build/notes/release-body.md)
           [ "$PRERELEASE" = "true" ] && flags+=(--prerelease)
+          # The same disk image under a name without the version, so the README's download button can
+          # link to releases/latest/download/Meraline.dmg and always get the newest stable release.
+          cp "build/release/Meraline-$VERSION.dmg" build/release/Meraline.dmg
           gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
             "build/release/Meraline-$VERSION.dmg" \
+            build/release/Meraline.dmg \
             "build/release/Meraline-$VERSION.zip" \
             "build/release/Meraline-$VERSION-dSYMs.zip" \
             build/release/appcast.xml \

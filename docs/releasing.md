@@ -8,6 +8,7 @@ installer's look.
 | File | Purpose |
 | --- | --- |
 | `Meraline-<version>.dmg` | The installer: a styled disk image with the app and a link to Applications. Signed and notarized in its own right. |
+| `Meraline.dmg` | The same disk image without the version in its name, so `releases/latest/download/Meraline.dmg` (the README's download button) always gets the newest stable release. |
 | `Meraline-<version>.zip` | The archive [Sparkle](https://sparkle-project.org) downloads when an installed copy updates. |
 | `appcast.xml` | The Sparkle feed entry for this version, EdDSA-signed, with the release notes embedded. Installed copies check `releases/latest/download/appcast.xml` once a day. |
 | `Meraline-<version>-dSYMs.zip` | Debug symbols, for reading crash reports. |
