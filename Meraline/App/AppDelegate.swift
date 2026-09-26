@@ -19,13 +19,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferences = Preferences.shared
     private let updater = Updater(preferences: .shared)
     private lazy var session = ChatSession(preferences: preferences)
-    private lazy var panel: PanelController = PanelController(session: session, preferences: preferences) { [weak self] pane in
+    private let whatsNew = WhatsNew()
+    private lazy var panel: PanelController = PanelController(session: session, preferences: preferences, whatsNew: whatsNew) { [weak self] pane in
         self?.panel.close()
         self?.settings.show(pane)
     }
     private lazy var settings = SettingsWindowController(preferences: preferences, updater: updater)
     private var statusItem: NSStatusItem?
-    private var whatsNew: WhatsNewWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.app.info("Meraline \(Bundle.main.shortVersion) (\(Bundle.main.buildNumber)) launched")
@@ -41,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defaults.set(Bundle.main.shortVersion, forKey: "lastRunVersion")
             panel.show()
         } else {
-            showWhatsNewIfUpdated()
+            announceUpdate()
         }
     }
 
@@ -71,9 +71,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// After an update, shows the notes Sparkle carried for the running version, or a link to
-    /// the release when it was installed by hand. Nothing is shown on a fresh install.
-    private func showWhatsNewIfUpdated() {
+    /// After an update, the panel offers the notes Sparkle carried for the running version, or a
+    /// link to the release when it was installed by hand, until they are dismissed. Nothing is
+    /// announced on a fresh install.
+    private func announceUpdate() {
         let defaults = UserDefaults.standard
         let current = Bundle.main.shortVersion
         // Copies from before this feature never stored a version; having launched before is
@@ -82,9 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         defaults.set(current, forKey: "lastRunVersion")
         guard previous != current else { return }
         Log.app.info("Updated from \(previous) to \(current)")
-        let update = updater.takeWhatsNew(for: current) ?? Updater.Update(version: current, notes: nil)
-        whatsNew = WhatsNewWindowController(update: update)
-        whatsNew?.show()
+        whatsNew.announce(updater.takeWhatsNew(for: current) ?? Updater.Update(version: current, notes: nil))
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

@@ -34,14 +34,16 @@ final class PanelController: NSObject {
     private let panel: FloatingPanel
     private let session: ChatSession
     private let preferences: Preferences
+    private let whatsNew: WhatsNew
     private let layout = PanelLayout()
     private var keyMonitor: Any?
     private var isApplyingFrame = false
     private var hiddenAt: Date?
 
-    init(session: ChatSession, preferences: Preferences, openSettings: @escaping (SettingsPane?) -> Void) {
+    init(session: ChatSession, preferences: Preferences, whatsNew: WhatsNew, openSettings: @escaping (SettingsPane?) -> Void) {
         self.session = session
         self.preferences = preferences
+        self.whatsNew = whatsNew
         panel = FloatingPanel(
             contentRect: NSRect(x: 0, y: 0, width: Self.windowWidth, height: 136),
             styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView],
@@ -68,6 +70,7 @@ final class PanelController: NSObject {
         let view = ChatPanelView(
             session: session,
             preferences: preferences,
+            whatsNew: whatsNew,
             layout: layout,
             onHeightChange: { [weak self] in self?.fit(height: $0) },
             onClose: { [weak self] in self?.close() },
@@ -105,12 +108,15 @@ final class PanelController: NSObject {
     func close() {
         guard panel.isVisible else { return }
         hiddenAt = .now
+        whatsNew.isExpanded = false
         panel.orderOut(nil)
         removeKeyMonitor()
     }
 
     private func handleEscape() {
-        if session.isStreaming {
+        if whatsNew.isExpanded {
+            whatsNew.isExpanded = false
+        } else if session.isStreaming {
             session.stop()
         } else if !session.turns.isEmpty || !session.draft.isEmpty || !session.draftImages.isEmpty || session.failure != nil || session.isPlaying {
             session.reset()

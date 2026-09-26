@@ -7,7 +7,7 @@ import Sparkle
 ///
 /// Updates download and install silently by default (SUAutomaticallyUpdate). What Sparkle finds or
 /// stages is exposed as `state`, so the menu bar item and the Software Update pane can offer it,
-/// and the notes of an update are kept so "What's new" can show them after it is installed.
+/// and the notes of an update are kept so the panel's What's New can show them after it is installed.
 @Observable
 final class Updater: NSObject {
     struct Update: Equatable {
@@ -174,7 +174,8 @@ final class Updater: NSObject {
     }
 
     /// The notes of the update that produced the running version, if Sparkle installed it. Read
-    /// once by the What's new window; a manual install has nothing stored.
+    /// once at the first launch after the update, which hands them to `WhatsNew`; a manual install
+    /// has nothing stored.
     func takeWhatsNew(for currentVersion: String) -> Update? {
         guard defaults.string(forKey: Self.pendingVersionKey) == currentVersion else { return nil }
         let notes = defaults.string(forKey: Self.pendingNotesKey)

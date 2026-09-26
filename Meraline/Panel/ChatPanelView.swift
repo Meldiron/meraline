@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct ChatPanelView: View {
     @Bindable var session: ChatSession
     let preferences: Preferences
+    let whatsNew: WhatsNew
     let layout: PanelLayout
     let onHeightChange: (CGFloat) -> Void
     let onClose: () -> Void
@@ -29,6 +30,12 @@ struct ChatPanelView: View {
                 if !session.draftImages.isEmpty {
                     DraftImageTray(images: session.draftImages, onRemove: session.removeImage)
                         .padding(.horizontal, 18)
+                        .padding(.bottom, 12)
+                        .transition(.opacity)
+                }
+                if whatsNew.isExpanded, let update = whatsNew.update {
+                    WhatsNewCard(update: update, dismiss: whatsNew.dismiss)
+                        .padding(.horizontal, 12)
                         .padding(.bottom, 12)
                         .transition(.opacity)
                 }
@@ -74,6 +81,8 @@ struct ChatPanelView: View {
         .animation(.smooth(duration: 0.2), value: session.draftImages)
         .animation(.smooth(duration: 0.2), value: session.failure)
         .animation(.smooth(duration: 0.2), value: session.nudge)
+        .animation(.smooth(duration: 0.2), value: whatsNew.isExpanded)
+        .animation(.smooth(duration: 0.2), value: whatsNew.update)
     }
 
     private var placeholder: String {
@@ -99,6 +108,15 @@ struct ChatPanelView: View {
                 .tint(.meralinePink)
                 .onSubmit(session.send)
                 .disabled(session.isStreaming)
+
+            if let update = whatsNew.update {
+                WhatsNewButton(version: update.version, isExpanded: whatsNew.isExpanded) {
+                    whatsNew.isExpanded.toggle()
+                } dismiss: {
+                    whatsNew.dismiss()
+                }
+                .transition(.opacity)
+            }
 
             Button { preferences.isPinned.toggle() } label: {
                 Image(systemName: preferences.isPinned ? "pin.fill" : "pin")
