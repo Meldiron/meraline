@@ -3,7 +3,7 @@ import Observation
 
 @Observable
 final class ChatSession {
-    /// What the open chat is: quick questions, or one of the games in the sparkle menu (see `Game`).
+    /// What the open chat is: quick questions, or one of the games under the input (see `Game`).
     enum Mode: Equatable {
         case chat
         case game(Game)

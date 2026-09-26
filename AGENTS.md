@@ -26,9 +26,9 @@ A Developer ID certificate is optional. `dev_run.sh`, `test.sh`, and `release.sh
 | Path | What lives there |
 | --- | --- |
 | `Meraline/App/AppDelegate.swift` | Entry point, menu bar item, main menu, hotkey, `meraline://` URL routes, What's new after an update |
-| `Meraline/Panel/` | The floating non-activating panel (`PanelController`) and its SwiftUI content (`ChatPanelView`) |
+| `Meraline/Panel/` | The floating non-activating panel (`PanelController`), its SwiftUI content (`ChatPanelView`), and the row under the input with the mode toggle and the game buttons (`ModeBar`) |
 | `Meraline/Chat/` | `ChatSession` (in-memory turns, draft, streaming, recent chats, and the game engine), `ImageAttachment`, and `ThinkingStatus` (the lines the panel murmurs while waiting for an answer) |
-| `Meraline/Games/` | The games in the sparkle menu's Play section: `Game` (the list, the `GameRules` protocol, shared parsing) and one file of rules per game |
+| `Meraline/Games/` | The games behind the controller buttons under the input: `Game` (the list, the `GameRules` protocol, shared parsing) and one file of rules per game |
 | `Meraline/Providers/` | Provider list and settings, request building, HTTP streaming (`LLMClient`), command-line tools (`CommandLineClient`), stream decoding, and the agents' MCP servers (`MCPServer` lists them by asking the agent, `MCPServerRegistry` keeps the list) |
 | `Meraline/Settings/` | The System Settings-style window and its panes |
 | `Meraline/Support/` | `Preferences` (UserDefaults + Keychain), `Updater` (Sparkle), `Log` and `Diagnostics`, `Brand` colors, `Keychain` |
