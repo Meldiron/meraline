@@ -14,6 +14,8 @@ struct ChatPanelView: View {
     @Bindable var session: ChatSession
     let preferences: Preferences
     let whatsNew: WhatsNew
+    let updater: Updater
+    let updateNotice: UpdateNotice
     let shortcutSetup: ShortcutSetup
     let layout: PanelLayout
     /// Fits the window: its height, and how much of it is room above the card for a panel of actions that
@@ -29,6 +31,8 @@ struct ChatPanelView: View {
     var screen: () -> NSScreen? = { NSScreen.main }
     /// Where what the buttons above the card added came from.
     var sources = ContextSources()
+    /// Insert Answer, for the chat's actions.
+    var inserter: AnswerInserter?
 
     @FocusState private var isInputFocused: Bool
     @State private var conversationHeight: CGFloat = 0
@@ -41,10 +45,16 @@ struct ChatPanelView: View {
 
     private var hasConversation: Bool { !session.turns.isEmpty }
     private var context: PanelContext {
-        PanelContext(session: session, preferences: preferences, layout: layout, openSettings: openSettings)
+        PanelContext(session: session, preferences: preferences, layout: layout, openSettings: openSettings, insertion: inserter?.insertion)
     }
     /// Who is asking when an agent stops to ask, for the prompt card.
     private var agentName: String { preferences.activeProvider?.name ?? "The agent" }
+    /// The update the capsule under the card offers, unless its cross hid that version.
+    private var offeredUpdate: Updater.State? { updateNotice.offer(for: updater.state) }
+    /// Whether the capsules under the card show, for the window to make room for them.
+    private var hasAnnouncements: Bool { whatsNew.update != nil || offeredUpdate != nil || crashNotice.isOffered }
+    /// The diagnostics the capsule under the card offers once after a crash.
+    private let crashNotice = CrashNotice.shared
 
     var body: some View {
         GlassEffectContainer {
@@ -143,11 +153,20 @@ struct ChatPanelView: View {
         }
         .padding(PanelController.margin)
         .padding(.top, ContextButtons.roomAbove)
+        .padding(.bottom, hasAnnouncements ? Announcements.roomBelow : 0)
         .overlay(alignment: .topLeading) {
             // Lined up with the sparkle under them.
             ContextButtons(session: session, preferences: preferences, sources: sources, screen: screen, close: onClose) { isInputFocused = true }
                 .padding(.leading, PanelController.margin + 18)
                 .padding(.top, ContextButtons.inset)
+        }
+        .overlay(alignment: .bottomLeading) {
+            // Lined up with the buttons above the card.
+            Announcements(whatsNew: whatsNew, update: offeredUpdate, openUpdate: openUpdate, hideUpdate: updateNotice.hide, crash: crashNotice) {
+                crashNotice.copy(Diagnostics.report(preferences: preferences, updates: updater.status))
+            }
+                .padding(.leading, PanelController.margin + 18)
+                .padding(.bottom, Announcements.inset)
         }
         .fixedSize(horizontal: false, vertical: true)
         .onGeometryChange(for: CGFloat.self, of: \.size.height) {
@@ -182,6 +201,8 @@ struct ChatPanelView: View {
         .animation(.smooth(duration: Self.cardAnimation), value: session.rematch)
         .animation(.smooth(duration: Self.cardAnimation), value: whatsNew.isExpanded)
         .animation(.smooth(duration: Self.cardAnimation), value: whatsNew.update)
+        .animation(.smooth(duration: Self.cardAnimation), value: offeredUpdate)
+        .animation(.smooth(duration: Self.cardAnimation), value: crashNotice.isOffered)
         .animation(.smooth(duration: Self.cardAnimation), value: shortcutSetup.showsNotice)
     }
 
@@ -190,6 +211,16 @@ struct ChatPanelView: View {
     private func fitWindow() {
         let panelBottom = actionPanelSpan.map { $0.bottom + 28 } ?? 0
         onHeightChange(max(roomAbove + cardHeight, panelBottom), roomAbove)
+    }
+
+    /// A staged update restarts into it; a found one opens Sparkle's window, which the panel would cover.
+    private func openUpdate() {
+        if updater.stagedUpdate != nil {
+            updater.installStagedUpdate()
+        } else {
+            onClose()
+            updater.checkForUpdates()
+        }
     }
 
     private func rematchTray(_ rematch: RematchOffer) -> some View {
@@ -241,32 +272,11 @@ struct ChatPanelView: View {
                 .onSubmit(session.send)
                 .disabled(session.isStreaming)
 
-            if let update = whatsNew.update {
-                WhatsNewButton(version: update.version, isExpanded: whatsNew.isExpanded) {
-                    whatsNew.isExpanded.toggle()
-                } dismiss: {
-                    whatsNew.dismiss()
-                }
-                .transition(.opacity)
-            }
-
-            Button { preferences.isPinned.toggle() } label: {
-                Image(systemName: preferences.isPinned ? "pin.fill" : "pin")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(preferences.isPinned ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
-                    .rotationEffect(.degrees(45))
-                    .frame(width: 32, height: 32)
-                    .glassEffect(
-                        preferences.isPinned ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(),
-                        in: .circle
-                    )
-                    .contentShape(.circle)
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut("p")
-            .help(preferences.isPinned ? "Unpin: close when clicking elsewhere (⌘P)" : "Pin: stay open when clicking elsewhere (⌘P)")
-            .accessibilityLabel(preferences.isPinned ? "Unpin" : "Pin")
+            PinButton(
+                preferences: preferences,
+                forgetsAt: hasConversation && !session.isStreaming ? layout.forgetsAt : nil,
+                isAnonymous: session.isAnonymous
+            )
 
             Button { openSettings(nil) } label: {
                 Image(systemName: "gearshape")
@@ -296,7 +306,8 @@ struct ChatPanelView: View {
                         activity: session.isStreaming ? .some(session.turns.last?.activity) : nil,
                         prompt: session.isStreaming ? session.turns.last?.pendingPrompt : nil,
                         agent: agentName,
-                        answer: { session.answer($0, with: $1) }
+                        answer: { session.answer($0, with: $1) },
+                        explain: explain
                     ) { choice in
                         session.choose(choice)
                         isInputFocused = true
@@ -307,7 +318,8 @@ struct ChatPanelView: View {
                             turn: turn,
                             isAnswering: session.isStreaming && turn.id == session.turns.last?.id,
                             agent: agentName,
-                            answer: { session.answer($0, with: $1) }
+                            answer: { session.answer($0, with: $1) },
+                            explain: explain
                         )
                     }
                 }
@@ -320,6 +332,11 @@ struct ChatPanelView: View {
         .frame(height: min(conversationHeight, layout.maximumConversationHeight))
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
         .scrollEdgeEffectStyle(.soft, for: .vertical)
+    }
+
+    /// The Why? button on an agent's ask: the agent says in one line why it wants the tool (see `ToolReason`).
+    private func explain(_ prompt: AgentPrompt) async throws -> String {
+        try await ToolReason.explain(prompt, in: session.turns, settings: preferences[.claudeCode])
     }
 
     private var footer: some View {
@@ -411,6 +428,7 @@ private struct TurnView: View {
     let isAnswering: Bool
     let agent: String
     let answer: (AgentPrompt.ID, AgentAnswer) -> Void
+    var explain: ((AgentPrompt) async throws -> String)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -434,7 +452,8 @@ private struct TurnView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let prompt = turn.pendingPrompt {
-                PromptCard(prompt: prompt, agent: agent) { answer(prompt.id, $0) }
+                PromptCard(prompt: prompt, agent: agent, answer: { answer(prompt.id, $0) }, explain: explain)
+                    .id(prompt.id)
             } else if isAnswering && (turn.answer.isEmpty || turn.activity != nil) {
                 ActivityRow(activity: turn.activity)
             }
@@ -452,18 +471,29 @@ private struct TurnView: View {
     }
 }
 
-/// An agent's ask, with the means to settle it: Allow and Deny for a tool, or a question's choices as
-/// buttons and a field for an answer of your own. One question with single choices is answered by the
-/// first tap; several, or several choices, wait for Done. Neutral glass, with the panel's faint pink on
-/// the default choice.
+/// An agent's ask, with the means to settle it: Allow and Deny for a tool, with Why? for the agent's reason
+/// in one line, or a question's choices as buttons and a field for an answer of your own. One question with
+/// single choices is answered by the first tap; several, or several choices, wait for Done. Neutral glass,
+/// with the panel's faint pink on the default choice.
 private struct PromptCard: View {
+    /// Where Why? stands: asking, the reason, or why there is none.
+    private enum Why: Equatable {
+        case asking
+        case reason(String)
+        case failed(String)
+    }
+
     let prompt: AgentPrompt
     let agent: String
     let answer: (AgentAnswer) -> Void
+    /// Asks the agent why it wants the tool. Without it there is no Why? button.
+    var explain: ((AgentPrompt) async throws -> String)?
     /// The labels picked so far, by question.
     @State private var picks: [String: [String]] = [:]
     /// Answers typed instead of picked, by question.
     @State private var typed: [String: String] = [:]
+    /// Nil until Why? is clicked. Kept by the card alone, so the reason goes when the ask is settled.
+    @State private var why: Why?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -491,29 +521,76 @@ private struct PromptCard: View {
     }
 
     private func permission(_ activity: Activity, detail: String?) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: activity.symbol)
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(agent) asks to \(activity.request)")
-                    .font(.system(size: 13, weight: .semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-                if let detail, !detail.isEmpty {
-                    Text(detail)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-                        .textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: activity.symbol)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(agent) asks to \(activity.request)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let detail, !detail.isEmpty {
+                        Text(detail)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                    }
                 }
+                Spacer(minLength: 8)
+                if explain != nil, why == nil || isWhyFailed {
+                    Button("Why?") { why = .asking }
+                        .buttonStyle(.glass)
+                        .help("Ask \(agent) why it wants this")
+                }
+                Button("Deny") { answer(.deny) }
+                    .buttonStyle(.glass)
+                Button("Allow") { answer(.allow) }
+                    .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
+                    .keyboardShortcut(.defaultAction)
             }
-            Spacer(minLength: 8)
-            Button("Deny") { answer(.deny) }
-                .buttonStyle(.glass)
-            Button("Allow") { answer(.allow) }
-                .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
-                .keyboardShortcut(.defaultAction)
+            if let why {
+                whyRow(why)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 28)
+            }
+        }
+        .task(id: why == .asking) {
+            guard why == .asking, let explain else { return }
+            do {
+                why = .reason(try await explain(prompt))
+                Log.chat.info("Agent's reason for its ask shown")
+            } catch {
+                // Settling the ask takes the card away and stops the run; that is no failure.
+                guard !Task.isCancelled else { return }
+                Log.chat.error("Couldn’t get the agent's reason: \(error.localizedDescription)")
+                why = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    private var isWhyFailed: Bool {
+        if case .failed = why { true } else { false }
+    }
+
+    @ViewBuilder
+    private func whyRow(_ why: Why) -> some View {
+        switch why {
+        case .asking:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Asking \(agent) why…")
+            }
+        case .reason(let reason):
+            Text(reason)
+                .textSelection(.enabled)
+        case .failed(let message):
+            Text("Couldn’t find out why. \(message)")
         }
     }
 
@@ -715,13 +792,15 @@ private struct GameTranscript: View {
     let prompt: AgentPrompt?
     let agent: String
     let answer: (AgentPrompt.ID, AgentAnswer) -> Void
+    var explain: ((AgentPrompt) async throws -> String)?
     let choose: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(lines) { GameLineView(line: $0) }
             if let prompt {
-                PromptCard(prompt: prompt, agent: agent) { answer(prompt.id, $0) }
+                PromptCard(prompt: prompt, agent: agent, answer: { answer(prompt.id, $0) }, explain: explain)
+                    .id(prompt.id)
             } else if let activity {
                 ActivityRow(activity: activity)
             }

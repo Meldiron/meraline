@@ -27,6 +27,44 @@ struct AutomationRouteTests {
         #expect(AutomationRoute(url: URL(string: "meraline://ask?selection=%20")!) == .ask(text: nil, send: false))
     }
 
+    @Test func askWithTheClipboardAndTheScreen() {
+        let route = AutomationRoute(url: URL(string: "meraline://ask?text=What%20is%20this%3F&clipboard=1&screen=true&send=1")!)
+        #expect(route == .ask(text: "What is this?", clipboard: true, screen: true, send: true))
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?screen=1")!) == .ask(text: nil, screen: true, send: false))
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?clipboard=0&screen=no")!) == .ask(text: nil, send: false))
+    }
+
+    @Test func askAnAgentOrAnLLM() {
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&agent=1")!) == .ask(text: "hi", mode: .agent, send: false))
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&agent=off")!) == .ask(text: "hi", mode: .llm, send: false))
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&agent=maybe")!) == .ask(text: "hi", send: false))
+    }
+
+    @Test func switchMode() {
+        #expect(AutomationRoute(url: URL(string: "meraline://mode?agent=1")!) == .mode(.agent))
+        #expect(AutomationRoute(url: URL(string: "meraline://mode?agent=FALSE")!) == .mode(.llm))
+        #expect(AutomationRoute(url: URL(string: "meraline://mode")!) == .mode(nil))
+        #expect(AutomationRoute(url: URL(string: "meraline://mode?agent=maybe")!) == nil)
+    }
+
+    @Test func play() {
+        #expect(AutomationRoute(url: URL(string: "meraline://play?game=oddOneOut")!) == .play(game: .oddOneOut))
+        #expect(AutomationRoute(url: URL(string: "meraline://play?game=rhyme-duel")!) == .play(game: .rhymeDuel))
+        #expect(AutomationRoute(url: URL(string: "meraline://play?game=Fix%20the%20Typo")!) == .play(game: .fixTheTypo))
+        #expect(AutomationRoute(url: URL(string: "meraline://play")!) == .play(game: nil))
+        #expect(AutomationRoute(url: URL(string: "meraline://play?game=chess")!) == .play(game: nil))
+    }
+
+    @Test func gamesByName() {
+        for game in Game.allCases {
+            #expect(Game(named: game.rawValue) == game)
+            #expect(Game(named: game.title) == game)
+            #expect(Game(named: game.title.lowercased().replacingOccurrences(of: " ", with: "_")) == game)
+        }
+        #expect(Game(named: "") == nil)
+        #expect(Game(named: " - ") == nil)
+    }
+
     @Test func otherRoutes() {
         #expect(AutomationRoute(url: URL(string: "meraline://new")!) == .newChat)
         #expect(AutomationRoute(url: URL(string: "MERALINE://Settings")!) == .settings(pane: nil))

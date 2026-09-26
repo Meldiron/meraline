@@ -42,6 +42,8 @@ final class PanelLayout {
     var copyNotice = 0
     /// The last time the recent chats were forgotten, for the clock under the input to react to.
     var lastForgetting: Forgetting?
+    /// When the idle clock moves the chat on, while you are away from the window (see `IdleClock`).
+    var forgetsAt: Date?
     /// How far the window's top may rise before it leaves the screen, for a panel of actions to choose
     /// between opening upward and downward.
     var roomOnScreenAbove: CGFloat = .greatestFiniteMagnitude
@@ -86,12 +88,14 @@ final class PanelController: NSObject {
     private let session: ChatSession
     private let preferences: Preferences
     private let whatsNew: WhatsNew
+    private let updater: Updater
+    private let updateNotice: UpdateNotice
     private let shortcutSetup: ShortcutSetup
     private let layout = PanelLayout()
     private let openSettings: (SettingsPane?) -> Void
     private var keyMonitor: Any?
     private var isApplyingFrame = false
-    private var hiddenAt: Date?
+    private lazy var idleClock = IdleClock(session: session, preferences: preferences, layout: layout)
     private var shake = ShakeDetector()
     /// How much of the window's height is room above the card, made for a panel of actions.
     private var roomAbove: CGFloat = 0
@@ -102,12 +106,16 @@ final class PanelController: NSObject {
     private var isReadingSelection = false
     /// Where what the buttons above the card added came from, which a paste counts toward too.
     private let sources = ContextSources()
+    /// Insert Answer, which closes the window to paste into the app in front.
+    private let inserter = AnswerInserter()
     private var activationObserver: NSObjectProtocol?
 
-    init(session: ChatSession, preferences: Preferences, whatsNew: WhatsNew, shortcutSetup: ShortcutSetup, openSettings: @escaping (SettingsPane?) -> Void) {
+    init(session: ChatSession, preferences: Preferences, whatsNew: WhatsNew, updater: Updater, updateNotice: UpdateNotice, shortcutSetup: ShortcutSetup, openSettings: @escaping (SettingsPane?) -> Void) {
         self.session = session
         self.preferences = preferences
         self.whatsNew = whatsNew
+        self.updater = updater
+        self.updateNotice = updateNotice
         self.shortcutSetup = shortcutSetup
         self.openSettings = openSettings
         panel = FloatingPanel(
@@ -132,11 +140,15 @@ final class PanelController: NSObject {
         panel.delegate = self
         panel.onEscape = { [weak self] in self?.handleEscape() }
         panel.onClose = { [weak self] in self?.close() }
+        observeScreenSharingPreference()
+        inserter.closeWindow = { [weak self] in self?.close() }
 
         let view = ChatPanelView(
             session: session,
             preferences: preferences,
             whatsNew: whatsNew,
+            updater: updater,
+            updateNotice: updateNotice,
             shortcutSetup: shortcutSetup,
             layout: layout,
             onHeightChange: { [weak self] in self?.fit(height: $0, roomAbove: $1) },
@@ -144,7 +156,8 @@ final class PanelController: NSObject {
             openSettings: openSettings,
             takeKeyboard: { [weak self] in self?.show() },
             screen: { [weak self] in self?.panel.screen },
-            sources: sources
+            sources: sources,
+            inserter: inserter
         )
         let root = PanelRoot(setup: shortcutSetup, chat: view, onHeightChange: { [weak self] in self?.fit(height: $0) }) { [weak self] in
             self?.layout.focusRequest += 1
@@ -196,14 +209,31 @@ final class PanelController: NSObject {
         }
     }
 
+    /// `meraline://play` without a game: the window, with the games open under the input.
+    func showGames() {
+        show()
+        withAnimation(GameTray.spring) { layout.expandedTray = .games }
+    }
+
+    /// `meraline://ask?clipboard=1&screen=1`: adds what is on the clipboard and a screenshot of the screen the
+    /// window is on, as the buttons above the card do, except that what is in the draft already stays in.
+    /// Whether everything asked for is in the draft now. A game takes none of it.
+    func addContext(clipboard: Bool, screen: Bool) async -> Bool {
+        guard clipboard || screen else { return true }
+        guard !session.isPlaying else { return false }
+        var complete = true
+        if clipboard, !sources.addClipboard(to: session) { complete = false }
+        if screen, await !sources.addScreenshot(of: panel.screen, to: session) { complete = false }
+        return complete
+    }
+
     func show() {
         guard !panel.isVisible else {
             panel.makeKeyAndOrderFront(nil)
             layout.focusRequest += 1
             return
         }
-        if preferences.idleReset.hasExpired(since: hiddenAt) { session.expire() }
-        hiddenAt = nil
+        idleClock.comeBack()
         if preferences.activeProvider?.isOnDevice == true { AppleIntelligenceClient.prewarm() }
         SelectionAccess.shared.refresh()
         let screen = Self.screenUnderPointer
@@ -219,13 +249,23 @@ final class PanelController: NSObject {
     func close() {
         guard panel.isVisible else { return }
         shortcutSetup.dismiss()
-        hiddenAt = .now
+        idleClock.leave()
         whatsNew.isExpanded = false
         session.withdrawOfferedSelection()
         sources.windowClosed()
         layout.actionPanel = nil
         panel.orderOut(nil)
         removeKeyMonitor()
+    }
+
+    /// Hide from Screen Sharing, in Settings › General and the sparkle's panel. macOS leaves the window out of the
+    /// captures that respect it; those that take the whole display, as ScreenCaptureKit's do, may show it anyway.
+    private func observeScreenSharingPreference() {
+        withObservationTracking {
+            panel.sharingType = preferences.hidesFromScreenSharing ? .none : .readOnly
+        } onChange: {
+            Task { @MainActor [weak self] in self?.observeScreenSharingPreference() }
+        }
     }
 
     private func handleEscape() {
@@ -256,7 +296,7 @@ final class PanelController: NSObject {
             let pointer = NSEvent.mouseLocation
             origin = NSPoint(x: pointer.x - Self.windowWidth / 2, y: pointer.y - 16 - height + Self.margin)
         case .lastPosition:
-            if let saved = UserDefaults.standard.array(forKey: "panelTopLeft") as? [Double], saved.count == 2 {
+            if let saved = UserDefaults.meraline.array(forKey: "panelTopLeft") as? [Double], saved.count == 2 {
                 origin = NSPoint(x: saved[0], y: saved[1] - height)
             } else {
                 origin = NSPoint(x: visible.midX - Self.windowWidth / 2, y: visible.maxY - visible.height * 0.2 - height)
@@ -355,7 +395,7 @@ final class PanelController: NSObject {
     }
 
     private var context: PanelContext {
-        PanelContext(session: session, preferences: preferences, layout: layout, openSettings: openSettings)
+        PanelContext(session: session, preferences: preferences, layout: layout, openSettings: openSettings, insertion: inserter.insertion)
     }
 
     /// ⌘K opens or closes the panel of actions: the chat's while a chat is open, the sparkle's otherwise. The
@@ -415,7 +455,11 @@ final class PanelController: NSObject {
 extension PanelController: NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
         layout.actionPanel = nil
-        if !preferences.isPinned { close() }
+        if preferences.isPinned { idleClock.leave() } else { close() }
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        idleClock.comeBack()
     }
 
     func windowDidChangeScreen(_ notification: Notification) {
@@ -427,7 +471,7 @@ extension PanelController: NSWindowDelegate {
     /// shake detector: a shake while dragging forgets the recent chats.
     func windowDidMove(_ notification: Notification) {
         guard !isApplyingFrame, panel.isVisible else { return }
-        UserDefaults.standard.set([panel.frame.minX, panel.frame.maxY - roomAbove], forKey: "panelTopLeft")
+        UserDefaults.meraline.set([panel.frame.minX, panel.frame.maxY - roomAbove], forKey: "panelTopLeft")
         measureRoomOnScreenAbove()
         if shake.move(to: panel.frame.origin, at: ProcessInfo.processInfo.systemUptime) {
             forgetRecentChats()

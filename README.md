@@ -25,7 +25,7 @@
 
 ---
 
-Meraline is a tiny Mac app for quick questions. Press <kbd>⌥</kbd> <kbd>Space</kbd>, type, and the answer streams in a small glass window. Ask a follow-up if you need one. Click away and it waits for you; press <kbd>Esc</kbd> to start fresh. Leave it hidden for half an hour and the next question starts a fresh chat on its own.
+Meraline is a tiny Mac app for quick questions. Press <kbd>⌥</kbd> <kbd>Space</kbd>, type, and the answer streams in a small glass window. Ask a follow-up if you need one. Click away and it waits for you; press <kbd>Esc</kbd> to start fresh. Leave it for half an hour and the next question starts a fresh chat on its own.
 
 There are no chat lists to manage, no saved history, and no projects. Nothing is saved to disk. Pin the window (📌 or <kbd>⌘</kbd> <kbd>P</kbd>) to keep it open while you work in other apps.
 
@@ -43,6 +43,8 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
 💬 **Answers quickly.** Replies stream in as they're written, with bold, italics, code, and links rendered. While a model searches the web or runs a tool, you see what it's doing. While it thinks, Meraline murmurs ("sharpening pencils…", "asking the void…", "consulting the sparkle council…").
 
 ✂️ **Knows what you selected.** Select text in any app and press <kbd>⌥</kbd> <kbd>Space</kbd>, then click the text cursor above the window: the text comes along as context, so "summarize this" or "what does this mean?" is all you type. It never joins a question until you add it, and texts from several apps can go together. Select files or folders in Finder instead and they're attached: photos for any model, anything for an agent. It needs Accessibility access, which Meraline asks for. **Services › Ask Meraline** works without it.
+
+✍️ **Puts the answer to work.** **Actions** (<kbd>⌘</kbd> <kbd>K</kbd>) under an answer make it shorter, longer, simpler, more concrete, or a bullet list, in place, so the next rewrite or follow-up builds on what you see. <kbd>⌘</kbd> <kbd>↩</kbd> closes the window and pastes the answer at the cursor of the app you were in: select a paragraph, ask for it friendlier, press <kbd>⌘</kbd> <kbd>↩</kbd>, and the new text replaces the old.
 
 🖼️ **Understands images and files.** Paste a screenshot or drop an image into the window and ask about it, or use the two buttons above the window: one adds whatever you copied, the other a screenshot of your screen without Meraline in it. Agents take PDFs, spreadsheets, and any other file too, and whole folders: drop a project and ask about it, and the agent works on a copy of it, never on your own.
 
@@ -68,7 +70,7 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
     <td align="center">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/agent.png">
-        <img src="docs/screenshots/agent-light.png" width="440" alt="Agent mode: Claude Code's answer with a trail of the MCP tools it used and a card asking to write notes.md, with Deny and Allow">
+        <img src="docs/screenshots/agent-light.png" width="440" alt="Agent mode: Claude Code's answer with a trail of the MCP tools it used and a card asking to write notes.md, with Deny and Allow and its one-line reason from Why?">
       </picture>
     </td>
     <td align="center">
@@ -79,7 +81,7 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
     </td>
   </tr>
   <tr>
-    <td align="center"><sub>Agents show the MCP tools they use and ask before writing to the chat's workspace</sub></td>
+    <td align="center"><sub>Agents show the MCP tools they use, ask before writing to the chat's workspace, and say why</sub></td>
     <td align="center"><sub>An agent's questions come with their choices</sub></td>
   </tr>
   <tr>
@@ -99,6 +101,24 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
   <tr>
     <td align="center"><sub>Eight word games unfold from the controller, one click each</sub></td>
     <td align="center"><sub>The clock keeps your recent chats, to reopen or clear</sub></td>
+  </tr>
+  <tr>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/actions.png">
+        <img src="docs/screenshots/actions-light.png" width="440" alt="The chat's actions over an answer: Insert Answer into TextEdit, Copy Conversation, Ask Again, and the rewrites Make Shorter, Make Longer, Make Simpler, Make More Concrete, and Turn into Bullet List">
+      </picture>
+    </td>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/privacy.png">
+        <img src="docs/screenshots/privacy-light.png" width="440" alt="An answer from Apple Intelligence with on this Mac beside the mode toggle, and the pin counting down: forgets in 30m">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Rewrite an answer in place, or paste it where you were</sub></td>
+    <td align="center"><sub>Says when nothing leaves your Mac, and counts down to a fresh start</sub></td>
   </tr>
   <tr>
     <td align="center" colspan="2">
@@ -144,6 +164,7 @@ That's it. Press <kbd>⌥</kbd> <kbd>Space</kbd> whenever you have a question.
 | <kbd>⌘</kbd> <kbd>P</kbd> | Pin or unpin the window |
 | <kbd>⌘</kbd> <kbd>K</kbd> | Actions for the chat: search them, pick one with the arrows and <kbd>↩</kbd> (the sparkle's panel when no chat is open) |
 | <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>C</kbd> | Copy the last answer |
+| <kbd>⌘</kbd> <kbd>↩</kbd> | Close the window and paste the last answer into the app you were in |
 | <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>C</kbd> | Copy the whole conversation as Markdown |
 | <kbd>⌘</kbd> <kbd>R</kbd> | Ask the last question again; in a finished game, play again |
 | <kbd>⌘</kbd> <kbd>I</kbd> | Show a hint in a game |
@@ -158,13 +179,15 @@ That's it. Press <kbd>⌥</kbd> <kbd>Space</kbd> whenever you have a question.
 
 Meraline is built so you don't have to take its word for any of this.
 
-- **No account and no server in between.** Questions go straight from your Mac to the provider you chose. Meraline has no backend, no analytics, and no crash reporting. The only other connection is a once-a-day update check against `github.com`, which you can turn off in Settings. Watch the traffic with any network monitor and you'll see nothing else.
+- **No account and no server in between.** Questions go straight from your Mac to the provider you chose. Meraline has no backend, no analytics, and no crash reporting. The only other connections are a once-a-day update check against `github.com`, which you can turn off in Settings, and the pictures in a release's notes, fetched from GitHub when you open What's New. Watch the traffic with any network monitor and you'll see nothing else.
 - **Nothing on disk.** Conversations and games live in memory and are gone when you quit. The preferences file (`defaults read com.meldiron.meraline`) holds settings only: shortcut, window placement, and which providers are on.
+- **Chats move on.** After 30 minutes away from the window, the chat moves to Recent Chats and your next question starts fresh. An anonymous chat is forgotten instead. A window pinned on the screen counts down on its pin ("forgets in 28m"). Change the time, or turn it off, in **Settings › General**.
 - **Keys in the Keychain.** API keys are stored as Keychain items under the service `com.meldiron.meraline.api-keys`, where Keychain Access can show and delete them. They never appear in preferences, logs, or diagnostics.
-- **Command-line agents stay in charge of their own sign-in.** Meraline runs the unmodified `claude`, `codex`, and `opencode` commands with session persistence off. It never reads or copies their tokens. The MCP servers set up in an agent are available to it here too, as the agent reports them; **Settings › Agents** lists them and lets you turn any of them off for Meraline alone, without touching the agent's own configuration. Each chat gives its agent a scratch folder in the temporary directory, holding only copies of the files and folders you attach, never your originals, and what the agent writes there. It is removed when the chat is forgotten or Meraline quits. When Claude Code wants to write there, or has a question of its own, Meraline shows it and waits for you.
+- **Command-line agents stay in charge of their own sign-in.** Meraline runs the unmodified `claude`, `codex`, and `opencode` commands with session persistence off. It never reads or copies their tokens. The MCP servers set up in an agent are available to it here too, as the agent reports them; **Settings › Agents** lists them and lets you turn any of them off for Meraline alone, without touching the agent's own configuration. Each chat gives its agent a scratch folder in the temporary directory, holding only copies of the files and folders you attach, never your originals, and what the agent writes there. It is removed when the chat is forgotten or Meraline quits. When Claude Code wants to write there, or has a question of its own, Meraline shows it and waits for you; **Why?** has it say in one line why it wants to.
 - **The selection is read only when you ask.** With Accessibility access, Meraline reads the selected text of the app in front, or which files are selected in Finder, when you press the shortcut, and at no other time. The text stays in memory, out of your question, unless you click the text cursor to add it. It skips password fields and secure input. When an app doesn't share its selection directly, Meraline presses that app's Copy command (or ⌘C, in an app like Zed that describes nothing but its window) and puts back what was on your clipboard straight away. Turn it off in **Settings › General**.
 - **Screenshots only when you click.** The screen button takes a single picture of the display the window is on, with Meraline's own windows left out, and attaches it to your next question. It needs Screen Recording access, which macOS asks you for, but Meraline never records: nothing is captured until you click, and the picture lives in memory with the chat. The clipboard button reads your clipboard only when you click it; while the window is open, Meraline only checks what kind of thing is on it, to show whether there's something to add. Passwords that password managers mark as concealed are never read.
-- **On-device means on-device.** Apple Intelligence answers come from the model inside macOS. Nothing is sent anywhere.
+- **Off screen shares, if you want.** **Hide from Screen Sharing**, in the sparkle's panel or **Settings › General**, asks macOS to leave the window out of screen sharing, recordings, and screenshots. It's off unless you turn it on. Apps that capture the whole display, such as QuickTime, can still show the window, so try it with yours first.
+- **On-device means on-device.** Apple Intelligence answers come from the model inside macOS, and Ollama's from a model on your Mac. Nothing is sent anywhere, and while one of them answers, the window says "on this Mac" beside the mode toggle. Ollama's cloud models and servers on other machines don't get the label.
 - **It's all open source.** Search the code for `URLSession`, `Process`, and `Keychain` to see every place Meraline talks to anything.
 
 ## Automate it
@@ -176,19 +199,26 @@ Other apps and scripts can open Meraline through the `meraline://` URL scheme, w
 | `meraline://ask?text=…` | Opens the window with the question filled in |
 | `meraline://ask?text=…&send=1` | Fills it in and sends it |
 | `meraline://ask?selection=…` | Opens the window with text to ask about, as if you had selected it; add `text=` and `send=1` to ask right away |
+| `meraline://ask?clipboard=1` | Adds what's on the clipboard, as the clipboard button does |
+| `meraline://ask?screen=1` | Adds a screenshot of the screen the window opens on, as the screen button does. With `send=1`, the question waits for it, and isn't sent if it can't be taken |
+| `meraline://ask?agent=1` | Asks an agent; `agent=0` asks an LLM. Works with everything above |
 | `meraline://new` | Starts a new chat and opens the window |
+| `meraline://play` | Opens the window with the games showing |
+| `meraline://play?game=oddOneOut` | Starts a game: `rhymeDuel`, `addAWord`, `categories`, `wordFootball`, `oddOneOut`, `fixTheTypo`, `speedDefinitions`, or `letterAuction`. Its title works too, as in `odd-one-out` |
+| `meraline://mode?agent=1` | Switches to Agent and opens the window; `agent=0` switches to LLM, and `meraline://mode` alone to the other mode |
 | `meraline://settings` | Opens Settings |
 | `meraline://settings?pane=claudeCode` | Opens Settings on a page: `general`, `prompt`, `updates`, `about`, or a provider such as `anthropic`, `apple`, or `codex` |
 
 ```sh
 open "meraline://ask?text=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' 'Explain CRDTs in one paragraph')&send=1"
+open "meraline://ask?text=What%27s%20wrong%20here%3F&screen=1&clipboard=1&send=1"
 ```
 
 ## Updates and beta builds
 
-Meraline checks for updates once a day and installs them quietly in the background; the menu bar menu and Settings › Software Update show when one is ready. To try builds before they are released, switch **Settings › Software Update › Update channel** to Beta. After an update, Meraline shows what changed.
+Meraline checks for updates once a day and installs them quietly in the background; a capsule under the window, the menu bar menu, and Settings › Software Update show when one is ready. To try builds before they are released, switch **Settings › Software Update › Update channel** to Beta. After an update, a What's New capsule under the window opens the release notes, pictures included.
 
-Something off? **Settings › About › Copy Diagnostics** gives you a report to paste into a [bug report](https://github.com/Meldiron/meraline/issues/new?template=bug_report.yml). It has no keys, questions, or answers in it.
+Something off? **Settings › About › Copy Diagnostics** gives you a report to paste into a [bug report](https://github.com/Meldiron/meraline/issues/new?template=bug_report.yml). It has no keys, questions, or answers in it. If Meraline ever quits unexpectedly, the next time you open the window it offers the same report, with where it crashed, once.
 
 ## Build it yourself
 

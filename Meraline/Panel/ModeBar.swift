@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The row under the input: the LLM and Agent toggle on the left; on the right, the games behind a
-/// controller and the recent chats behind a clock. All are small glass groups in the panel's own language.
+/// The row under the input: the LLM and Agent toggle on the left, with quiet privacy badges beside it
+/// (`PrivacyBadges`); on the right, the games behind a controller and the recent chats behind a clock. All are small glass groups in the panel's own language.
 /// The chosen item sits raised in glass with the faint pink tint of the active pin, and the other items
 /// stay quiet until the pointer is over them.
 struct ModeBar: View {
@@ -19,6 +19,9 @@ struct ModeBar: View {
     var body: some View {
         HStack(spacing: 12) {
             ModeToggle(mode: preferences.mode, choose: switchMode)
+            // Ahead of the spacer, so the words keep the room there is before giving way to their symbol.
+            PrivacyBadges(preferences: preferences)
+                .layoutPriority(1)
             Spacer(minLength: 0)
             HStack(spacing: 8) {
                 let isOpen = layout.expandedTray == .games

@@ -327,23 +327,40 @@ nonisolated enum CommandLineClient {
         }
     }
 
-    /// Runs a command to completion and returns what it printed, for `mcp list` and the like. The
+    /// Runs a command to completion and returns what it printed, for `mcp list` and the like. `input`, when
+    /// there is some, is all it reads on stdin, and `extraEnvironment` goes on top of `environment(for:)`. The
     /// command is stopped after `timeout`, or when the task is cancelled.
-    static func output(of executable: URL, arguments: [String], timeout: Duration) async throws -> String {
+    static func output(
+        of executable: URL,
+        arguments: [String],
+        input: Data? = nil,
+        extraEnvironment: [String: String] = [:],
+        timeout: Duration
+    ) async throws -> String {
         let process = Process()
         let output = Pipe()
         let errors = Pipe()
+        let stdin = Pipe()
         process.executableURL = executable
         process.arguments = arguments
         process.currentDirectoryURL = FileManager.default.temporaryDirectory
         process.standardOutput = output
         process.standardError = errors
-        process.standardInput = FileHandle.nullDevice
-        process.environment = environment(for: executable)
+        process.standardInput = input == nil ? FileHandle.nullDevice : stdin
+        process.environment = environment(for: executable).merging(extraEnvironment) { $1 }
         let exit = AsyncStream<Int32> { stream in
             process.terminationHandler = { stream.yield($0.terminationStatus); stream.finish() }
         }
         try process.run()
+        if let input {
+            do {
+                try stdin.fileHandleForWriting.write(contentsOf: input)
+                try stdin.fileHandleForWriting.close()
+            } catch {
+                if process.isRunning { process.terminate() }
+                throw error
+            }
+        }
         let watchdog = Task {
             try await Task.sleep(for: timeout)
             if process.isRunning { process.terminate() }
@@ -409,21 +426,52 @@ nonisolated enum CommandLineClient {
     }
 
     private static func contents(of handle: FileHandle) async -> String {
-        var data = Data()
-        do {
-            for try await byte in handle.bytes { data.append(byte) }
-        } catch {}
-        return String(decoding: data, as: UTF8.self)
+        String(decoding: await bytes(of: handle), as: UTF8.self)
     }
 
     private static func tail(of handle: FileHandle) async -> String {
-        var data = Data()
-        do {
-            for try await byte in handle.bytes {
-                data.append(byte)
-                if data.count > 16_384 { data.removeFirst(data.count - 8_192) }
+        String(decoding: await bytes(of: handle, keepingLast: 8_192), as: UTF8.self).trimmed
+    }
+
+    /// Everything a pipe gives until it closes, or its last `limit` bytes. Read like `lines(of:)`, never
+    /// through `FileHandle.bytes`: those reads take turns across the whole app, so a pipe that stays quiet,
+    /// as a waiting agent's stderr does, would hold up every other until it closed, Why?'s run among them.
+    private static func bytes(of handle: FileHandle, keepingLast limit: Int? = nil) async -> Data {
+        let collected = CollectedBytes(limit: limit)
+        return await withCheckedContinuation { continuation in
+            handle.readabilityHandler = { handle in
+                let data = handle.availableData
+                guard !data.isEmpty else {
+                    handle.readabilityHandler = nil
+                    if let all = collected.finish() { continuation.resume(returning: all) }
+                    return
+                }
+                collected.append(data)
             }
-        } catch {}
-        return String(decoding: data, as: UTF8.self).trimmed
+        }
+    }
+
+    /// The bytes read from a pipe so far. The readability handler that owns it runs one call at a time.
+    private final class CollectedBytes: @unchecked Sendable {
+        private var data = Data()
+        private var isFinished = false
+        private let limit: Int?
+
+        init(limit: Int?) {
+            self.limit = limit
+        }
+
+        func append(_ more: Data) {
+            data.append(more)
+            if let limit, data.count > 2 * limit { data.removeFirst(data.count - limit) }
+        }
+
+        /// What was read, the first time only, so the reader is resumed once.
+        func finish() -> Data? {
+            guard !isFinished else { return nil }
+            isFinished = true
+            if let limit, data.count > limit { data.removeFirst(data.count - limit) }
+            return data
+        }
     }
 }

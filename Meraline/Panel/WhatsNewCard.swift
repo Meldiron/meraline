@@ -1,49 +1,8 @@
 import SwiftUI
 
-/// The capsule beside the pin after an update. Its label opens the notes under the input, and the cross
-/// hides it until the next update. Glass with the faint pink tint of the active pin, a little stronger
-/// while the notes are open.
-struct WhatsNewButton: View {
-    let version: String
-    let isExpanded: Bool
-    let toggle: () -> Void
-    let dismiss: () -> Void
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Button(action: toggle) {
-                HStack(spacing: 5) {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(Color.meralinePink)
-                    Text("What’s New")
-                }
-                .font(.system(size: 12, weight: .medium))
-                .padding(.leading, 12)
-                .padding(.trailing, 2)
-                .frame(maxHeight: .infinity)
-                .contentShape(.rect)
-            }
-            .help(isExpanded ? "Hide the notes" : "What’s new in Meraline \(version)")
-
-            Button(action: dismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 26)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(.rect)
-            }
-            .help("Hide until the next update")
-            .accessibilityLabel("Dismiss What’s New")
-        }
-        .buttonStyle(.plain)
-        .frame(height: 32)
-        .glassEffect(.regular.tint(.meralinePink.opacity(isExpanded ? 0.22 : 0.12)).interactive(), in: .capsule)
-    }
-}
-
-/// The notes of the update the capsule announces, under the input: what Sparkle carried when it installed
-/// the update, or only the way to GitHub after an install by hand. Neutral glass, like the other rows.
+/// The notes of the update the What’s New capsule under the card announces, under the input: what Sparkle
+/// carried when it installed the update, screenshots included, or only the way to GitHub after an install by
+/// hand. Neutral glass, like the other rows.
 struct WhatsNewCard: View {
     let update: Updater.Update
     let dismiss: () -> Void
@@ -53,6 +12,11 @@ struct WhatsNewCard: View {
 
     private var blocks: [ReleaseNotes.Block] {
         update.notes.map(ReleaseNotes.blocks(from:)) ?? []
+    }
+
+    /// Notes with screenshots scroll in a taller frame, so a whole screenshot fits.
+    private var maximumNotesHeight: CGFloat {
+        blocks.contains { if case .picture = $0 { true } else { false } } ? 400 : 240
     }
 
     var body: some View {
@@ -68,7 +32,7 @@ struct WhatsNewCard: View {
                     notes
                         .onGeometryChange(for: CGFloat.self, of: \.size.height) { notesHeight = $0 }
                 }
-                .frame(height: min(notesHeight, 240))
+                .frame(height: min(notesHeight, maximumNotesHeight))
                 .scrollEdgeEffectStyle(.soft, for: .vertical)
             }
             HStack(spacing: 8) {
@@ -104,11 +68,87 @@ struct WhatsNewCard: View {
                 case .paragraph(let text):
                     Text(MarkdownText.render(text))
                         .fixedSize(horizontal: false, vertical: true)
+                case .picture(let url, let caption):
+                    NotePicture(url: url, caption: caption)
+                        .padding(.vertical, 4)
                 }
             }
         }
         .font(.system(size: 12))
         .frame(maxWidth: .infinity, alignment: .leading)
         .textSelection(.enabled)
+    }
+}
+
+/// A screenshot from the notes, as wide as the card and at most `maximumHeight` tall, loaded when the notes
+/// open. A click opens it full size in the browser. While it loads, a faint frame holds its place; one that
+/// can't load leaves the notes without it.
+private struct NotePicture: View {
+    static let maximumHeight: CGFloat = 320
+    /// Pictures loaded this launch, in memory only, so the notes open with them the next time.
+    private static var loaded: [URL: NSImage] = [:]
+
+    let url: URL
+    let caption: String
+
+    @Environment(\.openURL) private var openURL
+    @State private var image: NSImage?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let image = image ?? Self.loaded[url] {
+                let aspect = image.size.width / max(image.size.height, 1)
+                Button { openURL(url) } label: {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(aspect, contentMode: .fit)
+                        .clipShape(.rect(cornerRadius: 10))
+                        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(.separator) }
+                        .frame(maxWidth: Self.maximumHeight * aspect)
+                }
+                .buttonStyle(.plain)
+                .help(caption.isEmpty ? "Open the picture" : caption)
+            } else if !failed {
+                // The shape of the README screenshots.
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(.primary.opacity(0.04))
+                    .aspectRatio(1.6, contentMode: .fit)
+                    .overlay { ProgressView().controlSize(.small) }
+                    .frame(maxWidth: Self.maximumHeight * 1.6)
+            }
+        }
+        .accessibilityLabel(caption)
+        .task(id: url) { await load() }
+    }
+
+    private func load() async {
+        guard Self.loaded[url] == nil else { return }
+        do {
+            let data = try await ReleaseNotePictures.data(at: url)
+            guard let image = NSImage(data: data) else { throw URLError(.cannotDecodeContentData) }
+            Self.loaded[url] = image
+            self.image = image
+        } catch {
+            // The notes were folded away while it loaded.
+            guard !Task.isCancelled else { return }
+            Log.updates.error("A picture in the release notes didn’t load: \(error.localizedDescription)")
+            failed = true
+        }
+    }
+}
+
+/// Fetches the screenshots in release notes. The session is ephemeral, so nothing it loads reaches the disk.
+private nonisolated enum ReleaseNotePictures {
+    private static let session = URLSession(configuration: .ephemeral)
+    /// A screenshot is a few hundred kilobytes; anything far bigger isn't one.
+    private static let sizeLimit = 10_000_000
+
+    static func data(at url: URL) async throws -> Data {
+        let (data, response) = try await session.data(from: url)
+        guard (response as? HTTPURLResponse)?.statusCode == 200, data.count <= sizeLimit else {
+            throw URLError(.badServerResponse)
+        }
+        return data
     }
 }

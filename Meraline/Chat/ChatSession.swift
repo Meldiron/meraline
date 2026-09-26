@@ -100,6 +100,8 @@ final class ChatSession {
     @ObservationIgnored private var insistedInput: String?
     /// The answer Ask Again is replacing, which comes back if the new one brings no text.
     @ObservationIgnored private var replacedTurn: Turn?
+    /// Whether the answer streaming now rewrites `replacedTurn`, which then comes back unless it finishes.
+    @ObservationIgnored private var isRewriting = false
     /// How to answer each prompt the agent is waiting on, by the prompt's id.
     @ObservationIgnored private var responders: [String: AgentPromptResponder] = [:]
     @ObservationIgnored private let preferences: Preferences
@@ -196,12 +198,38 @@ final class ChatSession {
     func askAgain() {
         guard canAskAgain, let provider = preferences.activeProvider, let last = turns.popLast() else { return }
         replacedTurn = last
+        isRewriting = false
         let request = makeRequest(asking: SelectedText.message(last.question, about: last.selections), images: last.images, files: last.files, of: provider)
         failure = nil
         let turn = Turn(question: last.question, images: last.images, files: last.files, selections: last.selections)
         turns.append(turn)
         isStreaming = true
         Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))) again, turn \(turns.count)")
+        stream(request, for: turn.id)
+    }
+
+    /// Whether the last answer can be told again another way: as for Ask Again, with text to rewrite.
+    var canRewrite: Bool {
+        canAskAgain && turns.last?.answer.trimmed.isEmpty == false
+    }
+
+    /// Tells the last answer again another way, asking the provider in use now. The model reads the
+    /// conversation with the old answer in it, and the new answer takes that one's place under the same
+    /// question, keeping the tools it used and the asks it settled, so a follow-up or the next rewrite reads
+    /// the new one. Whatever is typed in the input stays there.
+    func rewrite(_ rewrite: Rewrite) {
+        guard canRewrite, let provider = preferences.activeProvider else { return }
+        let request = makeRequest(asking: rewrite.instruction, images: [], of: provider)
+        guard let last = turns.popLast() else { return }
+        replacedTurn = last
+        isRewriting = true
+        failure = nil
+        var turn = Turn(question: last.question, images: last.images, files: last.files, selections: last.selections)
+        turn.tools = last.tools
+        turn.prompts = last.prompts
+        turns.append(turn)
+        isStreaming = true
+        Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))) to rewrite the last answer (\(rewrite.rawValue)), turn \(turns.count)")
         stream(request, for: turn.id)
     }
 
@@ -381,6 +409,7 @@ final class ChatSession {
         streamTask = nil
         responders = [:]
         replacedTurn = nil
+        isRewriting = false
         draft = ""
         draftImages = []
         draftFiles = []
@@ -790,11 +819,25 @@ final class ChatSession {
         responders = [:]
         let replaced = replacedTurn
         replacedTurn = nil
+        let wasRewriting = isRewriting
+        isRewriting = false
         let last = turns.count - 1
         turns[last].activity = nil
         turns[last].prompts.removeAll(where: \.isPending)
         if let game {
             finishMove(in: game, error: error)
+            return
+        }
+
+        // A rewrite stopped or failed partway gives the old answer back rather than keep half of the new one.
+        if wasRewriting, let error, let replaced {
+            turns[last] = replaced
+            if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                Log.chat.info("Rewrite stopped; the old answer is back")
+            } else {
+                Log.chat.error("Rewrite failed: \(error.localizedDescription)")
+                fail(with: error.localizedDescription, needsSettings: Self.needsSettings(error))
+            }
             return
         }
 

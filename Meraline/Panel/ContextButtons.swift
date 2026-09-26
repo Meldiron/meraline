@@ -9,7 +9,8 @@ import SwiftUI
 /// only when that very text, copy, or visit is in the draft already does a click take it out again (see
 /// `ContextSources`). Each circle shows which it would do: dimmed when there is nothing to add, neutral glass
 /// when it would add, and the active pin's pink while what it has is in the draft. A capsule beside them says
-/// when a button couldn't do its part. Games take none of it, so the buttons step aside while one is on.
+/// when a button couldn't do its part. `ContextSources` does the adding, so `meraline://ask?clipboard=1&screen=1`
+/// adds exactly as a click does. Games take none of it, so the buttons step aside while one is on.
 struct ContextButtons: View {
     /// The circles' size, like the pin's and the gear's.
     static let size: CGFloat = 32
@@ -39,13 +40,7 @@ struct ContextButtons: View {
     /// Gives the keyboard back to the input.
     let focusInput: () -> Void
 
-    @State private var note: Note?
-    /// Counts the notes shown, so a note shown again stays its full time.
-    @State private var notesShown = 0
-    @State private var isCapturing = false
     @State private var selectionsAdded = 0
-    @State private var clipboardsAdded = 0
-    @State private var screenshotsAdded = 0
 
     var body: some View {
         GlassEffectContainer {
@@ -53,7 +48,7 @@ struct ContextButtons: View {
                 selectionButton
                 clipboardButton
                 screenshotButton
-                if let note {
+                if let note = sources.notice {
                     noteCapsule(note)
                 }
             }
@@ -61,14 +56,14 @@ struct ContextButtons: View {
         .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
         .opacity(session.isPlaying ? 0 : 1)
         .disabled(session.isPlaying)
-        .animation(.smooth(duration: 0.2), value: note)
+        .animation(.smooth(duration: 0.2), value: sources.notice)
         .animation(.smooth(duration: 0.2), value: session.isPlaying)
         .animation(.smooth(duration: 0.2), value: statuses)
-        .task(id: notesShown) {
-            guard note?.fades == true else { return }
+        .task(id: sources.noticesShown) {
+            guard sources.notice?.fades == true else { return }
             try? await Task.sleep(for: .seconds(2.5))
-            guard !Task.isCancelled, note?.fades == true else { return }
-            note = nil
+            guard !Task.isCancelled, sources.notice?.fades == true else { return }
+            sources.notice = nil
         }
     }
 
@@ -78,7 +73,7 @@ struct ContextButtons: View {
 
     private func noteCapsule(_ note: Note) -> some View {
         let allow: (() -> Void)? = note == .noScreenAccess ? { allowScreenRecording() } : nil
-        return NoteCapsule(note: note, allow: allow) { self.note = nil }
+        return NoteCapsule(note: note, allow: allow) { sources.notice = nil }
             .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .leading)))
     }
 
@@ -99,7 +94,7 @@ struct ContextButtons: View {
         let status = clipboardStatus
         return ContextButton(status: status, label: "Clipboard", help: clipboardHelp(status), key: "v", action: toggleClipboard) {
             Image(systemName: "clipboard")
-                .symbolEffect(.bounce, value: clipboardsAdded)
+                .symbolEffect(.bounce, value: sources.clipboardsAdded)
         }
     }
 
@@ -107,8 +102,8 @@ struct ContextButtons: View {
         let status = screenshotStatus
         return ContextButton(status: status, label: "Screenshot", help: screenshotHelp(status), key: "s", action: toggleScreenshot) {
             Image(systemName: "display")
-                .symbolEffect(.bounce, value: screenshotsAdded)
-                .symbolEffect(.pulse, options: .repeating, isActive: isCapturing)
+                .symbolEffect(.bounce, value: sources.screenshotsAdded)
+                .symbolEffect(.pulse, options: .repeating, isActive: sources.isCapturing)
         }
     }
 
@@ -168,14 +163,9 @@ struct ContextButtons: View {
 
     // MARK: Clicks
 
-    private func show(_ note: Note) {
-        self.note = note
-        notesShown += 1
-    }
-
     /// A button did its part: a note that was only passing on news goes, and the input takes the keyboard.
     private func done() {
-        if note?.fades == true { note = nil }
+        if sources.notice?.fades == true { sources.notice = nil }
         focusInput()
     }
 
@@ -189,56 +179,25 @@ struct ContextButtons: View {
 
     private func toggleClipboard() {
         sources.refreshClipboard()
-        let origin = sources.clipboard
-        let added = sources.items(from: origin, in: session)
+        let added = sources.items(from: sources.clipboard, in: session)
         if !added.isEmpty {
             session.removeContext(added)
             Log.panel.info("Clipboard button took out \(added.count) item(s)")
             return done()
         }
-        guard let content = ClipboardContent.read(from: .general) else {
-            Log.panel.info("Clipboard button: nothing to add")
-            return show(.emptyClipboard)
-        }
-        Log.panel.info("Clipboard button added \(content.logDescription)")
-        sources.note(session.addClipboard(content), from: origin, in: session)
-        clipboardsAdded += 1
-        done()
+        if sources.addClipboard(to: session) { done() }
     }
 
     private func toggleScreenshot() {
-        guard !isCapturing else { return }
-        let origin = sources.screen
-        let added = sources.items(from: origin, in: session)
+        guard !sources.isCapturing else { return }
+        let added = sources.items(from: sources.screen, in: session)
         if !added.isEmpty {
             session.removeContext(added)
             Log.panel.info("Screenshot button took out the screenshot")
             return done()
         }
-        guard ScreenCapture.hasAccess else {
-            Log.panel.info("Screenshot button: no Screen Recording access")
-            return show(.noScreenAccess)
-        }
-        guard let screen = screen() else { return show(.screenshotFailed) }
-        isCapturing = true
         Task {
-            defer { isCapturing = false }
-            do {
-                let image = try await ScreenCapture.image(of: screen)
-                let before = session.draftContextIDs
-                session.attach(image)
-                sources.note(session.draftContextIDs.subtracting(before), from: origin, in: session)
-                Log.panel.info("Screenshot button added the screen")
-                if note == .noScreenAccess { note = nil }
-                screenshotsAdded += 1
-                done()
-            } catch ScreenCapture.Failure.noAccess {
-                Log.panel.info("Screenshot button: Screen Recording access refused")
-                show(.noScreenAccess)
-            } catch {
-                Log.panel.error("Screenshot failed: \(error.localizedDescription)")
-                show(.screenshotFailed)
-            }
+            if await sources.addScreenshot(of: screen(), to: session) { done() }
         }
     }
 

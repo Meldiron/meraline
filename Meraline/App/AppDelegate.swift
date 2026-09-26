@@ -29,8 +29,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let updater = Updater(preferences: .shared)
     private lazy var session = ChatSession(preferences: preferences)
     private let whatsNew = WhatsNew()
+    private let updateNotice = UpdateNotice()
     private let shortcutSetup = ShortcutSetup()
-    private lazy var panel: PanelController = PanelController(session: session, preferences: preferences, whatsNew: whatsNew, shortcutSetup: shortcutSetup) { [weak self] pane in
+    /// The `meraline://` routes being run, so the next ones wait their turn.
+    private var routing: Task<Void, Never>?
+    private lazy var panel: PanelController = PanelController(session: session, preferences: preferences, whatsNew: whatsNew, updater: updater, updateNotice: updateNotice, shortcutSetup: shortcutSetup) { [weak self] pane in
         self?.panel.close()
         self?.settings.show(pane)
     }
@@ -39,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.app.info("Meraline \(Bundle.main.shortVersion) (\(Bundle.main.buildNumber)) launched")
+        CrashNotice.shared.checkForCrash()
         ChatWorkspace.removeStale()
         NSApp.mainMenu = makeMainMenu()
         KeyboardShortcuts.onKeyUp(for: .togglePanel) { [weak self] in self?.panel.toggleBringingSelection() }
@@ -52,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.settings.focusShortcutRecorder()
         }
 
-        let defaults = UserDefaults.standard
+        let defaults = UserDefaults.meraline
         if !defaults.bool(forKey: "hasLaunchedBefore") {
             defaults.set(true, forKey: "hasLaunchedBefore")
             defaults.set(Bundle.main.shortVersion, forKey: "lastRunVersion")
@@ -64,31 +68,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// The `meraline://` scheme. See AutomationRoute for the routes.
+    /// The `meraline://` scheme. See AutomationRoute for the routes. They run one after another, in the order
+    /// they came, each once the one before has its screenshot.
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls {
-            guard let route = AutomationRoute(url: url) else {
-                Log.app.error("Ignored unknown URL route: \(url.host() ?? url.absoluteString)")
-                continue
-            }
-            switch route {
-            case .ask(let text, let selection, let send):
-                Log.app.info("URL route: ask\(text == nil ? "" : " with text")\(selection == nil ? "" : " with a selection")\(send ? ", send" : "")")
-                panel.show()
-                if let selection = selection.flatMap({ SelectedText($0) }) { session.bring(selection) }
-                if let text { session.draft = text }
-                if send { session.send() }
-            case .newChat:
-                Log.app.info("URL route: new chat")
-                session.reset()
-                panel.show()
-            case .settings(let name):
-                let pane = name.flatMap(SettingsPane.init(named:))
-                Log.app.info("URL route: settings\(pane.map { " on \($0.title)" } ?? "")")
-                panel.close()
-                settings.show(pane)
-            }
+        let routes = urls.compactMap { url in
+            let route = AutomationRoute(url: url)
+            if route == nil { Log.app.error("Ignored unknown URL route: \(url.host() ?? url.absoluteString)") }
+            return route
         }
+        let previous = routing
+        routing = Task {
+            await previous?.value
+            for route in routes { await open(route) }
+        }
+    }
+
+    private func open(_ route: AutomationRoute) async {
+        switch route {
+        case .ask(let text, let selection, let clipboard, let screen, let mode, let send):
+            var with: [String] = []
+            if text != nil { with.append("text") }
+            if selection != nil { with.append("a selection") }
+            if clipboard { with.append("the clipboard") }
+            if screen { with.append("the screen") }
+            Log.app.info("URL route: ask\(with.isEmpty ? "" : " with \(with.joined(separator: ", "))")\(mode.map { " in \($0.title)" } ?? "")\(send ? ", send" : "")")
+            if let mode { switchMode(to: mode) }
+            panel.show()
+            if let selection = selection.flatMap({ SelectedText($0) }) { session.bring(selection) }
+            if let text { session.draft = text }
+            // A question about the screen isn't asked without the screenshot.
+            let isComplete = await panel.addContext(clipboard: clipboard, screen: screen)
+            if send, isComplete {
+                session.send()
+            } else if send {
+                Log.app.info("URL route: ask not sent, some of its context couldn’t be added")
+            }
+        case .newChat:
+            Log.app.info("URL route: new chat")
+            session.reset()
+            panel.show()
+        case .play(let game):
+            Log.app.info("URL route: play\(game.map { " \($0.title)" } ?? ", showing the games")")
+            guard let game else { return panel.showGames() }
+            panel.show()
+            session.startGame(game)
+        case .mode(let mode):
+            let mode = mode ?? (preferences.mode == .llm ? .agent : .llm)
+            Log.app.info("URL route: mode \(mode.title)")
+            switchMode(to: mode)
+            panel.show()
+        case .settings(let name):
+            let pane = name.flatMap(SettingsPane.init(named:))
+            Log.app.info("URL route: settings\(pane.map { " on \($0.title)" } ?? "")")
+            panel.close()
+            settings.show(pane)
+        }
+    }
+
+    /// Switches between LLM and Agent, as the toggle under the input does.
+    private func switchMode(to mode: ProviderKind) {
+        guard mode != preferences.mode else { return }
+        preferences.mode = mode
+        if preferences.activeProvider?.isOnDevice == true { AppleIntelligenceClient.prewarm() }
     }
 
     /// Services › Ask Meraline, in the app where text or files are selected: they come into the window as with
@@ -113,7 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// link to the release when it was installed by hand, until they are dismissed. Nothing is
     /// announced on a fresh install.
     private func announceUpdate() {
-        let defaults = UserDefaults.standard
+        let defaults = UserDefaults.meraline
         let current = Bundle.main.shortVersion
         // Copies from before this feature never stored a version; having launched before is
         // enough to know this is an update rather than a first run.

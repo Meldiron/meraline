@@ -166,7 +166,8 @@ struct AgentPromptTests {
     }
 
     /// Runs the installed claude for real: it asks for leave to write in the chat's workspace, the test
-    /// allows it, and the file is there afterwards.
+    /// takes its time, as a person would, and allows it, and the file is there afterwards. Answering at once
+    /// would miss an ask that is turned down when the message that made it ends.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MERALINE_CLI_E2E"] != nil), .timeLimit(.minutes(1)))
     func installedClaudeCodeWritesInTheWorkspaceWhenAllowed() async throws {
         guard CommandLineClient.resolve("claude") != nil else { return }
@@ -185,7 +186,10 @@ struct AgentPromptTests {
             switch output {
             case .prompt(let prompt, let responder?):
                 prompts.append(prompt)
-                responder(.allow)
+                Task {
+                    try await Task.sleep(for: .seconds(8))
+                    responder(.allow)
+                }
             case .text(let text):
                 answer += text
             default:

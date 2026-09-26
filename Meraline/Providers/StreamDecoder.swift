@@ -249,7 +249,11 @@ nonisolated enum StreamDecoder {
         switch line.type {
         case "stream_event":
             guard let event = line.event else { return .ignored }
-            return try anthropic(event, knownServers: knownServers)
+            // Every message of a turn ends in `message_stop`, one that calls a tool included, and the ask for
+            // that tool can come just before it. Only `result` ends the turn: finishing earlier would close
+            // claude's stdin, and claude turns down whatever it is still waiting on.
+            let chunk = try anthropic(event, knownServers: knownServers)
+            return chunk == .finished ? .ignored : chunk
         case "assistant":
             guard let tool = line.message?.content?.last(where: { $0.type == "tool_use" }), let name = tool.name else {
                 return .ignored

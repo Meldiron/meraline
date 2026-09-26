@@ -22,7 +22,8 @@ enum PanelPlacement: String, CaseIterable, Identifiable {
     }
 }
 
-/// How long the window may stay hidden before the chat moves to Recent Chats and the next question starts fresh.
+/// How long you may be away from the window, hidden or pinned without the keyboard, before the chat moves to
+/// Recent Chats and the next question starts fresh (see `IdleClock`).
 enum IdleReset: Int, CaseIterable, Identifiable {
     case never = 0
     case fiveMinutes = 5
@@ -71,18 +72,23 @@ enum UpdateChannel: String, CaseIterable, Identifiable {
     }
 }
 
-@Observable
-final class Preferences {
-    static let shared: Preferences = {
+extension UserDefaults {
+    /// Where Meraline keeps what it remembers: the standard defaults, or, for throwaway runs of a Debug build
+    /// such as scripts/screenshots.sh, the suite named by MERALINE_DEFAULTS_SUITE, so the preferences of the
+    /// copy you use are never touched. Everything Meraline keeps goes through here.
+    static let meraline: UserDefaults = {
         #if DEBUG
-        // Throwaway runs, such as scripts/screenshots.sh, keep their settings in a suite of their own so
-        // the preferences of the copy you use are never touched. Debug builds only.
         if let suite = ProcessInfo.processInfo.environment["MERALINE_DEFAULTS_SUITE"], let defaults = UserDefaults(suiteName: suite) {
-            return Preferences(defaults: defaults)
+            return defaults
         }
         #endif
-        return Preferences()
+        return .standard
     }()
+}
+
+@Observable
+final class Preferences {
+    static let shared = Preferences()
 
     static let defaultSystemPrompt = """
     You answer quick questions asked from a small floating window. Lead with the answer. \
@@ -146,12 +152,21 @@ final class Preferences {
     var idleReset: IdleReset {
         didSet { defaults.set(idleReset.rawValue, forKey: "idleReset") }
     }
+    /// Asks macOS to leave the window out of screen sharing, recordings, and screenshots. Captures that take the
+    /// whole display, as ScreenCaptureKit's do, may show it anyway. Off unless you turn it on.
+    var hidesFromScreenSharing: Bool {
+        didSet {
+            guard hidesFromScreenSharing != oldValue else { return }
+            defaults.set(hidesFromScreenSharing, forKey: "hidesFromScreenSharing")
+            Log.settings.info("Hide from screen sharing \(hidesFromScreenSharing ? "on" : "off")")
+        }
+    }
     private(set) var providerSettings: [Provider: ProviderSettings]
 
     /// `onDeviceModelAvailable` decides whether Apple Intelligence starts turned on. It is on by default
     /// wherever the Mac supports it, so a fresh install can answer before any key is added.
     init(
-        defaults: UserDefaults = .standard,
+        defaults: UserDefaults = .meraline,
         secrets: SecretStore = .keychain,
         onDeviceModelAvailable: Bool = AppleIntelligenceClient.isAvailable
     ) {
@@ -175,6 +190,7 @@ final class Preferences {
         systemPrompt = defaults.string(forKey: "systemPrompt") ?? Self.defaultSystemPrompt
         updateChannel = defaults.string(forKey: "updateChannel").flatMap(UpdateChannel.init(rawValue:)) ?? .stable
         idleReset = (defaults.object(forKey: "idleReset") as? Int).flatMap(IdleReset.init(rawValue:)) ?? .thirtyMinutes
+        hidesFromScreenSharing = defaults.bool(forKey: "hidesFromScreenSharing")
         providerSettings = Dictionary(uniqueKeysWithValues: Provider.allCases.map { provider in
             (provider, ProviderSettings(
                 model: defaults.string(forKey: "\(provider.rawValue).model") ?? provider.defaultModel,
@@ -227,6 +243,11 @@ final class Preferences {
 
     /// The provider that answers in the current mode, or nil when none of its kind is ready.
     var activeProvider: Provider? { defaultProvider(for: mode) }
+
+    /// Whether the provider that answers now runs on this Mac (see `ProviderSettings.answersOnThisMac(for:)`).
+    var answersOnThisMac: Bool {
+        activeProvider.map { providerSettings[$0]!.answersOnThisMac(for: $0) } ?? false
+    }
 
     /// The provider a mode answers with: its pick when ready, otherwise its first ready provider.
     func defaultProvider(for kind: ProviderKind) -> Provider? {

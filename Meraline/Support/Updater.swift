@@ -123,7 +123,7 @@ final class Updater: NSObject {
         )
     }
 
-    init(preferences: Preferences, defaults: UserDefaults = .standard) {
+    init(preferences: Preferences, defaults: UserDefaults = .meraline) {
         self.preferences = preferences
         self.defaults = defaults
         super.init()

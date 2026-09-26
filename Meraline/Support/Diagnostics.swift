@@ -2,9 +2,10 @@ import AppKit
 import Foundation
 import KeyboardShortcuts
 
-/// The report behind Settings › About › Copy Diagnostics: versions, the machine, how providers are
-/// set up, update state, and the recent log. It never includes a question, an answer, or a key, so
-/// it is safe to paste into a public issue.
+/// The report behind Settings › About › Copy Diagnostics, and the capsule that offers it after a crash:
+/// versions, the machine, the crash macOS reported since the previous launch, how providers are set up,
+/// update state, and the recent log. It never includes a question, an answer, or a key, so it is safe
+/// to paste into a public issue.
 enum Diagnostics {
     struct UpdateStatus: Equatable {
         var isAvailable: Bool
@@ -19,6 +20,7 @@ enum Diagnostics {
         preferences: Preferences,
         updates: UpdateStatus,
         entries: [LogEntry] = LogBuffer.shared.entries,
+        crash: CrashReport? = CrashNotice.shared.crash,
         now: Date = .now
     ) -> String {
         var lines: [String] = []
@@ -30,10 +32,15 @@ enum Diagnostics {
         lines.append("- Installed at \(redactingHome(bundle.bundlePath))\(locationWarning(bundle.bundlePath))")
         lines.append("- Generated \(now.formatted(.iso8601))")
         lines.append("")
+        if let crash {
+            lines.append("### Crash")
+            lines.append(contentsOf: crash.summary)
+            lines.append("")
+        }
         lines.append("### Settings")
         lines.append("- Mode: \(preferences.mode.title), default LLM: \(preferences.defaultProvider(for: .llm)?.name ?? "none"), default agent: \(preferences.defaultProvider(for: .agent)?.name ?? "none")")
         lines.append("- Shortcut: \(KeyboardShortcuts.getShortcut(for: .togglePanel)?.description ?? "none")\(KeyboardShortcuts.isEnabled(for: .togglePanel) ? "" : ", not registered")")
-        lines.append("- Window: \(preferences.placement.title), \(preferences.isPinned ? "stays open" : "closes when clicking elsewhere"), menu bar icon \(preferences.showsMenuBarIcon ? "on" : "off")")
+        lines.append("- Window: \(preferences.placement.title), \(preferences.isPinned ? "stays open" : "closes when clicking elsewhere"), menu bar icon \(preferences.showsMenuBarIcon ? "on" : "off"), hidden from screen sharing \(preferences.hidesFromScreenSharing ? "on" : "off")")
         lines.append("- Selected text: \(preferences.bringsSelection ? "on" : "off"), Accessibility access \(SelectionAccess.shared.isGranted ? "allowed" : "not allowed")")
         lines.append("- System prompt: \(preferences.systemPrompt == Preferences.defaultSystemPrompt ? "default" : "customized")")
         if updates.isAvailable {

@@ -116,7 +116,7 @@ enum SelectionReader {
     /// is opened. Other apps never get a keystroke, so one with nothing to copy doesn't beep. Copied files are
     /// the selection, as in Finder; the line an editor copies when nothing is selected is not.
     private static func copySelection(in app: AXUIElement, typing: Bool) async -> (Answer, String) {
-        let menuItem = copyMenuItem(in: app).flatMap { $0.value(of: kAXEnabledAttribute).value as? Bool == false ? nil : $0 }
+        let menuItem = commandMenuItem("c", in: app)
         guard menuItem != nil || typing else { return (.nothing, "") }
         let pasteboard = NSPasteboard.general
         let before = pasteboard.changeCount
@@ -125,7 +125,7 @@ enum SelectionReader {
         let wait: Duration
         if let menuItem, AXUIElementPerformAction(menuItem, kAXPressAction as CFString) == .success {
             (method, wait) = ("the app's Copy command", copyWait)
-        } else if typing, pressCopyShortcut() {
+        } else if typing, pressCommand("c") {
             (method, wait) = ("⌘C", typedCopyWait)
         } else {
             return (.nothing, "")
@@ -148,11 +148,13 @@ enum SelectionReader {
         return (pasteboard.string(forType: .string).map(Answer.text) ?? .nothing, method)
     }
 
-    /// Presses ⌘C in the app in front with the key that types "c" alongside ⌘ in the current layout, so a
-    /// Dvorak keyboard presses its own C. The keys carry ⌘ alone, whatever is still held from the shortcut.
-    private static func pressCopyShortcut() -> Bool {
+    /// Presses ⌘ and a letter, ⌘C or ⌘V, in the app in front with the key that types it alongside ⌘ in the
+    /// current layout, so a Dvorak keyboard presses its own C. The keys carry ⌘ alone, whatever is still held
+    /// from the shortcut.
+    static func pressCommand(_ character: Character) -> Bool {
         let source = CGEventSource(stateID: .combinedSessionState)
-        let key = keyCode(typing: "c") ?? CGKeyCode(kVK_ANSI_C)
+        let qwerty: [Character: Int] = ["c": kVK_ANSI_C, "v": kVK_ANSI_V]
+        guard let key = keyCode(typing: character) ?? qwerty[character].map(CGKeyCode.init) else { return false }
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
               let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false) else { return false }
         down.flags = .maskCommand
@@ -187,18 +189,20 @@ enum SelectionReader {
         }
     }
 
-    /// The menu item for ⌘C in the first menus of the app's menu bar, where Edit is. Reading a menu through
-    /// Accessibility doesn't open it.
-    private static func copyMenuItem(in app: AXUIElement) -> AXUIElement? {
+    /// The menu item for ⌘ and a letter, Copy's or Paste's, in the first menus of the app's menu bar, where
+    /// Edit is, unless it says it is unavailable. Reading a menu through Accessibility doesn't open it.
+    static func commandMenuItem(_ character: Character, in app: AXUIElement) -> AXUIElement? {
         guard let menuBar = app.value(of: kAXMenuBarAttribute).value.flatMap(AXUIElement.cast) else { return nil }
-        // The Apple menu comes first and never has Copy.
+        // The Apple menu comes first and never has Copy or Paste.
         for title in menuBar.children.dropFirst().prefix(6) {
             for menu in title.children {
                 for item in menu.children {
                     let key = item.string(of: kAXMenuItemCmdCharAttribute)?.lowercased()
                     // 0 is ⌘ alone; the other bits add ⇧, ⌥, and ⌃, or take ⌘ away.
                     let modifiers = item.value(of: kAXMenuItemCmdModifiersAttribute).value as? Int
-                    if key == "c", modifiers == 0 { return item }
+                    if key == String(character), modifiers == 0 {
+                        return item.value(of: kAXEnabledAttribute).value as? Bool == false ? nil : item
+                    }
                 }
             }
         }
@@ -227,7 +231,7 @@ enum SelectionReader {
         return false
     }
 
-    private static func snapshot(of pasteboard: NSPasteboard) -> [NSPasteboardItem] {
+    static func snapshot(of pasteboard: NSPasteboard) -> [NSPasteboardItem] {
         (pasteboard.pasteboardItems ?? []).map { item in
             let copy = NSPasteboardItem()
             for type in item.types {
@@ -237,7 +241,7 @@ enum SelectionReader {
         }
     }
 
-    private static func restore(_ items: [NSPasteboardItem], to pasteboard: NSPasteboard) {
+    static func restore(_ items: [NSPasteboardItem], to pasteboard: NSPasteboard) {
         pasteboard.clearContents()
         if !items.isEmpty { pasteboard.writeObjects(items) }
     }
@@ -266,8 +270,8 @@ final class SelectionAccess {
     static let shared = SelectionAccess()
 
     private(set) var isGranted = AXIsProcessTrusted()
-    var isHintDismissed = UserDefaults.standard.bool(forKey: "selectionHintDismissed") {
-        didSet { UserDefaults.standard.set(isHintDismissed, forKey: "selectionHintDismissed") }
+    var isHintDismissed = UserDefaults.meraline.bool(forKey: "selectionHintDismissed") {
+        didSet { UserDefaults.meraline.set(isHintDismissed, forKey: "selectionHintDismissed") }
     }
 
     private init() {

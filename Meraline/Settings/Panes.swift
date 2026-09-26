@@ -43,13 +43,23 @@ struct GeneralPane: View {
                 }
                 Toggle("Keep open when clicking elsewhere", isOn: $preferences.isPinned)
                     .tint(.meralinePink)
+            } header: {
+                Text("Window")
+            }
+
+            Section {
                 Picker("Start a new chat", selection: $preferences.idleReset) {
                     ForEach(IdleReset.allCases) { Text($0.title).tag($0) }
                 }
+                Toggle(isOn: $preferences.hidesFromScreenSharing) {
+                    Text("Hide from screen sharing")
+                    Text("Asks macOS to leave the window out of screen sharing, recordings, and screenshots. Apps that capture the whole display, such as QuickTime, may still show it, so try yours before a call that matters.")
+                }
+                .tint(.meralinePink)
             } header: {
-                Text("Window")
+                Text("Privacy")
             } footer: {
-                Text("When the window has been hidden this long, the chat moves to Recent Chats and your next question starts fresh.")
+                Text("When you’ve been away from the window this long, whether it’s hidden or pinned, the chat moves to Recent Chats and your next question starts fresh. A pinned window counts down on its pin. Chats live only in memory and are never written to disk. Quitting Meraline forgets them.")
             }
 
             Section {
@@ -95,7 +105,7 @@ struct GeneralPane: View {
             } header: {
                 Text("Providers")
             } footer: {
-                Text("Chats live only in memory and are never written to disk. Quitting Meraline forgets them.")
+                Text("Apple Intelligence, and Ollama running a model on this Mac, answer without your question leaving it. The window says “on this Mac” while one of them answers.")
             }
         }
         .formStyle(.grouped)

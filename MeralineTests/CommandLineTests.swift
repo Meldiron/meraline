@@ -162,6 +162,15 @@ struct CommandLineTests {
         #expect(try StreamDecoder.decode("Warning: something", from: .claudeCode) == .ignored)
     }
 
+    /// claude asks for leave to use a tool and then ends the message that called it. The turn goes on
+    /// until `result`, so stdin must stay open for the answer.
+    @Test func onlyClaudeCodesResultEndsTheTurn() throws {
+        let stop = #"{"type":"stream_event","event":{"type":"message_stop"},"session_id":"s"}"#
+        #expect(try StreamDecoder.decode(stop, from: .claudeCode) == .ignored)
+        let result = #"{"type":"result","subtype":"success","is_error":false,"result":"done"}"#
+        #expect(try StreamDecoder.decode(result, from: .claudeCode) == .finished)
+    }
+
     @Test func decodesCodexLines() throws {
         let message = #"{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"ready"}}"#
         #expect(try StreamDecoder.decode(message, from: .codex) == .text("ready"))

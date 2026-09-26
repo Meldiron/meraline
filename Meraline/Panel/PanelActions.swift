@@ -114,6 +114,8 @@ struct PanelAction: Identifiable {
     var isDestructive = false
     /// Set for an action that can't be undone: the panel asks first.
     var confirmation: ActionConfirmation?
+    /// More words the search finds the row by, such as "paste" for Insert Answer.
+    var keywords: [String] = []
     let perform: () -> Void
 }
 
@@ -137,12 +139,13 @@ struct ActionMenu {
     /// The action the footer offers beside Actions.
     var primary: PanelAction? { actions.first }
 
-    /// The sections with the rows whose title or subtitle contains the query, without empty sections.
+    /// The sections with the rows whose title, subtitle, or keywords contain the query, without empty sections.
     func filtered(by query: String) -> [ActionSection] {
         let query = query.trimmed
         return sections.compactMap { section in
             let actions = query.isEmpty ? section.actions : section.actions.filter {
                 $0.title.localizedStandardContains(query) || $0.subtitle?.localizedStandardContains(query) == true
+                    || $0.keywords.contains { $0.localizedStandardContains(query) }
             }
             return actions.isEmpty ? nil : ActionSection(id: section.id, actions: actions)
         }
@@ -174,6 +177,8 @@ struct PanelContext {
     let preferences: Preferences
     let layout: PanelLayout
     let openSettings: (SettingsPane?) -> Void
+    /// Insert Answer's way into the app in front, or nil when there is none, as when Meraline itself is.
+    var insertion: AnswerInsertion?
 
     func menu(for kind: ActionPanelKind) -> ActionMenu? {
         switch kind {
@@ -230,17 +235,40 @@ struct PanelContext {
         } else if session.lastAnswer != nil {
             primary.append(copyAnswer)
         }
+        if !session.isStreaming, session.lastAnswer != nil, let insertion {
+            copy.append(PanelAction(
+                id: "insertAnswer",
+                title: "Insert Answer into \(insertion.appName)",
+                subtitle: insertion.canPaste ? nil : "Copies it: pasting needs Accessibility access",
+                icon: .symbol("text.insert"),
+                // Not while a follow-up is being typed: ⌘↵ there would close the window over it.
+                shortcut: session.draft.trimmed.isEmpty ? .insertAnswer : nil,
+                keywords: ["paste", "cursor"]
+            ) {
+                guard let answer = session.lastAnswer else { return }
+                insertion.insert(answer)
+            })
+        }
         if session.conversationMarkdown != nil {
             copy.append(PanelAction(id: "copyConversation", title: "Copy Conversation", icon: .symbol("doc.on.clipboard"), shortcut: .command("c", [.shift, .option])) {
                 session.copyConversation()
                 layout.copyNotice += 1
             })
         }
+        var answer: [PanelAction] = []
         if session.canAskAgain {
-            copy.append(PanelAction(id: "askAgain", title: "Ask Again", icon: .symbol("arrow.clockwise"), shortcut: .command("r")) {
+            answer.append(PanelAction(id: "askAgain", title: "Ask Again", icon: .symbol("arrow.clockwise"), shortcut: .command("r")) {
                 session.askAgain()
                 focusInput()
             })
+        }
+        if session.canRewrite {
+            answer += Rewrite.allCases.map { rewrite in
+                PanelAction(id: "rewrite.\(rewrite.rawValue)", title: rewrite.title, icon: .symbol(rewrite.symbol)) {
+                    session.rewrite(rewrite)
+                    focusInput()
+                }
+            }
         }
         var chat = [PanelAction(id: "newChat", title: "New Chat", icon: .symbol("square.and.pencil"), shortcut: .command("n")) {
             session.reset()
@@ -274,6 +302,7 @@ struct PanelContext {
             sections: [
                 ActionSection(id: "primary", actions: primary),
                 ActionSection(id: "copy", actions: copy),
+                ActionSection(id: "answer", actions: answer),
                 ActionSection(id: "chat", actions: chat),
                 ActionSection(id: "delete", actions: [delete]),
             ].filter { !$0.actions.isEmpty },
@@ -356,8 +385,8 @@ struct PanelContext {
 
     // MARK: The sparkle
 
-    /// The sparkle's panel: the ready providers of the current mode, the other mode, anonymous mode, and
-    /// Settings.
+    /// The sparkle's panel: the ready providers of the current mode, the other mode, anonymous mode, hiding
+    /// from screen sharing, and Settings.
     var providersMenu: ActionMenu {
         let preferences = preferences
         let session = session
@@ -388,6 +417,10 @@ struct PanelContext {
                 session.isAnonymous.toggle()
                 focusInput()
             },
+            PanelAction(id: "hideFromScreenSharing", title: "Hide from Screen Sharing", subtitle: "Where the recording app allows it", icon: .symbol("eye.slash"), isChecked: preferences.hidesFromScreenSharing) {
+                preferences.hidesFromScreenSharing.toggle()
+                focusInput()
+            },
         ]
         var settings: [PanelAction] = []
         if let active {
@@ -413,6 +446,7 @@ struct PanelContext {
     private func modelLine(for provider: Provider) -> String {
         let settings = preferences[provider]
         let model = settings.model.isEmpty ? "Default model" : settings.model
+        if settings.answersOnThisMac(for: provider) { return "\(model) · on this Mac" }
         let servers = settings.allowedMCPServers.count
         return servers > 0 ? "\(model) · \(servers) MCP server\(servers == 1 ? "" : "s")" : model
     }
@@ -466,4 +500,6 @@ struct PanelContext {
 private extension ActionShortcut {
     /// ⇧⌘⌫. Plain ⌘⌫ stays with the input, where it deletes to the start of the line.
     static let deleteChat = ActionShortcut(.delete, [.command, .shift])
+    /// ⌘↵: Return sends a question, and ⌘ sends the answer back where you came from.
+    static let insertAnswer = ActionShortcut(.returnKey, .command)
 }

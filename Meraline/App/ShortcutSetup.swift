@@ -151,7 +151,7 @@ final class ShortcutSetup {
     @ObservationIgnored private var quietTimer: Task<Void, Never>?
     @ObservationIgnored private var changeObserver: NSObjectProtocol?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .meraline) {
         self.defaults = defaults
         showsNotice = noticeShortcut != nil
         forgetNoticeIfChanged()
