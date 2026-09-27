@@ -142,6 +142,14 @@ struct PromptPane: View {
         Form {
             PaneHeader(pane: .prompt, summary: "Tell the models how to answer. LLMs and agents each have their own instructions, and each game plays by its own.")
 
+            Section {
+                Picker("Language", selection: $preferences.language) {
+                    ForEach(AnswerLanguage.allCases) { Text($0.title).tag($0) }
+                }
+            } footer: {
+                Text("LLMs and agents answer in it, unless you ask for another, as for a translation, and the games are played in it. Meraline adds a line saying so after the instructions below.")
+            }
+
             ForEach(ProviderKind.allCases) { kind in
                 Section {
                     editor(for: .chat(kind))

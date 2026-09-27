@@ -454,7 +454,7 @@ final class ChatSession {
     }
 
     /// The request a question or a game move makes, with the prompt Settings › Prompt has for the provider's
-    /// mode. A game sends its own prompt instead, the cue of each move the model made on its own, and what was
+    /// mode and the line for the language. A game sends its own prompt instead, the cue of each move the model made on its own, and what was
     /// drawn for each move. Two messages in a row from one side, which a game can leave, are joined into one.
     func makeRequest(asking question: String, images: [ImageAttachment], files: [FileAttachment] = [], of provider: Provider) -> ChatRequest {
         var messages: [ChatMessage] = []
@@ -481,7 +481,7 @@ final class ChatSession {
         return ChatRequest(
             provider: provider,
             settings: preferences[provider],
-            systemPrompt: preferences[prompt: game.map(SystemPrompt.game) ?? .chat(provider.kind)],
+            systemPrompt: preferences.instructions(for: game.map(SystemPrompt.game) ?? .chat(provider.kind)),
             messages: messages,
             workspace: provider.isCommandLine ? workspaceForAgents()?.url : nil,
             presentsFiles: provider.isCommandLine && game == nil

@@ -63,7 +63,7 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
 
 🔒 **Stays private.** API keys live in your Keychain. Conversations exist only in memory. OpenAI requests ask not to be stored, and command-line agents run in an empty temporary folder without saving a session. For a question you'd rather not see again, anonymous mode (<kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>N</kbd>) turns the sparkle graphite, in sunglasses, and keeps chats out of Recent Chats. When you do want to keep something, copy the answer or the whole conversation as Markdown.
 
-⚙️ **Feels at home on a Mac.** Settings look like System Settings, the icon follows light and dark mode, and updates install themselves. **Settings › Prompt** holds every instruction Meraline sends: give LLMs and agents instructions of their own, or rewrite a game's rules.
+⚙️ **Feels at home on a Mac.** Settings look like System Settings, the icon follows light and dark mode, and updates install themselves. **Settings › Prompt** holds every instruction Meraline sends: pick the language answers and games are in (English, Czech, Slovak, and 22 more), give LLMs and agents instructions of their own, or rewrite a game's rules.
 
 <table align="center">
   <tr>

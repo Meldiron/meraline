@@ -86,6 +86,38 @@ struct PreferencesTests {
         #expect(defaults.object(forKey: SystemPrompt.game(.rhymeDuel).key) == nil, "a prompt set back to its default follows later defaults")
     }
 
+    @Test func theLanguageIsEnglishUntilChangedAndFollowsEveryPrompt() throws {
+        let defaults = makeDefaults()
+        let preferences = Preferences(defaults: defaults, secrets: noSecrets)
+        #expect(preferences.language == .english)
+        #expect(preferences.instructions(for: .chat(.llm)) == "\(SystemPrompt.llm)\n\nWrite your answers in English, unless the user asks for another language, as for a translation.")
+        #expect(preferences.instructions(for: .game(.rhymeDuel)) == RhymeDuel.systemPrompt, "the games are written in English")
+        #expect(preferences.instructions(for: .toolReason) == ToolReason.systemPrompt)
+
+        preferences.language = .czech
+        preferences[prompt: .chat(.agent)] = "Agents only."
+        #expect(preferences.instructions(for: .chat(.agent)) == "Agents only.\n\nWrite your answers in Czech, unless the user asks for another language, as for a translation.", "a changed prompt keeps the language")
+        let game = preferences.instructions(for: .game(.categories))
+        #expect(game.hasPrefix("\(Categories.systemPrompt)\n\nPlay the game in Czech: "))
+        #expect(game.contains("“OK: ”") && game.contains("“ | ”"), "the markers the game reads stay as they are")
+        #expect(preferences.instructions(for: .toolReason).hasSuffix("\n\nWrite the sentence in Czech."))
+        #expect(preferences[prompt: .chat(.agent)] == "Agents only.", "the line is added, never saved into the prompt")
+
+        let reloaded = Preferences(defaults: defaults, secrets: noSecrets)
+        #expect(reloaded.language == .czech)
+    }
+
+    @Test func theLanguagesHaveTheirOwnNames() {
+        #expect(AnswerLanguage.allCases.prefix(3) == [.english, .czech, .slovak])
+        #expect(AnswerLanguage.czech.title == "Czech (Čeština)")
+        #expect(AnswerLanguage.slovak.title == "Slovak (Slovenčina)")
+        #expect(AnswerLanguage.english.title == "English")
+        #expect(AnswerLanguage.chinese.name == "Simplified Chinese")
+        let rest = AnswerLanguage.allCases.dropFirst(3).map(\.name)
+        #expect(rest == rest.sorted(), "after English, Czech, and Slovak, by name")
+        #expect(Set(AnswerLanguage.allCases.map(\.endonym)).count == AnswerLanguage.allCases.count)
+    }
+
     @Test func theOnePromptOfOlderVersionsCarriesOverToBothModes() {
         let changed = makeDefaults()
         changed.set("Answer in Czech.", forKey: SystemPrompt.legacyKey)

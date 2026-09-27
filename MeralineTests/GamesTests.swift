@@ -495,10 +495,13 @@ struct GamePlayTests {
         preferences[prompt: .game(.oddOneOut)] = "Odd one out, in Czech."
         session.startGame(.oddOneOut)
         #expect(session.makeRequest(asking: "Hi", images: [], of: .custom).systemPrompt == "Odd one out, in Czech.")
+        preferences.language = .slovak
+        #expect(session.makeRequest(asking: "Hi", images: [], of: .custom).systemPrompt.hasPrefix("Odd one out, in Czech.\n\nPlay the game in Slovak: "))
         session.reset()
         preferences[prompt: .chat(.agent)] = "Agents only."
-        #expect(session.makeRequest(asking: "Hi", images: [], of: .custom).systemPrompt == SystemPrompt.llm)
-        #expect(session.makeRequest(asking: "Hi", images: [], of: .claudeCode).systemPrompt == "Agents only.")
+        #expect(session.makeRequest(asking: "Hi", images: [], of: .custom).systemPrompt == preferences.instructions(for: .chat(.llm)))
+        #expect(session.makeRequest(asking: "Hi", images: [], of: .custom).systemPrompt.hasPrefix(SystemPrompt.llm))
+        #expect(session.makeRequest(asking: "Hi", images: [], of: .claudeCode).systemPrompt == "Agents only.\n\nWrite your answers in Slovak, unless the user asks for another language, as for a translation.")
         session.reset() // drops the workspace the agent's request made
     }
 

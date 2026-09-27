@@ -348,7 +348,7 @@ struct ChatPanelView: View {
 
     /// The Why? button on an agent's ask: the agent says in one line why it wants the tool (see `ToolReason`).
     private func explain(_ prompt: AgentPrompt) async throws -> String {
-        try await ToolReason.explain(prompt, in: session.turns, settings: preferences[.claudeCode], instructions: preferences[prompt: .toolReason])
+        try await ToolReason.explain(prompt, in: session.turns, settings: preferences[.claudeCode], instructions: preferences.instructions(for: .toolReason))
     }
 
     private var footer: some View {

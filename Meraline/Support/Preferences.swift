@@ -109,6 +109,14 @@ final class Preferences {
     }
     /// The prompts changed in Settings › Prompt. One left out says what it says by default.
     private var changedPrompts: [SystemPrompt: String]
+    /// The language answers, agents, and games are in (see `AnswerLanguage`).
+    var language: AnswerLanguage {
+        didSet {
+            guard language != oldValue else { return }
+            defaults.set(language.rawValue, forKey: "language")
+            Log.settings.info("Language: \(language.name)")
+        }
+    }
     var updateChannel: UpdateChannel {
         didSet { defaults.set(updateChannel.rawValue, forKey: "updateChannel") }
     }
@@ -166,6 +174,7 @@ final class Preferences {
             }
         }
         self.changedPrompts = changedPrompts
+        language = defaults.string(forKey: "language").flatMap(AnswerLanguage.init(rawValue:)) ?? .english
         updateChannel = defaults.string(forKey: "updateChannel").flatMap(UpdateChannel.init(rawValue:)) ?? .stable
         hidesFromScreenSharing = defaults.bool(forKey: "hidesFromScreenSharing")
         providerSettings = Dictionary(uniqueKeysWithValues: Provider.allCases.map { provider in
@@ -221,6 +230,11 @@ final class Preferences {
                 defaults.set(newValue, forKey: prompt.key)
             }
         }
+    }
+
+    /// What a request sends for `prompt`: the prompt as Settings › Prompt has it, then the line for the language.
+    func instructions(for prompt: SystemPrompt) -> String {
+        [self[prompt: prompt], language.instruction(for: prompt) ?? ""].filter { !$0.trimmed.isEmpty }.joined(separator: "\n\n")
     }
 
     func isChanged(_ prompt: SystemPrompt) -> Bool {

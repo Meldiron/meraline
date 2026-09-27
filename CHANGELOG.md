@@ -16,6 +16,8 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ![Settings › Prompt further down: the eight games, with Word Football's rules changed](https://raw.githubusercontent.com/Meldiron/meraline/v1.7.0/docs/screenshots/prompt-games-light.png)
 
+- **Answers in your language.** Settings › Prompt starts with Language: English, Czech, Slovak, and 22 more. LLMs and agents answer in it unless you ask for another, as for a translation, and the games are played in it. It's added after your instructions, so ones you changed keep it too.
+
 ### Privacy
 
 - **Reopening a chat keeps its time.** A chat you reopen from Recent Chats comes back with the time it had left, instead of another 30 minutes. A message or a click on the timer still gives it 30 minutes again.
