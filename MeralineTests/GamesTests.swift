@@ -332,6 +332,8 @@ struct GamePlayTests {
         ])
         let session = Support.session(model)
         session.startGame(.oddOneOut)
+        #expect(session.gameState?.choices == [OddOneOut.modelsPuzzle])
+        session.choose(OddOneOut.modelsPuzzle)
         await Support.settle(session)
         #expect(session.gameState?.choices == ["apple", "hammer", "banana"])
         #expect(OddOneOut.lines(for: session.turns).map(\.text) == ["Round 1 · the model’s three"], "the answer stays hidden")
@@ -354,6 +356,31 @@ struct GamePlayTests {
         await Support.settle(session)
         #expect(session.gameState?.status == "Round 3 of 6 · You 1, Model 1")
         #expect(session.gameState?.choices == ["red", "blue", "seven"])
+    }
+
+    @Test func oddOneOutCanStartWithYourPuzzle() async throws {
+        let model = ScriptedModel(["piano: not a fruit", "red · blue · seven | seven: not a color", "cello: not a fruit"])
+        let session = Support.session(model)
+        session.startGame(.oddOneOut)
+        await Support.play("pear plum", in: session)
+        #expect(session.nudge == "Three different words, one that doesn’t belong, separated by commas.")
+        #expect(model.requests.isEmpty)
+        await Support.play("pear, plum, piano", in: session)
+        #expect(session.turns.first?.cue == OddOneOut.yourGame)
+        #expect(model.lastMessages == ["\(OddOneOut.yourGame)\n\npear, plum, piano"], "no theme: the puzzle is yours")
+        #expect(session.gameState?.choices == [OddOneOut.gotIt, OddOneOut.missedIt])
+        #expect(OddOneOut.lines(for: session.turns).map(\.text) == ["Round 1 · your three", "pear · plum · piano", "The model picks piano: not a fruit"])
+
+        session.choose(OddOneOut.gotIt)
+        #expect(model.requests.count == 2, "the model sets round 2 at once")
+        await Support.settle(session)
+        #expect(session.gameState?.choices == ["red", "blue", "seven"])
+        session.choose("seven")
+        #expect(session.gameState?.phase == .yourMove(placeholder: "Your three words, one that doesn’t belong…"), "and you set round 3")
+        #expect(session.gameState?.status == "Round 3 of 6 · You 1, Model 1")
+        await Support.play("apple, pear, cello", in: session)
+        #expect(session.turns.last?.cue == nil)
+        #expect(session.gameState?.choices == [OddOneOut.gotIt, OddOneOut.missedIt])
     }
 
     @Test func oddOneOutFinishesAfterSixRounds() {

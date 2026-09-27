@@ -1,7 +1,7 @@
 import Foundation
 
-/// Odd one out: rounds alternate. The model sets three words and you tap the one that doesn't belong;
-/// then you set three and the model picks, and you say whether it got it. Three rounds each.
+/// Odd one out: rounds alternate, started by you or the model. The model sets three words and you tap the one
+/// that doesn't belong; you set three and the model picks, and you say whether it got it. Three rounds each.
 ///
 /// The model's own answer travels after a bar in its reply ("apple · hammer · banana | hammer: not a
 /// fruit"), so your pick is judged on this Mac and the answer stays hidden until you have picked.
@@ -18,8 +18,13 @@ nonisolated enum OddOneOut: GameRules {
     static let opening = "Set the first puzzle."
     static let nextPuzzle = "Set the next puzzle, different from the ones so far."
     static let newGame = "Start a new game: set a first puzzle unlike the ones so far."
-    private static let gameCues: Set<String> = [opening, newGame]
+    /// What goes with your three words when they start a game.
+    static let yourGame = "The user starts this game by setting the first puzzle, below."
+    private static let gameCues: Set<String> = [opening, newGame, yourGame]
+    /// The cues the model sets a puzzle with.
     private static let puzzleCues: Set<String> = [opening, nextPuzzle, newGame]
+
+    static let modelsPuzzle = "Model’s Puzzle"
 
     static let gotIt = "It got it"
     static let missedIt = "It missed"
@@ -34,7 +39,7 @@ nonisolated enum OddOneOut: GameRules {
     a few words on why. For example: piano: not a fruit. No quotation marks or Markdown.
     """
 
-    static let invitation = "The model sets three words: tap the odd one out. Then you set three for the model. Three rounds each."
+    static let invitation = "Set three words for the model, one that doesn’t belong, or let it set the first puzzle. Then take turns, three rounds each."
 
     struct Puzzle: Equatable {
         var options: [String]
@@ -163,24 +168,45 @@ nonisolated enum OddOneOut: GameRules {
         "where you find them", "how they move", "when you use them"
     ]
 
-    /// The model opens every round, the first with `opening`.
+    /// Whether the turn is a puzzle the model set.
+    private static func isModels(_ turn: ChatSession.Turn) -> Bool {
+        turn.cue.map(puzzleCues.contains) == true
+    }
+
+    /// Left to the model, it sets the game's first puzzle.
     static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
         .ask(turns.isEmpty ? opening : newGame)
     }
 
+    /// Your three words start the game.
+    static func open(with input: String, after turns: [ChatSession.Turn]) -> GameMove {
+        guard let words = three(in: input) else { return .reject(threeWords) }
+        return .open(words, cue: yourGame)
+    }
+
+    private static let threeWords = "Three different words, one that doesn’t belong, separated by commas."
+
+    /// Three different words from what you typed, as the model is sent them.
+    private static func three(in input: String) -> String? {
+        let words = words(in: GameText.firstLine(input))
+        guard words.count == 3, Set(words.map(GameText.key)).count == 3 else { return nil }
+        return words.joined(separator: ", ")
+    }
+
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let game = turns.since(gameCues), let last = game.last else {
-            return GameState(phase: .modelMoves(cue: opening), status: title)
+            let opening = GameOpening(placeholder: "Set three words, one that doesn’t belong, or press Return for the model’s…", button: modelsPuzzle)
+            return GameState(phase: .opening(opening), status: title)
         }
         let score = score(of: game)
         let tally = "You \(score.you), Model \(score.model)"
         let current = "Round \(game.count) of \(roundLimit) · \(tally)"
         if !last.isComplete { return GameState(phase: .waiting, status: current) }
         if last.outcome == nil {
-            if last.cue != nil, let puzzle = last.reply.flatMap(puzzle(from:)) {
+            if isModels(last), let puzzle = last.reply.flatMap(puzzle(from:)) {
                 return GameState(phase: .yourMove(placeholder: "Tap the odd one out, or type it…", choices: puzzle.options), status: current)
             }
-            if last.cue == nil {
+            if !isModels(last) {
                 return GameState(phase: .yourMove(placeholder: "Did the model get it?", choices: [gotIt, missedIt]), status: current)
             }
         }
@@ -194,18 +220,19 @@ nonisolated enum OddOneOut: GameRules {
                 outcome = GameOutcome(text: "Game done: a draw, \(score.you) all.", youWon: nil)
             }
             return GameState(
-                phase: .over(outcome: outcome, next: GameOpening(placeholder: "Press Return for a new game…", button: "Play Again", takesYourMove: false)),
+                phase: .over(outcome: outcome, next: GameOpening(placeholder: "Set three words for a new game, or press Return for the model’s…", button: modelsPuzzle)),
                 status: "Game done · \(tally)"
             )
         }
         let next = "Round \(game.count + 1) of \(roundLimit) · \(tally)"
-        if game.count.isMultiple(of: 2) { return GameState(phase: .modelMoves(cue: nextPuzzle), status: next) }
+        // Whoever set the first puzzle sets every other one.
+        if game.count.isMultiple(of: 2) == isModels(game[0]) { return GameState(phase: .modelMoves(cue: nextPuzzle), status: next) }
         return GameState(phase: .yourMove(placeholder: "Your three words, one that doesn’t belong…"), status: next)
     }
 
     static func play(_ input: String, in turns: [ChatSession.Turn], insisting: Bool) -> GameMove {
         if let last = turns.since(gameCues)?.last, last.isComplete, last.outcome == nil {
-            if last.cue != nil, let puzzle = last.reply.flatMap(puzzle(from:)) {
+            if isModels(last), let puzzle = last.reply.flatMap(puzzle(from:)) {
                 guard let choice = choose(input, from: puzzle.options) else {
                     return .reject("Pick one of the three: \(GameText.list(puzzle.options)).")
                 }
@@ -214,7 +241,7 @@ nonisolated enum OddOneOut: GameRules {
                     ? .settle(GameOutcome(text: "Right, “\(choice)”\(why).", youWon: true))
                     : .settle(GameOutcome(text: "Not “\(choice)”. It was “\(puzzle.answer)”\(why).", youWon: false))
             }
-            if last.cue == nil {
+            if !isModels(last) {
                 switch judgement(input) {
                 case true?: return .settle(GameOutcome(text: "The model got it.", youWon: false))
                 case false?: return .settle(GameOutcome(text: "You fooled the model.", youWon: true))
@@ -222,16 +249,13 @@ nonisolated enum OddOneOut: GameRules {
                 }
             }
         }
-        let words = words(in: GameText.firstLine(input))
-        guard words.count == 3, Set(words.map(GameText.key)).count == 3 else {
-            return .reject("Three different words, one that doesn’t belong, separated by commas.")
-        }
-        return .ask(words.joined(separator: ", "))
+        guard let words = three(in: input) else { return .reject(threeWords) }
+        return .ask(words)
     }
 
     static func judge(_ reply: String, in turns: [ChatSession.Turn]) -> GameReply {
         guard let last = turns.last else { return .refuse("Press Return to ask again.") }
-        if last.cue != nil {
+        if isModels(last) {
             guard let puzzle = puzzle(from: reply) else {
                 return .refuse("The model’s puzzle came out garbled. Press Return for another.")
             }
@@ -248,7 +272,7 @@ nonisolated enum OddOneOut: GameRules {
         for (number, game) in turns.rounds(gameCues).enumerated() {
             if number > 0 { lines.note("New game") }
             for (index, turn) in game.enumerated() {
-                if turn.cue != nil {
+                if isModels(turn) {
                     lines.heading("Round \(index + 1) · the model’s three")
                     // While you pick, the three words are the buttons under the transcript.
                     guard let outcome = turn.outcome, let puzzle = turn.reply.flatMap(puzzle(from:)) else { continue }
@@ -270,9 +294,9 @@ nonisolated enum OddOneOut: GameRules {
         for game in turns.rounds(gameCues) {
             for (index, turn) in game.enumerated() {
                 guard let outcome = turn.outcome else { continue }
-                if turn.cue != nil, let puzzle = turn.reply.flatMap(puzzle(from:)) {
+                if isModels(turn), let puzzle = turn.reply.flatMap(puzzle(from:)) {
                     text.append("Round \(index + 1), the model’s three: \(puzzle.options.joined(separator: " · ")). \(outcome.text)")
-                } else if turn.cue == nil {
+                } else if !isModels(turn) {
                     text.append("Round \(index + 1), your three: \(words(in: turn.question).joined(separator: " · ")). The model picked \(turn.reply ?? "nothing"). \(outcome.text)")
                 }
             }

@@ -30,6 +30,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - **Pick the category yourself.** Categories starts with your category, or press Return (or Random Category) for one drawn at random. Either way the model names the first thing in it, and a category it won't play comes back to you.
 - **Start an Add-a-Word sentence yourself.** Type its first word, or press Return (or Random Word) for one drawn at random, and add the next word yourself. Each new sentence of the story starts the same way.
 - **Kick off Word Football yourself.** Play the first word, or press Return (or Random Word) to kick off from one drawn at random, never one of that chat's earlier matches while others are left.
+- **Set the first Odd One Out puzzle.** Type three words for the model, or press Return (or Model's Puzzle) to have it set one. You and the model still take turns, so whoever starts sets rounds one, three, and five.
 
 ## v1.6.0 - 2026-09-27
 
