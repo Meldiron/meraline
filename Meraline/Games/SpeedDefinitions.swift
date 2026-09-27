@@ -1,8 +1,10 @@
 import Foundation
 
-/// Speed definitions: the model shows a word, you define it in ten words or fewer, and the model grades
-/// your definition out of ten. Five words a game. The model's own definition travels after a bar in its
-/// reply ("serendipity | finding something good without looking for it"), hidden until yours is graded.
+/// Speed definitions: five words a game, from one side for the whole game. Either the model shows a word, you
+/// define it in ten words or fewer, and the model grades your definition out of ten, or you give the words, the
+/// model defines each, and you say whether it got it. The model's own definition of its word travels after a
+/// bar in its reply ("serendipity | finding something good without looking for it"), hidden until yours is
+/// graded.
 ///
 /// The model picks each word from three dealt on this Mac, of a difficulty drawn there too (`Difficulty`):
 /// left to itself, it opens with serendipity every game, and its words run hard.
@@ -19,8 +21,15 @@ nonisolated enum SpeedDefinitions: GameRules {
     static let opening = "Give the first word."
     static let nextWord = "Give the next word, a different kind of word from the ones so far."
     static let newGame = "Start a new game with a fresh first word."
-    private static let gameCues: Set<String> = [opening, newGame]
+    /// What goes with your first word: you give the words this game.
+    static let yourGame = "The user gives the words this game: define each in ten words or fewer, without using it. Here is the first."
+    private static let gameCues: Set<String> = [opening, newGame, yourGame]
+    /// The cues the model shows a word with.
     private static let wordCues: Set<String> = [opening, nextWord, newGame]
+
+    static let randomButton = "Random Word"
+    static let gotIt = "It got it"
+    static let missedIt = "It missed"
 
     static let systemPrompt = """
     You are playing Speed definitions. When asked for a word, reply on one line with one of the words the message \
@@ -29,10 +38,11 @@ nonisolated enum SpeedDefinitions: GameRules {
     without looking for it. Never give a word played already. When the user defines your word, grade the \
     definition on one line: “N/10”, where 10 means it nails the meaning, then “ — ” and a few friendly words on \
     what it caught or missed. Grade the meaning, not spelling or style: a short definition that nails it deserves \
-    a 10. No quotation marks or Markdown.
+    a 10. When the user gives the words instead, define each one on one line in ten words or fewer, without \
+    using the word itself. No quotation marks or Markdown.
     """
 
-    static let invitation = "The model shows a word. Define it in ten words or fewer, and it grades you out of 10. Five words a game; pass skips one."
+    static let invitation = "Type a word for the model to define, or take a random one to define yourself in ten words or fewer. Five words a game; pass skips one."
 
     /// The model's word, and its own definition, hidden until you have played.
     struct Word: Equatable {
@@ -138,7 +148,7 @@ nonisolated enum SpeedDefinitions: GameRules {
 
     /// Three words of `difficulty` for the model to pick from.
     static func offer(_ difficulty: Difficulty, after turns: [ChatSession.Turn], dice: inout GameDice) -> String {
-        let played = Set(turns.rounds(gameCues).flatMap(review).map { GameText.key($0.word.word) })
+        let played = Set(turns.rounds(gameCues).flatMap(words(of:)).map(GameText.key))
         let offered = dice.deal(offeredCount, from: difficulty.words) { !played.contains(GameText.key($0)) }
         return "Pick one of these words, all of \(difficulty.rawValue) difficulty: \(GameText.list(offered))."
     }
@@ -230,15 +240,58 @@ nonisolated enum SpeedDefinitions: GameRules {
         "Word \(number) of \(roundLimit) · \(points) \(points == 1 ? "point" : "points")"
     }
 
-    /// The model opens every round, the first with `opening`.
+    /// Whether you give the words this game, and the model defines them.
+    static func youGive(_ game: [ChatSession.Turn]) -> Bool {
+        game.first?.cue == yourGame
+    }
+
+    /// The words a game played, the model's or yours.
+    private static func words(of game: [ChatSession.Turn]) -> [String] {
+        youGive(game) ? game.map(\.question) : review(game).map(\.word.word)
+    }
+
+    /// Left to the model, it shows the game's words, from those drawn on this Mac.
     static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
         .ask(turns.isEmpty ? opening : newGame)
     }
 
+    /// Your word starts a game in which you give them all.
+    static func open(with input: String, after turns: [ChatSession.Turn]) -> GameMove {
+        give(input, after: []) { .open($0, cue: yourGame) }
+    }
+
+    /// A word you typed for the model to define, made into `move`, or why it can't be one.
+    private static func give(_ input: String, after game: [ChatSession.Turn], as move: (String) -> GameMove) -> GameMove {
+        let words = GameText.words(GameText.firstLine(input)).map(GameText.withoutEndPunctuation)
+        guard (1...3).contains(words.count), !GameText.isGivingUp(words[0]) else {
+            return .reject("One word, or a short phrase, for the model to define.")
+        }
+        let word = words.joined(separator: " ")
+        if game.contains(where: { GameText.sameWord($0.question, word) }) { return .reject("“\(word)” was played already. Try another.") }
+        return move(word)
+    }
+
+    /// The model's definition of your word, without the word or a label before it.
+    static func definition(from reply: String, of word: String) -> String {
+        var line = GameText.unwrapped(GameText.firstLine(reply))
+        let (shown, hidden) = GameText.split(line)
+        if let hidden, GameText.key(shown) == GameText.key(word) { line = hidden }
+        for separator in [":", " — ", " – ", " - "] {
+            guard let range = line.range(of: separator) else { continue }
+            let before = GameText.key(String(line[..<range.lowerBound]))
+            if [GameText.key(word), "definition", "meaning"].contains(before) { line = String(line[range.upperBound...]).trimmed }
+            break
+        }
+        return GameText.withoutEndPunctuation(GameText.unwrapped(line))
+    }
+
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let game = turns.since(gameCues), let last = game.last else {
-            return GameState(phase: .modelMoves(cue: opening), status: title)
+            let opening = GameOpening(placeholder: "Type a word for the model to define, or press Return for a random one…", button: randomButton)
+            return GameState(phase: .opening(opening), status: title)
         }
+        let next = GameOpening(placeholder: "Type a word for a new game, or press Return for a random one…", button: randomButton)
+        if youGive(game) { return stateOfYourWords(game, last: last, next: next) }
         let rounds = review(game)
         let points = rounds.compactMap(\.grade?.score).reduce(0, +)
         let number = game.filter { $0.cue != nil }.count
@@ -253,16 +306,35 @@ nonisolated enum SpeedDefinitions: GameRules {
                 text: "Game done: \(points) of \(roundLimit * 10) points, and \(landed) of \(roundLimit) definitions landed.",
                 youWon: landed * 2 > roundLimit
             )
-            return GameState(
-                phase: .over(outcome: outcome, next: GameOpening(placeholder: "Press Return for a new game…", button: "Play Again", takesYourMove: false)),
-                status: "Game done · \(points) of \(roundLimit * 10)"
-            )
+            return GameState(phase: .over(outcome: outcome, next: next), status: "Game done · \(points) of \(roundLimit * 10)")
         }
         return GameState(phase: .modelMoves(cue: nextWord), status: status(word: number + 1, points: points))
     }
 
+    private static func stateOfYourWords(_ game: [ChatSession.Turn], last: ChatSession.Turn, next: GameOpening) -> GameState {
+        let got = game.filter { $0.outcome?.youWon == false }.count
+        let current = "Word \(game.count) of \(roundLimit) · Model got \(got)"
+        if !last.isComplete { return GameState(phase: .waiting, status: current) }
+        if last.outcome == nil { return GameState(phase: .yourMove(placeholder: "Did the model get it?", choices: [gotIt, missedIt]), status: current) }
+        if game.count >= roundLimit {
+            let missed = roundLimit - got
+            let outcome = GameOutcome(text: "Game done: the model got \(got) of \(roundLimit), and missed \(missed).", youWon: missed * 2 > roundLimit)
+            return GameState(phase: .over(outcome: outcome, next: next), status: "Game done · Model got \(got) of \(roundLimit)")
+        }
+        return GameState(phase: .yourMove(placeholder: "Your next word for the model to define…"), status: "Word \(game.count + 1) of \(roundLimit) · Model got \(got)")
+    }
+
     static func play(_ input: String, in turns: [ChatSession.Turn], insisting: Bool) -> GameMove {
-        guard let round = review(turns.since(gameCues) ?? []).last, !round.isSettled else {
+        let game = turns.since(gameCues) ?? []
+        if youGive(game) {
+            guard let last = game.last, last.outcome == nil else { return give(input, after: game, as: GameMove.ask) }
+            switch GameText.judgement(input, yes: gotIt, no: missedIt) {
+            case true?: return .settle(GameOutcome(text: "The model got it.", youWon: false))
+            case false?: return .settle(GameOutcome(text: "You stumped the model.", youWon: true))
+            case nil: return .reject("Did the model get it? Tap “\(gotIt)” or “\(missedIt)”.")
+            }
+        }
+        guard let round = review(game).last, !round.isSettled else {
             return .reject("Wait for the word.")
         }
         let line = GameText.firstLine(input)
@@ -281,6 +353,10 @@ nonisolated enum SpeedDefinitions: GameRules {
 
     static func judge(_ reply: String, in turns: [ChatSession.Turn]) -> GameReply {
         guard let last = turns.last else { return .refuse("Press Return to ask again.") }
+        if youGive(turns.since(gameCues) ?? []) {
+            let definition = definition(from: reply, of: last.question)
+            return definition.isEmpty ? .refuse("The model’s definition came out garbled. Press Return to ask again.") : .accept(definition)
+        }
         if last.cue != nil {
             guard let word = word(from: reply) else {
                 return .refuse("The model’s word came out garbled. Press Return for another.")
@@ -301,6 +377,15 @@ nonisolated enum SpeedDefinitions: GameRules {
         var lines = GameLines()
         for (number, game) in turns.rounds(gameCues).enumerated() {
             if number > 0 { lines.note("New game") }
+            if youGive(game) {
+                for (index, turn) in game.enumerated() {
+                    lines.heading("Word \(index + 1) · Yours")
+                    lines.verse([GameLine.Piece(text: turn.question, voice: .you, isMarked: true)])
+                    if let reply = turn.reply { lines.model(reply) }
+                    if let outcome = turn.outcome { lines.verdict(outcome) }
+                }
+                continue
+            }
             for (index, round) in review(game).enumerated() {
                 lines.heading(round.difficulty.map { "Word \(index + 1) · \($0.rawValue.capitalized)" } ?? "Word \(index + 1)")
                 // The model's own definition shows once yours is graded or skipped.
@@ -321,19 +406,33 @@ nonisolated enum SpeedDefinitions: GameRules {
     }
 
     static func transcript(of turns: [ChatSession.Turn]) -> String? {
-        let rounds = turns.rounds(gameCues).flatMap(review).map { round in
-            var text = round.word.meaning.isEmpty ? round.word.word : "\(round.word.word): \(round.word.meaning)"
-            if let definition = round.definition, let grade = round.grade {
-                text += "\nYou: \(definition) (\(grade.text))"
-            } else if round.skipped != nil {
-                text += "\nYou passed."
-            }
-            return text
+        let rounds = turns.rounds(gameCues).flatMap { game in
+            youGive(game) ? game.map(yours) : review(game).map(theModels)
         }
         return rounds.isEmpty ? nil : rounds.joined(separator: "\n\n")
     }
 
+    /// A word you gave, as Copy writes it.
+    private static func yours(_ turn: ChatSession.Turn) -> String {
+        var text = turn.question
+        if let reply = turn.reply { text += "\nThe model: \(reply)" }
+        if let outcome = turn.outcome { text += " (\(outcome.text))" }
+        return text
+    }
+
+    /// A word of the model's, as Copy writes it.
+    private static func theModels(_ round: Round) -> String {
+        var text = round.word.meaning.isEmpty ? round.word.word : "\(round.word.word): \(round.word.meaning)"
+        if let definition = round.definition, let grade = round.grade {
+            text += "\nYou: \(definition) (\(grade.text))"
+        } else if round.skipped != nil {
+            text += "\nYou passed."
+        }
+        return text
+    }
+
     static func headline(of turns: [ChatSession.Turn]) -> String? {
-        turns.first?.reply.flatMap(word(from:))?.word
+        guard let first = turns.rounds(gameCues).first else { return nil }
+        return youGive(first) ? first.first?.question : review(first).first?.word.word
     }
 }

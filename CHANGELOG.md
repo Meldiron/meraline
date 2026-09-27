@@ -32,6 +32,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - **Kick off Word Football yourself.** Play the first word, or press Return (or Random Word) to kick off from one drawn at random, never one of that chat's earlier matches while others are left.
 - **Set the first Odd One Out puzzle.** Type three words for the model, or press Return (or Model's Puzzle) to have it set one. You and the model still take turns, so whoever starts sets rounds one, three, and five.
 - **Stump the model in Fix the Typo.** Type a sentence with one misspelled word, and the model hunts for it; tap It found it or It missed. Start that way and you write all five sentences, or press Return (or Model's Sentence) to fix the model's as before.
+- **Give the words in Speed Definitions.** Type a word, and the model defines it in ten words or fewer; tap It got it or It missed. Start that way and you give all five words, or press Return (or Random Word) to define the model's as before.
 
 ## v1.6.0 - 2026-09-27
 

@@ -60,6 +60,44 @@ struct SpeedDefinitionsTests {
         #expect(SpeedDefinitions.easyWords.contains("umbrella") && SpeedDefinitions.hardWords.contains("serendipity"))
     }
 
+    @Test func youCanGiveTheWordsForTheModelToDefine() async throws {
+        let model = ScriptedModel([
+            "Petrichor: the smell of rain on dry earth.",
+            "gregarious | fond of company",
+            "Definition — lasting a very short time",
+            "a strange feeling", "found everywhere"
+        ])
+        let session = Support.session(model)
+        session.startGame(.speedDefinitions)
+        await Support.play("a word much too long", in: session)
+        #expect(session.nudge == "One word, or a short phrase, for the model to define.")
+        await Support.play("Petrichor", in: session)
+        #expect(session.turns.first?.cue == SpeedDefinitions.yourGame)
+        #expect(model.lastMessages == ["\(SpeedDefinitions.yourGame)\n\nPetrichor"], "no words drawn: they are yours")
+        #expect(session.turns.first?.answer == "the smell of rain on dry earth")
+        #expect(session.gameState?.choices == [SpeedDefinitions.gotIt, SpeedDefinitions.missedIt])
+        #expect(SpeedDefinitions.lines(for: session.turns).map(\.text) == ["Word 1 · Yours", "Petrichor", "the smell of rain on dry earth"])
+
+        session.choose(SpeedDefinitions.gotIt)
+        #expect(session.gameState?.phase == .yourMove(placeholder: "Your next word for the model to define…"), "you give every word this game")
+        await Support.play("petrichor", in: session)
+        #expect(session.nudge == "“petrichor” was played already. Try another.")
+        await Support.play("gregarious", in: session)
+        #expect(session.turns.last?.answer == "fond of company")
+        session.choose(SpeedDefinitions.gotIt)
+        await Support.play("ephemeral", in: session)
+        #expect(session.turns.last?.answer == "lasting a very short time")
+        session.choose(SpeedDefinitions.gotIt)
+        await Support.play("ennui", in: session)
+        session.choose(SpeedDefinitions.missedIt)
+        await Support.play("ubiquitous", in: session)
+        session.choose(SpeedDefinitions.gotIt)
+        #expect(session.nudge == "Game done: the model got 4 of 5, and missed 1.")
+        #expect(session.conversationMarkdown?.hasPrefix("Petrichor\nThe model: the smell of rain on dry earth (The model got it.)") == true)
+        session.reset()
+        #expect(session.history.first?.title == "Speed Definitions: Petrichor")
+    }
+
     @Test func aDefinitionIsCheckedBeforeAsking() {
         let turns = [Support.turn(cue: SpeedDefinitions.opening, reply: Self.serendipity)]
         #expect(SpeedDefinitions.play("a happy accident", in: turns, insisting: false) == .ask("a happy accident"))
@@ -81,6 +119,8 @@ struct SpeedDefinitionsTests {
         ])
         let session = Support.session(model)
         session.startGame(.speedDefinitions)
+        #expect(session.gameState?.choices == [SpeedDefinitions.randomButton])
+        session.send()
         await Support.settle(session)
         #expect(model.requests.first?.systemPrompt == SpeedDefinitions.systemPrompt)
         #expect(session.gameState?.phase == .yourMove(placeholder: "Define “serendipity” in ten words or fewer…"))
@@ -122,6 +162,7 @@ struct SpeedDefinitionsTests {
         let model = ScriptedModel([Self.serendipity, "What a lovely try!"])
         let session = Support.session(model)
         session.startGame(.speedDefinitions)
+        session.send()
         await Support.settle(session)
         await Support.play("a happy accident", in: session)
         #expect(session.nudge == "The model forgot to grade your definition. Press Return to send it again.")
