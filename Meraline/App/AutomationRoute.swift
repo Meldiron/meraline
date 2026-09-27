@@ -18,8 +18,8 @@ import Foundation
 ///     meraline://mode?agent=1           switch to Agent and open the window; agent=0 switches to LLM, and
 ///                                       meraline://mode alone to the other mode
 ///     meraline://settings               open Settings
-///     meraline://settings?pane=…        open Settings on a pane: general, prompt, updates, about, or a
-///                                       provider such as claudeCode (see `SettingsPane(named:)`)
+///     meraline://settings?pane=…        open Settings on a pane: general, prompt, permissions, updates,
+///                                       about, or a provider such as claudeCode (see `SettingsPane(named:)`)
 nonisolated enum AutomationRoute: Equatable, Sendable {
     case ask(text: String?, selection: String? = nil, clipboard: Bool = false, screen: Bool = false, mode: ProviderKind? = nil, send: Bool)
     case newChat

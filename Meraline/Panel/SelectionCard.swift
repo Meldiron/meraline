@@ -139,7 +139,7 @@ struct SelectionHintRow: View {
             Button("Allow Access…", action: allow)
                 .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
             CardButton(symbol: "xmark", label: "Hide this hint", action: dismiss)
-                .help("Hide this hint. Settings › General can allow access later.")
+                .help("Hide this hint. Settings › Permissions can allow access later.")
         }
         .padding(12)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))

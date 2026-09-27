@@ -4,6 +4,10 @@ Notable changes in each Meraline release, newest first.
 
 When a version has an entry here, the Release workflow uses it as the release notes on GitHub and in the in-app update window. A version without an entry gets the list of commits since the previous tag instead. Headings are `## vX.Y.Z - YYYY-MM-DD`.
 
+## Unreleased
+
+- **Permissions in one place.** Settings › Permissions lists the two accesses Meraline can ask macOS for, Accessibility and Screen Recording, with the features each one turns on and whether macOS allows it, checked again every second while the pane is open. Allow… asks macOS for it, and Open System Settings goes straight to the list with Meraline's switch.
+
 ## v1.5.0 - 2026-09-26
 
 ### Ask

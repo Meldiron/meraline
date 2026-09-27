@@ -42,6 +42,7 @@ enum Diagnostics {
         lines.append("- Shortcut: \(KeyboardShortcuts.getShortcut(for: .togglePanel)?.description ?? "none")\(KeyboardShortcuts.isEnabled(for: .togglePanel) ? "" : ", not registered")")
         lines.append("- Window: \(preferences.placement.title), \(preferences.isPinned ? "stays open" : "closes when clicking elsewhere"), menu bar icon \(preferences.showsMenuBarIcon ? "on" : "off"), hidden from screen sharing \(preferences.hidesFromScreenSharing ? "on" : "off")")
         lines.append("- Selected text: \(preferences.bringsSelection ? "on" : "off"), Accessibility access \(SelectionAccess.shared.isGranted ? "allowed" : "not allowed")")
+        lines.append("- Screenshots: Screen Recording access \(ScreenCapture.hasAccess ? "allowed" : "not allowed")")
         lines.append("- System prompt: \(preferences.systemPrompt == Preferences.defaultSystemPrompt ? "default" : "customized")")
         if updates.isAvailable {
             let lastCheck = updates.lastCheck.map { $0.formatted(.iso8601) } ?? "never"

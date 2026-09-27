@@ -4,7 +4,8 @@ import SwiftUI
 
 struct GeneralPane: View {
     @Bindable var preferences: Preferences
-    private let selectionAccess = SelectionAccess.shared
+    /// Opens Settings › Permissions, which says whether Meraline may read the selection.
+    let showPermissions: () -> Void
     @State private var loginItemStatus = SMAppService.mainApp.status
     @State private var loginItemError: String?
 
@@ -68,25 +69,19 @@ struct GeneralPane: View {
                     Text("When you press the shortcut, text you select in any app waits behind the cursor button above the window until you add it, and files and folders selected in Finder come along. When you ask an LLM, only photos come from Finder.")
                 }
                 .tint(.meralinePink)
-                if preferences.bringsSelection {
-                    LabeledContent {
-                        if selectionAccess.isGranted {
-                            Label("Allowed", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Button("Allow Access…") { selectionAccess.request() }
-                        }
-                    } label: {
-                        Text("Accessibility access")
-                        Text(selectionAccess.isGranted
-                            ? "Meraline reads the selection only when you press the shortcut."
-                            : "Meraline needs it to read the selection. Allow Access asks macOS again for this copy of Meraline, even if a switch for it already looks on.")
-                    }
-                }
             } header: {
                 Text("Selection")
             } footer: {
-                Text("Most apps share their selection directly. In the few that don't, such as browsers or Zed, Meraline uses the app's own Copy command, or presses ⌘C in an app that describes nothing but its window, and then puts back what was on the clipboard. Services › Ask Meraline, in any app's menu or Finder's, brings the selection without Accessibility access.")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Most apps share their selection directly. In the few that don't, such as browsers or Zed, Meraline uses the app's own Copy command, or presses ⌘C in an app that describes nothing but its window, and then puts back what was on the clipboard.")
+                    if preferences.bringsSelection && !SelectionAccess.shared.isGranted {
+                        HStack {
+                            Text("Reading the selection needs Accessibility access.")
+                            Button("Open Permissions", action: showPermissions)
+                                .buttonStyle(.link)
+                        }
+                    }
+                }
             }
 
             Section {
@@ -109,13 +104,9 @@ struct GeneralPane: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { loginItemStatus = SMAppService.mainApp.status }
-        .task {
-            // System Settings doesn't always say when Accessibility access changes, so look while the pane is open.
-            while !Task.isCancelled {
-                selectionAccess.refresh()
-                try? await Task.sleep(for: .seconds(1))
-            }
+        .onAppear {
+            loginItemStatus = SMAppService.mainApp.status
+            SelectionAccess.shared.refresh()
         }
     }
 
