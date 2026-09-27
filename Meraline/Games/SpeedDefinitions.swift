@@ -3,6 +3,9 @@ import Foundation
 /// Speed definitions: the model shows a word, you define it in ten words or fewer, and the model grades
 /// your definition out of ten. Five words a game. The model's own definition travels after a bar in its
 /// reply ("serendipity | finding something good without looking for it"), hidden until yours is graded.
+///
+/// The model picks each word from three dealt on this Mac, from `words`: left to itself, it opens with
+/// serendipity every game.
 nonisolated enum SpeedDefinitions: GameRules {
     static let title = "Speed Definitions"
     static let summary = "Define the model’s word in ten words or fewer"
@@ -17,14 +20,16 @@ nonisolated enum SpeedDefinitions: GameRules {
     static let nextWord = "Give the next word, a different kind of word from the ones so far."
     static let newGame = "Start a new game with a fresh first word."
     private static let gameCues: Set<String> = [opening, newGame]
+    private static let wordCues: Set<String> = [opening, nextWord, newGame]
 
     static let systemPrompt = """
-    You are playing Speed definitions. When asked for a word, reply on one line with one English word that is \
-    fun to define, neither obscure nor too easy, then “ | ” and a dictionary definition of ten words or fewer. \
-    For example: serendipity | finding something good without looking for it. Pick a different kind of word \
-    every time. When the user defines your word, grade the definition on one line: “N/10”, where 10 means it \
-    nails the meaning, then “ — ” and a few friendly words on what it caught or missed. Grade the meaning, not \
-    spelling or style: a short definition that nails it deserves a 10. No quotation marks or Markdown.
+    You are playing Speed definitions. When asked for a word, reply on one line with one of the words the message \
+    offers, or, when it offers none, one English word that is fun to define, neither obscure nor too easy; then \
+    “ | ” and a dictionary definition of ten words or fewer. For example: serendipity | finding something good \
+    without looking for it. Never give a word played already. When the user defines your word, grade the \
+    definition on one line: “N/10”, where 10 means it nails the meaning, then “ — ” and a few friendly words on \
+    what it caught or missed. Grade the meaning, not spelling or style: a short definition that nails it deserves \
+    a 10. No quotation marks or Markdown.
     """
 
     static let invitation = "The model shows a word. Define it in ten words or fewer, and it grades you out of 10. Five words a game; pass skips one."
@@ -123,6 +128,47 @@ nonisolated enum SpeedDefinitions: GameRules {
             GameText.sameWord(typed, word) || (target.count >= 4 && GameText.key(typed).contains(target))
         }
     }
+
+    /// A new word gets three to pick from, none the chat has played while there are others.
+    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String? {
+        guard turn.cue.map(wordCues.contains) == true else { return nil }
+        let played = Set(turns.rounds(gameCues).flatMap(review).map { GameText.key($0.word.word) })
+        let offered = dice.deal(offeredCount, from: words) { !played.contains(GameText.key($0)) }
+        return "Pick one of these words: \(GameText.list(offered))."
+    }
+
+    /// How many words the model picks from.
+    static let offeredCount = 3
+
+    /// Words that are fun to define, neither obscure nor too easy.
+    static let words = [
+        "ambiguous", "ambition", "anecdote", "anonymous", "apology", "appetite", "avalanche", "awkward", "bargain",
+        "benevolent", "blizzard", "bluff", "boredom", "boycott", "brainstorm", "bribe", "budget", "bureaucracy",
+        "camouflage", "candid", "catastrophe", "caution", "celebrity", "chaos", "charisma", "clumsy", "coincidence",
+        "commute", "compromise", "confetti", "conscience", "cozy", "cringe", "curfew", "curiosity", "deadline",
+        "debut", "detour", "dilemma", "diplomat", "disguise", "doodle", "drizzle", "eavesdrop", "eclipse",
+        "eccentric", "echo", "elegant", "embarrass", "encore", "enigma", "envy", "epiphany", "errand", "etiquette",
+        "euphoria", "evidence", "exaggerate", "excuse", "expedition", "fad", "fatigue", "fiasco", "fidget",
+        "flattery", "fluke", "folklore", "forecast", "frugal", "fumble", "gadget", "gibberish", "gimmick", "glitch",
+        "gossip", "gourmet", "gratitude", "grudge", "gullible", "habit", "haggle", "harmony", "hiccup", "hindsight",
+        "hoax", "homesick", "horizon", "humble", "hunch", "hypothesis", "idle", "illusion", "impatient",
+        "improvise", "impulse", "inertia", "inkling", "insomnia", "intuition", "itinerary", "jargon", "jealousy",
+        "jinx", "jubilant", "karma", "keepsake", "labyrinth", "landmark", "legacy", "leisure", "lullaby", "luxury",
+        "magnet", "maze", "meander", "melancholy", "memoir", "mentor", "mirage", "mischief", "momentum",
+        "monologue", "mumble", "myth", "naive", "negotiate", "nemesis", "nitpick", "nomad", "nonsense", "nostalgia",
+        "novice", "nuance", "oasis", "oblivious", "obstacle", "omen", "optimist", "oracle", "outlier", "paradox",
+        "paranoid", "patience", "peckish", "perfectionist", "persuade", "placebo", "plagiarism", "ponder",
+        "procrastinate", "prodigy", "prophecy", "pseudonym", "pun", "quarantine", "quirk", "ransom", "rebel",
+        "recipe", "refuge", "regret", "rehearse", "relic", "remedy", "reunion", "riddle", "ritual", "rumor",
+        "sabotage", "sarcasm", "scapegoat", "scavenger", "scheme", "serendipity", "shrug", "siesta", "silhouette",
+        "skeptic", "slogan", "smug", "snooze", "souvenir", "spontaneous", "squabble", "stalemate", "stamina",
+        "stealth", "stubborn", "superstition", "suspense", "sympathy", "taboo", "tangent", "tantrum", "tedious",
+        "temptation", "thrifty", "tradition", "tranquil", "trivia", "tsunami", "tycoon", "ultimatum",
+        "understatement", "utopia", "vague", "velocity", "veto", "vintage", "virtue", "vivid", "wanderlust", "whim",
+        "whisper", "wisdom", "witness", "wobble", "yearn", "zeal", "zenith", "ephemeral", "gregarious", "petrichor",
+        "ubiquitous", "cacophony", "juggernaut", "loophole", "mediocre", "overwhelm", "quibble", "resilient",
+        "sheepish", "trepidation"
+    ]
 
     private static func status(word number: Int, points: Int) -> String {
         "Word \(number) of \(roundLimit) · \(points) \(points == 1 ? "point" : "points")"

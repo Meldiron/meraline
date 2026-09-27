@@ -27,6 +27,26 @@ struct SpeedDefinitionsTests {
         #expect(SpeedDefinitions.grade(from: "Great definition") == nil)
     }
 
+    @Test func eachWordIsPickedFromThreeTheChatHasntPlayed() throws {
+        let keys = SpeedDefinitions.words.map(GameText.key)
+        #expect(Set(keys).count == keys.count, "no word twice")
+        #expect(SpeedDefinitions.words.allSatisfy { SpeedDefinitions.word(from: $0)?.word == $0 }, "each reads back as one word")
+        var dice = GameDice(seed: 11)
+        for cue in [SpeedDefinitions.opening, SpeedDefinitions.nextWord, SpeedDefinitions.newGame] {
+            let aside = try #require(SpeedDefinitions.aside(for: Support.turn(cue: cue), after: [], dice: &dice))
+            #expect(aside.hasPrefix("Pick one of these words: “"))
+            #expect(SpeedDefinitions.words.filter { aside.contains("“\($0)”") }.count == SpeedDefinitions.offeredCount)
+        }
+        #expect(SpeedDefinitions.aside(for: Support.turn("a happy accident"), after: [], dice: &dice) == nil, "grading needs no draw")
+
+        let unplayed = SpeedDefinitions.words.suffix(SpeedDefinitions.offeredCount)
+        let played = SpeedDefinitions.words.dropLast(SpeedDefinitions.offeredCount).enumerated().map { index, word in
+            Support.turn(cue: index == 0 ? SpeedDefinitions.opening : SpeedDefinitions.nextWord, reply: "\(word) | a meaning")
+        }
+        let next = try #require(SpeedDefinitions.aside(for: Support.turn(cue: SpeedDefinitions.nextWord), after: played, dice: &dice))
+        #expect(unplayed.allSatisfy { next.contains("“\($0)”") }, "the three the chat hasn't had")
+    }
+
     @Test func aDefinitionIsCheckedBeforeAsking() {
         let turns = [Support.turn(cue: SpeedDefinitions.opening, reply: Self.serendipity)]
         #expect(SpeedDefinitions.play("a happy accident", in: turns, insisting: false) == .ask("a happy accident"))
@@ -38,7 +58,7 @@ struct SpeedDefinitionsTests {
         #expect(SpeedDefinitions.play("a happy accident", in: [], insisting: false) == .reject("Wait for the word."))
     }
 
-    @Test func fiveWordsMakeAGame() async {
+    @Test func fiveWordsMakeAGame() async throws {
         let model = ScriptedModel([
             Self.serendipity, "8/10 — nails the luck part",
             "gregarious | fond of company", "3/10 — too thin",
@@ -54,7 +74,9 @@ struct SpeedDefinitionsTests {
         #expect(SpeedDefinitions.lines(for: session.turns).map(\.text) == ["Word 1", "serendipity"], "the model’s own definition stays hidden")
 
         await Support.play("a happy accident", in: session)
-        #expect(model.lastMessages == [SpeedDefinitions.opening, Self.serendipity, "a happy accident"])
+        let pick = try #require(session.turns.first?.message)
+        #expect(pick.hasPrefix("\(SpeedDefinitions.opening)\n\nPick one of these words: "))
+        #expect(model.lastMessages == [pick, Self.serendipity, "a happy accident"])
         #expect(SpeedDefinitions.lines(for: session.turns).map(\.text)
             == ["Word 1", "serendipity · finding something good without looking for it", "a happy accident", "8/10 · nails the luck part"])
         #expect(session.gameState?.status == "Word 2 of 5 · 8 points")
