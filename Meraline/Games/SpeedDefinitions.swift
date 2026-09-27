@@ -4,8 +4,8 @@ import Foundation
 /// your definition out of ten. Five words a game. The model's own definition travels after a bar in its
 /// reply ("serendipity | finding something good without looking for it"), hidden until yours is graded.
 ///
-/// The model picks each word from three dealt on this Mac, from `words`: left to itself, it opens with
-/// serendipity every game.
+/// The model picks each word from three dealt on this Mac, of a difficulty drawn there too (`Difficulty`):
+/// left to itself, it opens with serendipity every game, and its words run hard.
 nonisolated enum SpeedDefinitions: GameRules {
     static let title = "Speed Definitions"
     static let summary = "Define the model’s word in ten words or fewer"
@@ -24,7 +24,7 @@ nonisolated enum SpeedDefinitions: GameRules {
 
     static let systemPrompt = """
     You are playing Speed definitions. When asked for a word, reply on one line with one of the words the message \
-    offers, or, when it offers none, one English word that is fun to define, neither obscure nor too easy; then \
+    offers, or, when it offers none, one English word that is fun to define, most often of medium difficulty; then \
     “ | ” and a dictionary definition of ten words or fewer. For example: serendipity | finding something good \
     without looking for it. Never give a word played already. When the user defines your word, grade the \
     definition on one line: “N/10”, where 10 means it nails the meaning, then “ — ” and a few friendly words on \
@@ -51,6 +51,7 @@ nonisolated enum SpeedDefinitions: GameRules {
     /// A word and what became of it: your definition and its grade, or the pass that skipped it.
     struct Round: Equatable {
         var word: Word
+        var difficulty: Difficulty?
         var definition: String?
         var grade: Grade?
         var skipped: GameOutcome?
@@ -107,7 +108,7 @@ nonisolated enum SpeedDefinitions: GameRules {
         var rounds: [Round] = []
         for turn in game {
             if turn.cue != nil {
-                if let word = turn.reply.flatMap(word(from:)) { rounds.append(Round(word: word)) }
+                if let word = turn.reply.flatMap(word(from:)) { rounds.append(Round(word: word, difficulty: Difficulty(of: turn))) }
             } else if !rounds.isEmpty {
                 let last = rounds.count - 1
                 if let outcome = turn.outcome {
@@ -129,45 +130,100 @@ nonisolated enum SpeedDefinitions: GameRules {
         }
     }
 
-    /// A new word gets three to pick from, none the chat has played while there are others.
+    /// A new word gets three to pick from, all of one difficulty, none the chat has played while there are others.
     static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String? {
         guard turn.cue.map(wordCues.contains) == true else { return nil }
+        return offer(Difficulty.draw(dice: &dice), after: turns, dice: &dice)
+    }
+
+    /// Three words of `difficulty` for the model to pick from.
+    static func offer(_ difficulty: Difficulty, after turns: [ChatSession.Turn], dice: inout GameDice) -> String {
         let played = Set(turns.rounds(gameCues).flatMap(review).map { GameText.key($0.word.word) })
-        let offered = dice.deal(offeredCount, from: words) { !played.contains(GameText.key($0)) }
-        return "Pick one of these words: \(GameText.list(offered))."
+        let offered = dice.deal(offeredCount, from: difficulty.words) { !played.contains(GameText.key($0)) }
+        return "Pick one of these words, all of \(difficulty.rawValue) difficulty: \(GameText.list(offered))."
     }
 
     /// How many words the model picks from.
     static let offeredCount = 3
 
-    /// Words that are fun to define, neither obscure nor too easy.
-    static let words = [
-        "ambiguous", "ambition", "anecdote", "anonymous", "apology", "appetite", "avalanche", "awkward", "bargain",
-        "benevolent", "blizzard", "bluff", "boredom", "boycott", "brainstorm", "bribe", "budget", "bureaucracy",
-        "camouflage", "candid", "catastrophe", "caution", "celebrity", "chaos", "charisma", "clumsy", "coincidence",
-        "commute", "compromise", "confetti", "conscience", "cozy", "cringe", "curfew", "curiosity", "deadline",
-        "debut", "detour", "dilemma", "diplomat", "disguise", "doodle", "drizzle", "eavesdrop", "eclipse",
-        "eccentric", "echo", "elegant", "embarrass", "encore", "enigma", "envy", "epiphany", "errand", "etiquette",
-        "euphoria", "evidence", "exaggerate", "excuse", "expedition", "fad", "fatigue", "fiasco", "fidget",
+    /// How hard a word is to define. Most words are medium; one in five is easy, and one in five hard.
+    enum Difficulty: String, CaseIterable {
+        case easy, medium, hard
+
+        /// A difficulty at random, medium three times as often as either of the others.
+        static func draw(dice: inout GameDice) -> Difficulty {
+            switch Int.random(in: 0..<5, using: &dice) {
+            case 0: .easy
+            case 4: .hard
+            default: .medium
+            }
+        }
+
+        /// The difficulty a turn's word was drawn at, from its aside.
+        init?(of turn: ChatSession.Turn) {
+            guard let aside = turn.aside,
+                  let found = Difficulty.allCases.first(where: { aside.contains("all of \($0.rawValue) difficulty") }) else { return nil }
+            self = found
+        }
+
+        var words: [String] {
+            switch self {
+            case .easy: SpeedDefinitions.easyWords
+            case .medium: SpeedDefinitions.mediumWords
+            case .hard: SpeedDefinitions.hardWords
+            }
+        }
+    }
+
+    /// Everyday words, quick to pin down.
+    static let easyWords = [
+        "umbrella", "breakfast", "ladder", "pillow", "whisper", "puzzle", "shadow", "rainbow", "blanket", "bicycle",
+        "candle", "compass", "envelope", "giggle", "hammock", "helmet", "island", "jacket", "kettle", "lantern",
+        "magnet", "mirror", "parachute", "pocket", "recipe", "sandwich", "scissors", "snore", "sneeze", "telescope",
+        "tickle", "toothbrush", "tunnel", "volcano", "wallet", "yawn", "zipper", "balloon", "bridge", "fountain",
+        "glove", "hiccup", "honey", "iceberg", "jigsaw", "keyboard", "library", "marathon", "necklace", "passport",
+        "picnic", "quilt", "robot", "skeleton", "souvenir", "stapler", "suitcase", "thermometer", "trophy", "vacuum",
+        "waterfall", "wink", "doodle", "drizzle", "bargain", "gossip", "shrug", "snooze", "maze", "riddle", "cozy",
+        "clumsy", "habit", "homesick", "prank", "pun", "nap", "echo", "tantrum", "errand", "detour", "confetti",
+        "lullaby", "fidget", "wobble", "mumble", "recycle", "blizzard"
+    ]
+
+    /// Words most people know but few define in ten words without a think.
+    static let mediumWords = [
+        "ambition", "anecdote", "anonymous", "apology", "appetite", "avalanche", "awkward", "bluff", "boredom",
+        "boycott", "brainstorm", "bribe", "budget", "camouflage", "candid", "caution", "celebrity", "chaos",
+        "charisma", "coincidence", "commute", "compromise", "conscience", "cringe", "curfew", "curiosity", "deadline",
+        "debut", "dilemma", "diplomat", "disguise", "eavesdrop", "eclipse", "eccentric", "elegant", "embarrass",
+        "encore", "envy", "etiquette", "evidence", "exaggerate", "excuse", "expedition", "fad", "fatigue", "fiasco",
         "flattery", "fluke", "folklore", "forecast", "frugal", "fumble", "gadget", "gibberish", "gimmick", "glitch",
-        "gossip", "gourmet", "gratitude", "grudge", "gullible", "habit", "haggle", "harmony", "hiccup", "hindsight",
-        "hoax", "homesick", "horizon", "humble", "hunch", "hypothesis", "idle", "illusion", "impatient",
-        "improvise", "impulse", "inertia", "inkling", "insomnia", "intuition", "itinerary", "jargon", "jealousy",
-        "jinx", "jubilant", "karma", "keepsake", "labyrinth", "landmark", "legacy", "leisure", "lullaby", "luxury",
-        "magnet", "maze", "meander", "melancholy", "memoir", "mentor", "mirage", "mischief", "momentum",
-        "monologue", "mumble", "myth", "naive", "negotiate", "nemesis", "nitpick", "nomad", "nonsense", "nostalgia",
-        "novice", "nuance", "oasis", "oblivious", "obstacle", "omen", "optimist", "oracle", "outlier", "paradox",
-        "paranoid", "patience", "peckish", "perfectionist", "persuade", "placebo", "plagiarism", "ponder",
-        "procrastinate", "prodigy", "prophecy", "pseudonym", "pun", "quarantine", "quirk", "ransom", "rebel",
-        "recipe", "refuge", "regret", "rehearse", "relic", "remedy", "reunion", "riddle", "ritual", "rumor",
-        "sabotage", "sarcasm", "scapegoat", "scavenger", "scheme", "serendipity", "shrug", "siesta", "silhouette",
-        "skeptic", "slogan", "smug", "snooze", "souvenir", "spontaneous", "squabble", "stalemate", "stamina",
-        "stealth", "stubborn", "superstition", "suspense", "sympathy", "taboo", "tangent", "tantrum", "tedious",
-        "temptation", "thrifty", "tradition", "tranquil", "trivia", "tsunami", "tycoon", "ultimatum",
-        "understatement", "utopia", "vague", "velocity", "veto", "vintage", "virtue", "vivid", "wanderlust", "whim",
-        "whisper", "wisdom", "witness", "wobble", "yearn", "zeal", "zenith", "ephemeral", "gregarious", "petrichor",
-        "ubiquitous", "cacophony", "juggernaut", "loophole", "mediocre", "overwhelm", "quibble", "resilient",
-        "sheepish", "trepidation"
+        "gourmet", "gratitude", "grudge", "gullible", "haggle", "harmony", "hindsight", "hoax", "horizon", "humble",
+        "hunch", "idle", "illusion", "impatient", "improvise", "impulse", "inkling", "insomnia", "intuition",
+        "jargon", "jealousy", "jinx", "karma", "keepsake", "landmark", "legacy", "leisure", "luxury", "meander",
+        "memoir", "mentor", "mirage", "mischief", "momentum", "monologue", "myth", "naive", "negotiate", "nemesis",
+        "nitpick", "nomad", "nonsense", "nostalgia", "novice", "oasis", "oblivious", "obstacle", "omen", "optimist",
+        "outlier", "paranoid", "patience", "peckish", "perfectionist", "persuade", "placebo", "ponder",
+        "procrastinate", "prodigy", "prophecy", "quarantine", "quirk", "ransom", "rebel", "refuge", "regret",
+        "rehearse", "relic", "remedy", "reunion", "ritual", "rumor", "sabotage", "sarcasm", "scapegoat", "scavenger",
+        "scheme", "siesta", "silhouette", "skeptic", "slogan", "smug", "spontaneous", "squabble", "stalemate",
+        "stamina", "stealth", "stubborn", "superstition", "suspense", "sympathy", "taboo", "tangent", "tedious",
+        "temptation", "thrifty", "tradition", "tranquil", "trivia", "tsunami", "tycoon", "ultimatum", "vague", "veto",
+        "vintage", "virtue", "vivid", "wanderlust", "whim", "wisdom", "witness", "yearn", "loophole", "mediocre",
+        "overwhelm", "quibble", "resilient", "sheepish", "catastrophe", "bureaucracy", "empathy", "alibi", "jackpot",
+        "sidekick", "hoard", "fanatic", "gridlock", "mascot", "nickname", "hermit", "bystander"
+    ]
+
+    /// Words that take some knowing.
+    static let hardWords = [
+        "ambiguous", "benevolent", "enigma", "epiphany", "euphoria", "hypothesis", "inertia", "itinerary",
+        "jubilant", "labyrinth", "melancholy", "nuance", "oracle", "paradox", "plagiarism", "pseudonym",
+        "serendipity", "understatement", "utopia", "velocity", "zeal", "zenith", "ephemeral", "gregarious",
+        "petrichor", "ubiquitous", "cacophony", "juggernaut", "trepidation", "ambivalent", "altruism", "aplomb",
+        "cajole", "candor", "conundrum", "debacle", "deference", "dichotomy", "eloquent", "esoteric", "facetious",
+        "frivolous", "gaffe", "hubris", "idiosyncrasy", "impetuous", "incognito", "indelible", "lethargy",
+        "loquacious", "magnanimous", "meticulous", "nebulous", "nonchalant", "obsequious", "onomatopoeia", "panacea",
+        "paraphernalia", "pragmatic", "precocious", "quintessential", "rhetoric", "sanguine", "solace", "sycophant",
+        "tenacious", "verbose", "vicarious", "whimsical", "zeitgeist", "ennui", "halcyon", "ineffable", "mellifluous",
+        "oxymoron", "palindrome", "quixotic", "surreptitious", "taciturn", "wistful"
     ]
 
     private static func status(word number: Int, points: Int) -> String {
@@ -241,7 +297,7 @@ nonisolated enum SpeedDefinitions: GameRules {
         for (number, game) in turns.rounds(gameCues).enumerated() {
             if number > 0 { lines.note("New game") }
             for (index, round) in review(game).enumerated() {
-                lines.heading("Word \(index + 1)")
+                lines.heading(round.difficulty.map { "Word \(index + 1) · \($0.rawValue.capitalized)" } ?? "Word \(index + 1)")
                 // The model's own definition shows once yours is graded or skipped.
                 var pieces = [GameLine.Piece(text: round.word.word, voice: .model, isMarked: true)]
                 if round.isSettled, !round.word.meaning.isEmpty {
