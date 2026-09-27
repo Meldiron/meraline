@@ -3,7 +3,8 @@ import SwiftUI
 /// The capsule under the card's bottom right, lined up with the footer's actions: how long the open chat has
 /// before it goes, workspace and all (`ChatSession.chatLifetime`), in minutes and then, in its last one, seconds.
 /// Every message starts the time over, and so does a click. Neutral glass, like the buttons above the card, until
-/// it reads `warningMinutes` or less: then the active pin's pink, symbol and a faint glass tint.
+/// it reads `warningMinutes` or less: then it looks like the mode toggle's chosen segment, a pink symbol and a
+/// semibold label in pink-tinted glass.
 struct ChatTimer: View {
     let expiresAt: Date
     let keep: () -> Void
@@ -15,11 +16,13 @@ struct ChatTimer: View {
             Button(action: keep) {
                 HStack(spacing: 5) {
                     Image(systemName: "timer")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(isRunningOut ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
                     Text(left)
+                        .font(.system(size: 12, weight: isRunningOut ? .semibold : .medium))
                         .monospacedDigit()
+                        .foregroundStyle(isRunningOut ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                 }
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(isRunningOut ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
                 .padding(.horizontal, 12)
                 .frame(height: Announcements.size)
                 .contentShape(.capsule)
