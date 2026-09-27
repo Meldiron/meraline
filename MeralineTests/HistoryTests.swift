@@ -16,14 +16,14 @@ struct HistoryTests {
         #expect(history.map(\.title) == ["Second?", "First?"])
     }
 
-    @Test func keepsOnlyTheLastFiveChats() {
+    @Test func keepsEveryChat() {
         var history: [ChatSession.PastChat] = []
-        for index in 1...7 {
+        for index in 1...30 {
             history = ChatSession.archiving([turn("Question \(index)", "Answer")], into: history)
         }
-        #expect(history.count == ChatSession.historyLimit)
-        #expect(history.first?.title == "Question 7")
-        #expect(history.last?.title == "Question 3")
+        #expect(history.count == 30)
+        #expect(history.first?.title == "Question 30")
+        #expect(history.last?.title == "Question 1")
     }
 
     @Test func skipsChatsWithoutAnswers() {

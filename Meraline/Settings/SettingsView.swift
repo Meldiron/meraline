@@ -66,6 +66,8 @@ final class SettingsNavigation {
 struct SettingsView: View {
     let preferences: Preferences
     let updater: Updater
+    /// The chats, for what About's diagnostics say they hold.
+    let session: ChatSession
     @Bindable var navigation: SettingsNavigation
     @State private var search = ""
 
@@ -118,7 +120,7 @@ struct SettingsView: View {
         case .permissions: PermissionsPane(preferences: preferences)
         case .provider(let provider): ProviderPane(provider: provider, preferences: preferences).id(provider)
         case .softwareUpdate: SoftwareUpdatePane(updater: updater)
-        case .about: AboutPane(preferences: preferences, updater: updater)
+        case .about: AboutPane(preferences: preferences, updater: updater, session: session)
         }
     }
 }

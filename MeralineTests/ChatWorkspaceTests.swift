@@ -93,7 +93,7 @@ struct ChatWorkspaceTests {
         ChatWorkspace.removeAll(in: root)
     }
 
-    @Test func workspacesLeaveWithTheirChats() async throws {
+    @Test func everyRecentChatKeepsItsWorkspace() async throws {
         let model = ScriptedModel(Array(repeating: "Ok", count: 7))
         let session = agentSession(model)
         var folders: [URL] = []
@@ -102,10 +102,10 @@ struct ChatWorkspaceTests {
             folders.append(try #require(session.workspace).url)
             session.reset()
         }
-        #expect(session.history.count == ChatSession.historyLimit)
-        #expect(!exists(folders[0]))
-        #expect(!exists(folders[1]))
-        #expect(folders[2...].allSatisfy(exists))
+        #expect(session.history.count == 7)
+        #expect(folders.allSatisfy(exists))
+        #expect(session.forgetHistory() == 7)
+        #expect(!folders.contains(where: exists))
         ChatWorkspace.removeAll(in: root)
     }
 }

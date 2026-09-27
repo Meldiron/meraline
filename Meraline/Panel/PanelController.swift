@@ -240,6 +240,8 @@ final class PanelController: NSObject {
             layout.focusRequest += 1
             return
         }
+        // A chat whose time ran out while the Mac slept goes before the window shows it.
+        session.expireChats()
         session.prewarm()
         SelectionAccess.shared.refresh()
         let screen = Self.screenUnderPointer

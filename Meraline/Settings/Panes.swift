@@ -513,6 +513,7 @@ struct SoftwareUpdatePane: View {
 struct AboutPane: View {
     let preferences: Preferences
     let updater: Updater
+    let session: ChatSession
     @State private var copiedDiagnostics = false
 
     var body: some View {
@@ -577,10 +578,11 @@ struct AboutPane: View {
     }
 
     private func copyDiagnostics() {
-        Diagnostics.copyToPasteboard(Diagnostics.report(preferences: preferences, updates: updater.status))
-        Log.app.info("Diagnostics copied")
-        withAnimation { copiedDiagnostics = true }
         Task {
+            let storage = await Diagnostics.storage(of: session)
+            Diagnostics.copyToPasteboard(Diagnostics.report(preferences: preferences, updates: updater.status, storage: storage))
+            Log.app.info("Diagnostics copied")
+            withAnimation { copiedDiagnostics = true }
             try? await Task.sleep(for: .seconds(2))
             withAnimation { copiedDiagnostics = false }
         }

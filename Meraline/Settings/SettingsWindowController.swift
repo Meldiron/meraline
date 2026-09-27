@@ -6,9 +6,9 @@ import SwiftUI
 final class SettingsWindowController: NSWindowController {
     private let navigation = SettingsNavigation()
 
-    init(preferences: Preferences, updater: Updater) {
+    init(preferences: Preferences, updater: Updater, session: ChatSession) {
         let hostingController = NSHostingController(
-            rootView: SettingsView(preferences: preferences, updater: updater, navigation: navigation)
+            rootView: SettingsView(preferences: preferences, updater: updater, session: session, navigation: navigation)
         )
         hostingController.sceneBridgingOptions = [.toolbars]
 

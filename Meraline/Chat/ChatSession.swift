@@ -32,9 +32,17 @@ final class ChatSession {
         var cue: String?
         /// In a game, how the round settled on this Mac.
         var outcome: GameOutcome?
+        /// A warning that goes with this question, such as the chat's folder having been cleared.
+        var notice: String?
 
         /// The ask the agent is waiting on, if any.
         var pendingPrompt: AgentPrompt? { prompts.last(where: \.isPending) }
+
+        /// Roughly how much memory the turn takes: its pictures, mostly, and its text.
+        var byteCount: Int {
+            images.reduce(0) { $0 + $1.data.count } + question.utf8.count + answer.utf8.count
+                + selections.reduce(0) { $0 + $1.text.utf8.count } + (cue?.utf8.count ?? 0)
+        }
     }
 
     struct PastChat: Identifiable, Equatable {
@@ -44,6 +52,8 @@ final class ChatSession {
         var mode = Mode.chat
         /// The folder an agent worked in, kept with the chat so reopening it brings the files back.
         var workspace: ChatWorkspace?
+        /// When the chat goes, workspace and all: its time kept running from when it was open.
+        var expiresAt = Date.now.addingTimeInterval(ChatSession.chatLifetime)
 
         var title: String {
             let question = turns.first?.question ?? ""
@@ -56,7 +66,14 @@ final class ChatSession {
         }
     }
 
-    static let historyLimit = 5
+    /// How long a chat lasts after its last message, open or in Recent Chats, before it goes with its workspace.
+    /// A message, the end of an answer, reopening the chat, or a click on the timer under the card starts it over.
+    static let chatLifetime: TimeInterval = 30 * 60
+    /// The most chats in memory, the open one included, and so the most workspaces on disk. Recent Chats lets go
+    /// of its oldest to stay under it.
+    static let chatLimit = 1_000
+    /// The most memory one chat may take, pictures mostly. A question that would take it past this doesn't go.
+    static let chatByteLimit = 512 * 1_024 * 1_024
 
     var draft = ""
     private(set) var draftImages: [ImageAttachment] = []
@@ -71,7 +88,13 @@ final class ChatSession {
     /// The images and files the last Finder selection brought (see `bring(files:)`), which the next one replaces.
     @ObservationIgnored private var broughtAttachments: Set<UUID> = []
     private(set) var turns: [Turn] = []
-    private(set) var history: [PastChat] = []
+    private(set) var history: [PastChat] = [] {
+        didSet { scheduleExpiry() }
+    }
+    /// When the open chat's time runs out, while it has one (see `expiresAt`).
+    private var deadline = Date.distantFuture {
+        didSet { scheduleExpiry() }
+    }
     private(set) var mode = Mode.chat
     /// The folder an agent works in for this chat, made on the first question to one.
     private(set) var workspace: ChatWorkspace?
@@ -106,6 +129,12 @@ final class ChatSession {
     @ObservationIgnored private var isRewriting = false
     /// How to answer each prompt the agent is waiting on, by the prompt's id.
     @ObservationIgnored private var responders: [String: AgentPromptResponder] = [:]
+    /// Lets go of the chats whose time is up, at the next deadline.
+    @ObservationIgnored private var expiryTask: Task<Void, Never>?
+    /// The chat's workspace was gone and was made again, for the next question to say so.
+    @ObservationIgnored private var remadeWorkspace = false
+    /// The most memory the chat may take; `chatByteLimit`, lower in tests.
+    @ObservationIgnored var byteLimit = ChatSession.chatByteLimit
     @ObservationIgnored private let preferences: Preferences
     @ObservationIgnored private let workspaceRoot: URL
     @ObservationIgnored private let streamReplies: @MainActor (ChatRequest) -> AsyncThrowingStream<StreamOutput, Error>
@@ -140,6 +169,11 @@ final class ChatSession {
     }
 
     var isPlaying: Bool { game != nil }
+
+    /// When the open chat goes, workspace and all, for the timer under the card. Nil while there is no chat.
+    var expiresAt: Date? {
+        turns.isEmpty && !isPlaying ? nil : deadline
+    }
 
     /// Where the game stands, worked out from the turns by its rules.
     var gameState: GameState? { game?.rules.state(of: turns) }
@@ -181,6 +215,7 @@ final class ChatSession {
         let images = draftImages
         let files = draftFiles
         let selections = draftSelections
+        guard fits(Turn(question: question, images: images, selections: selections)) else { return }
         let request = makeRequest(asking: SelectedText.message(question, about: selections), images: images, files: files, of: provider)
 
         draft = ""
@@ -289,6 +324,7 @@ final class ChatSession {
                 failure = nil
                 nudge = nil
                 turns.append(Turn(question: line, images: [], isComplete: true, outcome: outcome))
+                restartClock()
                 Log.chat.info("\(game.title): your move kept, turn \(turns.count)")
                 advance(game, asksModel: true)
             case .settle(let outcome):
@@ -297,6 +333,7 @@ final class ChatSession {
                 failure = nil
                 nudge = nil
                 turns[turns.count - 1].outcome = outcome
+                restartClock()
                 Log.chat.info("\(game.title): round settled, turn \(turns.count)")
                 advance(game, asksModel: true)
             }
@@ -348,6 +385,11 @@ final class ChatSession {
     }
 
     private func stream(_ request: ChatRequest, for id: Turn.ID) {
+        restartClock()
+        if remadeWorkspace, let index = turns.firstIndex(where: { $0.id == id }) {
+            remadeWorkspace = false
+            turns[index].notice = Self.remadeWorkspaceNotice
+        }
         let replies = streamReplies(request)
         streamTask = Task { [weak self] in
             do {
@@ -396,9 +438,12 @@ final class ChatSession {
         )
     }
 
-    /// The chat's workspace, made on the first question to an agent.
+    /// The chat's workspace, made on the first question to an agent, and again if it has gone missing.
     private func workspaceForAgents() -> ChatWorkspace? {
-        if let workspace { return workspace }
+        if let workspace {
+            if !workspace.exists { remake(workspace) }
+            return workspace
+        }
         do {
             workspace = try ChatWorkspace.make(in: workspaceRoot)
             Log.chat.info("Workspace made for this chat")
@@ -406,6 +451,34 @@ final class ChatSession {
             Log.chat.error("Couldn’t make a workspace: \(error.localizedDescription)")
         }
         return workspace
+    }
+
+    static let remadeWorkspaceNotice = "This chat’s folder was gone, so Meraline made a new, empty one; macOS clears out old temporary files. The files from earlier questions, and what the agent kept there, are gone."
+
+    /// macOS clears old files out of the temporary folder, so a chat kept long enough can find its workspace gone.
+    /// It is made again, empty, and the agent carries on there, starting over from the transcript; the next
+    /// question says what was lost. A game keeps nothing there, so it says nothing.
+    private func remake(_ workspace: ChatWorkspace) {
+        do {
+            try workspace.remake()
+            Log.chat.info("Workspace was gone and was made again")
+        } catch {
+            Log.chat.error("Couldn’t make the workspace again: \(error.localizedDescription)")
+        }
+        if !isPlaying { remadeWorkspace = true }
+    }
+
+    /// Whether a question fits in the chat's `byteLimit`. One that doesn't stays in the input, saying why.
+    private func fits(_ turn: Turn) -> Bool {
+        guard Self.byteCount(of: turns) + turn.byteCount > byteLimit else { return true }
+        Log.chat.info("Question kept back: the chat is at its memory limit")
+        fail(with: "This chat is full: it holds up to \(Int64(byteLimit).formatted(.byteCount(style: .memory))), mostly pictures. Take out an image, or start a new chat to keep asking.")
+        return false
+    }
+
+    /// Roughly how much memory a chat's turns take.
+    static func byteCount(of turns: [Turn]) -> Int {
+        turns.reduce(0) { $0 + $1.byteCount }
     }
 
     /// Answers the ask an agent is waiting on: leave to use a tool, or its question.
@@ -447,6 +520,7 @@ final class ChatSession {
         failureNeedsSettings = false
         nudge = nil
         insistedInput = nil
+        deadline = .distantFuture
     }
 
     /// Deletes the open chat or game: it skips Recent Chats, and its workspace goes with it. A game's score
@@ -514,24 +588,27 @@ final class ChatSession {
         reopen(chat)
     }
 
-    /// Makes a past chat the open one, in the mode it was in. Whatever was open moves to Recent Chats.
-    /// The chat leaves Recent Chats, so its workspace belongs to one chat only.
+    /// Makes a past chat the open one, in the mode it was in, with its 30 minutes started over. Whatever was
+    /// open moves to Recent Chats. The chat leaves Recent Chats, so its workspace belongs to one chat only.
     func reopen(_ chat: PastChat) {
         history.removeAll { $0.id == chat.id }
         reset()
         turns = chat.turns
         mode = chat.mode
         workspace = chat.workspace
+        restartClock()
         if case .game(let game) = mode { lastGame = game }
         if case .over(let outcome, _)? = gameState?.phase { nudge = outcome.text }
     }
 
-    /// Moves the chat to Recent Chats with its workspace, unless the chat is anonymous or not `keeping`. A
-    /// workspace whose chat is not kept, and those of the chats that drop off the end, are removed.
+    /// Moves the chat to Recent Chats with its workspace and the time it has left, unless the chat is anonymous
+    /// or not `keeping`. A workspace whose chat is not kept is removed, as are those of the chats that drop off
+    /// the end. Recent Chats keeps a chat until its time runs out, it is cleared or shaken away, or Meraline quits.
     private func archiveCurrentChat(keeping: Bool = true) {
         let previous = history
         if keeping && !isAnonymous {
-            history = Self.archiving(turns, into: history, mode: mode, workspace: workspace)
+            let expiresAt = min(deadline, Date.now.addingTimeInterval(Self.chatLifetime))
+            history = Self.archiving(turns, into: history, mode: mode, workspace: workspace, expiresAt: expiresAt)
         }
         let kept = Set(history.map(\.id))
         for chat in previous where !kept.contains(chat.id) { chat.workspace?.remove() }
@@ -539,7 +616,8 @@ final class ChatSession {
         workspace = nil
     }
 
-    static func archiving(_ turns: [Turn], into history: [PastChat], mode: Mode = .chat, at date: Date = .now, workspace: ChatWorkspace? = nil) -> [PastChat] {
+    /// Recent Chats with the chat on top, holding at most `chatLimit` chats with the open one.
+    static func archiving(_ turns: [Turn], into history: [PastChat], mode: Mode = .chat, at date: Date = .now, workspace: ChatWorkspace? = nil, expiresAt: Date? = nil) -> [PastChat] {
         let answered = turns
             .filter { !$0.answer.isEmpty || $0.isComplete }
             .map { turn in
@@ -550,7 +628,8 @@ final class ChatSession {
                 return turn
             }
         guard !answered.isEmpty else { return history }
-        return Array(([PastChat(turns: answered, date: date, mode: mode, workspace: workspace)] + history).prefix(historyLimit))
+        let chat = PastChat(turns: answered, date: date, mode: mode, workspace: workspace, expiresAt: expiresAt ?? date.addingTimeInterval(chatLifetime))
+        return Array(([chat] + history).prefix(chatLimit - 1))
     }
 
     /// Forgets the recent chats, workspaces and all, and says how many went. The open chat stays.
@@ -561,6 +640,58 @@ final class ChatSession {
         history = []
         if count > 0 { Log.chat.info("\(count) recent chat(s) forgotten") }
         return count
+    }
+
+    /// The timer under the card: the open chat gets its 30 minutes again.
+    func keepChat() {
+        guard expiresAt != nil else { return }
+        restartClock()
+        Log.chat.info("Chat given another \(Int(Self.chatLifetime / 60)) minutes")
+    }
+
+    /// Lets go of every chat whose time is up, workspaces and all: those in Recent Chats, and the open one unless
+    /// an answer is still coming, since the end of the answer starts its time over. Runs at each deadline, and
+    /// when the window opens in case the Mac slept through one.
+    func expireChats(now: Date = .now) {
+        let expired = history.filter { $0.expiresAt <= now }
+        if !expired.isEmpty {
+            history.removeAll { $0.expiresAt <= now }
+            for chat in expired { chat.workspace?.remove() }
+            Log.chat.info("\(expired.count) recent chat(s) ran out of time")
+        }
+        if let expiresAt, expiresAt <= now, !isStreaming {
+            expireOpenChat()
+        }
+        scheduleExpiry()
+    }
+
+    /// The open chat ran out of time: it goes, workspace and all, without passing through Recent Chats. What is
+    /// typed in the input stays, for a new chat. A game ends; its score against the model stays.
+    private func expireOpenChat() {
+        let kind = isPlaying ? "Game" : "Chat"
+        let typed = (draft, draftImages, draftFiles, draftSelections)
+        reset(keepingChat: false)
+        (draft, draftImages, draftFiles, draftSelections) = typed
+        Log.chat.info("\(kind) ran out of time")
+    }
+
+    private func restartClock(at now: Date = .now) {
+        deadline = now.addingTimeInterval(Self.chatLifetime)
+    }
+
+    /// Sleeps until the next chat's time is up. While an answer streams, the open chat's time waits for it.
+    private func scheduleExpiry() {
+        expiryTask?.cancel()
+        let open = isStreaming ? nil : expiresAt
+        guard let next = (history.map(\.expiresAt) + [open].compactMap { $0 }).min() else {
+            expiryTask = nil
+            return
+        }
+        expiryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, next.timeIntervalSinceNow)))
+            guard !Task.isCancelled else { return }
+            self?.expireChats()
+        }
     }
 
     func clearDraft() {
@@ -837,6 +968,7 @@ final class ChatSession {
     private func finishStreaming(_ id: Turn.ID, error: Error?) {
         guard isStreaming, turns.last?.id == id else { return }
         isStreaming = false
+        restartClock()
         streamTask = nil
         responders = [:]
         let replaced = replacedTurn

@@ -4,8 +4,8 @@ import KeyboardShortcuts
 
 /// The report behind Settings › About › Copy Diagnostics, and the capsule that offers it after a crash:
 /// versions, the machine, the crash macOS reported since the previous launch, how providers are set up,
-/// update state, and the recent log. It never includes a question, an answer, or a key, so it is safe
-/// to paste into a public issue.
+/// update state, what the chats hold, and the recent log. It never includes a question, an answer, or a key,
+/// so it is safe to paste into a public issue.
 enum Diagnostics {
     struct UpdateStatus: Equatable {
         var isAvailable: Bool
@@ -16,11 +16,57 @@ enum Diagnostics {
         var state: String
     }
 
+    /// What the chats hold in memory and their workspaces on disk, in counts and sizes only.
+    struct Storage: Equatable {
+        var openTurns = 0
+        var recentChats = 0
+        var chatBytes = 0
+        var largestChatBytes = 0
+        /// How long until the next chat's time runs out, if any chat is kept.
+        var nextExpiry: TimeInterval?
+        var workspaces = ChatWorkspace.Usage()
+        var liveAgents = 0
+
+        var summary: [String] {
+            let open = openTurns > 0 ? "an open chat of \(openTurns) turn(s)" : "no open chat"
+            let next = nextExpiry.map { "the next goes in \(Int(($0 / 60).rounded(.up))) min" } ?? "none kept"
+            return [
+                "- Chats in memory: \(open) and \(recentChats) recent (at most \(ChatSession.chatLimit.formatted()) in all), \(memory(chatBytes)) in all, the largest \(memory(largestChatBytes)) of \(memory(ChatSession.chatByteLimit))",
+                "- Chat lifetime: \(Int(ChatSession.chatLifetime / 60)) minutes after the last message, \(next)",
+                "- Workspaces: \(workspaces.folders) (at most \(ChatSession.chatLimit.formatted())), \(workspaces.items.formatted()) files and folders, \(Int64(workspaces.bytes).formatted(.byteCount(style: .file))), the fullest \(workspaces.mostItems.formatted()) of \(FileAttachment.folderLimit.formatted())",
+                "- Workspaces of other Meraline processes: \(workspaces.otherProcesses)",
+                "- Agents running: \(liveAgents) of \(LiveAgents.limit)"
+            ]
+        }
+
+        private func memory(_ bytes: Int) -> String {
+            Int64(bytes).formatted(.byteCount(style: .memory))
+        }
+    }
+
+    /// Measures the chats of `session`, and walks their workspaces off the main thread, since a copied project
+    /// can be thousands of files.
+    static func storage(of session: ChatSession, now: Date = .now) async -> Storage {
+        let sizes = ([session.turns] + session.history.map(\.turns)).map(ChatSession.byteCount(of:))
+        let deadlines = session.history.map(\.expiresAt) + [session.expiresAt].compactMap { $0 }
+        var storage = Storage(
+            openTurns: session.turns.count,
+            recentChats: session.history.count,
+            chatBytes: sizes.reduce(0, +),
+            largestChatBytes: sizes.max() ?? 0,
+            nextExpiry: deadlines.min().map { max(0, $0.timeIntervalSince(now)) },
+            liveAgents: LiveAgents.shared.count
+        )
+        storage.workspaces = await Task.detached(priority: .userInitiated) { ChatWorkspace.usage() }.value
+        return storage
+    }
+
     static func report(
         preferences: Preferences,
         updates: UpdateStatus,
         entries: [LogEntry] = LogBuffer.shared.entries,
         crash: CrashReport? = CrashNotice.shared.crash,
+        storage: Storage? = nil,
         now: Date = .now
     ) -> String {
         var lines: [String] = []
@@ -59,6 +105,11 @@ enum Diagnostics {
             lines.append("| \(provider.name) | \(state(of: settings, for: provider)) | \(settings.model.trimmed.isEmpty ? "default" : settings.model.trimmed) | \(endpoint(of: settings, for: provider)) |")
         }
         lines.append("")
+        if let storage {
+            lines.append("### Storage")
+            lines.append(contentsOf: storage.summary)
+            lines.append("")
+        }
         lines.append("### Recent log (\(entries.count) entries)")
         lines.append("```")
         for entry in entries {

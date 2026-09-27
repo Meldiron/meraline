@@ -6,7 +6,8 @@ import Foundation
 /// there. The copy stays with the workspace, so later questions can come back to it, and whatever the agent
 /// changes, it changes in the copy.
 nonisolated struct FileAttachment: Identifiable, Equatable, Sendable {
-    /// The most files a folder brings along. More would keep the question waiting on the copy.
+    /// The most files and folders a chat's workspace takes in from attachments, counting what is there already.
+    /// More would keep the question waiting on the copy.
     static let folderLimit = 20_000
 
     let id = UUID()
@@ -67,31 +68,51 @@ nonisolated struct FileAttachment: Identifiable, Equatable, Sendable {
     }
 
     /// Copies each attachment into `folder` under its name, replacing whatever has that name there, as a
-    /// question sent again after a failure finds its own copy from the first try.
+    /// question sent again after a failure finds its own copy from the first try. The folder ends up with at
+    /// most `limit` files and folders from attachments and what was in it already; what the agent makes there
+    /// later is its own.
     static func copy(_ files: [FileAttachment], into folder: URL, limit: Int = folderLimit) async throws {
+        for file in files { try? FileManager.default.removeItem(at: folder.appending(path: file.name)) }
+        var room = limit - count(in: folder, upTo: limit)
         for file in files {
             let destination = folder.appending(path: file.name)
-            try? FileManager.default.removeItem(at: destination)
             if file.isFolder {
-                try await copyFolder(file, to: destination, limit: limit)
+                room -= try await copyFolder(file, to: destination, room: room, limit: limit)
             } else {
+                // A package, such as a Keynote document, is a folder of its own on disk.
+                let needed = 1 + count(in: file.url, upTo: limit)
+                try check(needed, of: file, room: room, limit: limit)
                 try FileManager.default.copyItem(at: file.url, to: destination)
+                room -= needed
             }
         }
+    }
+
+    /// Something bigger than `limit` fits in no chat; something that only lacks `room` doesn't fit in this one.
+    private static func check(_ count: Int, of file: FileAttachment, room: Int, limit: Int) throws {
+        if count > limit { throw AttachmentError.tooManyFiles(file.name) }
+        if count > room { throw AttachmentError.workspaceFull(file.name) }
     }
 
     /// A folder in a git repository brings the files git keeps or would keep, and the history when it is the
     /// repository's top, but not what git ignores, which in a project is mostly dependencies and builds. Any
     /// other folder comes whole. On the Mac's own disk each copy is a clone, which takes no space until changed.
-    private static func copyFolder(_ file: FileAttachment, to destination: URL, limit: Int) async throws {
+    /// Returns how many files and folders it counted toward the workspace's limit.
+    private static func copyFolder(_ file: FileAttachment, to destination: URL, room: Int, limit: Int) async throws -> Int {
         let source = file.url
         guard let paths = try await pathsGitKeeps(in: source), !paths.isEmpty else {
-            guard count(in: source, upTo: limit) <= limit else { throw AttachmentError.tooManyFiles(file.name) }
+            let needed = count(in: source, upTo: limit)
+            try check(needed, of: file, room: room, limit: limit)
             try FileManager.default.copyItem(at: source, to: destination)
             Log.commandLine.info("Copied a folder outside git")
-            return
+            return needed
         }
+        // Only a repository's own .git folder; a worktree's .git is a file that points back at the original.
+        let history = source.appending(path: ".git")
+        let hasHistory = (try? history.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
         guard paths.count <= limit else { throw AttachmentError.tooManyFiles(file.name) }
+        let needed = paths.count + (hasHistory ? 1 + count(in: history, upTo: limit) : 0)
+        try check(needed, of: file, room: room, limit: limit)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         for path in paths {
             try Task.checkCancellation()
@@ -102,11 +123,9 @@ nonisolated struct FileAttachment: Identifiable, Equatable, Sendable {
             try FileManager.default.createDirectory(at: copy.deletingLastPathComponent(), withIntermediateDirectories: true)
             try FileManager.default.copyItem(at: item, to: copy)
         }
-        // Only a repository's own .git folder; a worktree's .git is a file that points back at the original.
-        let history = source.appending(path: ".git")
-        let hasHistory = (try? history.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
         if hasHistory { try FileManager.default.copyItem(at: history, to: destination.appending(path: ".git")) }
         Log.commandLine.info("Copied a folder of \(paths.count) file(s) git keeps\(hasHistory ? ", with its history" : "")")
+        return needed
     }
 
     /// The paths under `folder` that git tracks or would track, or nil when the folder isn't in a repository

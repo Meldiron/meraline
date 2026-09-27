@@ -42,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self?.panel.close()
         self?.settings.show(pane)
     }
-    private lazy var settings = SettingsWindowController(preferences: preferences, updater: updater)
+    private lazy var settings = SettingsWindowController(preferences: preferences, updater: updater, session: session)
     private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {

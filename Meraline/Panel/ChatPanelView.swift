@@ -155,7 +155,7 @@ struct ChatPanelView: View {
         }
         .padding(PanelController.margin)
         .padding(.top, ContextButtons.roomAbove)
-        .padding(.bottom, hasAnnouncements ? Announcements.roomBelow : 0)
+        .padding(.bottom, hasAnnouncements || session.expiresAt != nil ? Announcements.roomBelow : 0)
         .overlay(alignment: .topLeading) {
             // Lined up with the sparkle under them.
             ContextButtons(session: session, preferences: preferences, sources: sources, screen: screen, close: onClose) { isInputFocused = true }
@@ -165,10 +165,22 @@ struct ChatPanelView: View {
         .overlay(alignment: .bottomLeading) {
             // Lined up with the buttons above the card.
             Announcements(whatsNew: whatsNew, update: offeredUpdate, openUpdate: openUpdate, hideUpdate: updateNotice.hide, crash: crashNotice) {
-                crashNotice.copy(Diagnostics.report(preferences: preferences, updates: updater.status))
+                Task {
+                    let storage = await Diagnostics.storage(of: session)
+                    crashNotice.copy(Diagnostics.report(preferences: preferences, updates: updater.status, storage: storage))
+                }
             }
                 .padding(.leading, PanelController.margin + 18)
                 .padding(.bottom, Announcements.inset)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            // Lined up with the footer's actions.
+            if let expiresAt = session.expiresAt {
+                ChatTimer(expiresAt: expiresAt, keep: session.keepChat)
+                    .padding(.trailing, PanelController.margin + 12)
+                    .padding(.bottom, Announcements.inset)
+                    .transition(.opacity)
+            }
         }
         .fixedSize(horizontal: false, vertical: true)
         .onGeometryChange(for: CGFloat.self, of: \.size.height) {
@@ -205,6 +217,7 @@ struct ChatPanelView: View {
         .animation(.smooth(duration: Self.cardAnimation), value: whatsNew.update)
         .animation(.smooth(duration: Self.cardAnimation), value: offeredUpdate)
         .animation(.smooth(duration: Self.cardAnimation), value: crashNotice.isOffered)
+        .animation(.smooth(duration: Self.cardAnimation), value: session.expiresAt == nil)
         .animation(.smooth(duration: Self.cardAnimation), value: shortcutSetup.showsNotice)
     }
 
@@ -441,6 +454,17 @@ private struct TurnView: View {
             }
             if !turn.images.isEmpty || !turn.files.isEmpty {
                 AttachmentStrip(images: turn.images, files: turn.files, size: 40)
+            }
+            if let notice = turn.notice {
+                Label {
+                    Text(notice)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
             }
             if !turn.answer.isEmpty {
                 MarkdownView(markdown: turn.answer)

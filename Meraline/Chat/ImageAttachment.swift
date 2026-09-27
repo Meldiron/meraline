@@ -67,6 +67,7 @@ nonisolated enum AttachmentError: LocalizedError, Equatable {
     case limitReached
     case unreadableFile
     case tooManyFiles(String)
+    case workspaceFull(String)
 
     var errorDescription: String? {
         switch self {
@@ -75,6 +76,7 @@ nonisolated enum AttachmentError: LocalizedError, Equatable {
         case .limitReached: "You can attach up to \(ImageAttachment.limit) images."
         case .unreadableFile: "Meraline can’t open that file."
         case .tooManyFiles(let name): "“\(name)” has too many files to copy. Meraline copies up to \(FileAttachment.folderLimit.formatted()) from a folder, leaving out what git ignores."
+        case .workspaceFull(let name): "“\(name)” doesn’t fit in this chat’s folder, which holds up to \(FileAttachment.folderLimit.formatted()) files and folders from attachments. Start a new chat to attach it."
         }
     }
 }
