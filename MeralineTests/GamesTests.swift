@@ -97,6 +97,27 @@ struct GameRulesTests {
         #expect(Categories.categories.suffix(Categories.offeredCount).allSatisfy { next.contains("“\($0)”") }, "the three left unplayed")
     }
 
+    @Test func oddOneOutGivesEachOfTheModelsPuzzlesAFreshTheme() throws {
+        #expect(Set(OddOneOut.themes).count == OddOneOut.themes.count, "no theme twice")
+        var dice = GameDice(seed: 9)
+        for cue in [OddOneOut.opening, OddOneOut.nextPuzzle, OddOneOut.newGame] {
+            let aside = try #require(OddOneOut.aside(for: Support.turn(cue: cue), after: [], dice: &dice))
+            #expect(OddOneOut.themes.contains { aside.hasPrefix("This puzzle’s theme: \($0). ") })
+            #expect(OddOneOut.links.contains { aside.hasSuffix(" Link the two that belong by \($0).") })
+        }
+        #expect(OddOneOut.aside(for: Support.turn("pear, plum, piano"), after: [], dice: &dice) == nil, "the model picks yours without a draw")
+
+        var turns: [ChatSession.Turn] = []
+        for theme in OddOneOut.themes.dropLast() {
+            var turn = Support.turn(cue: OddOneOut.nextPuzzle, reply: "apple · hammer · banana | hammer: not a fruit")
+            turn.aside = "This puzzle’s theme: \(theme). Link the two that belong by what they are."
+            turns.append(turn)
+        }
+        let last = try #require(OddOneOut.themes.last)
+        let aside = try #require(OddOneOut.aside(for: Support.turn(cue: OddOneOut.nextPuzzle), after: turns, dice: &dice))
+        #expect(aside.hasPrefix("This puzzle’s theme: \(last). "), "the one theme the chat hasn't had")
+    }
+
     @Test func wordFootballDrawsTheKickoffsLetterAndAKindOfWord() throws {
         var letters: Set<String> = []
         for seed: UInt64 in 0..<40 {
@@ -258,6 +279,8 @@ struct GamePlayTests {
         #expect(session.nudge == "Three different words, one that doesn’t belong, separated by commas.")
         await Support.play("pear, plum, piano", in: session)
         #expect(model.lastMessages.last == "pear, plum, piano")
+        #expect(model.lastMessages.first?.hasPrefix("\(OddOneOut.opening)\n\nThis puzzle’s theme: ") == true)
+        #expect(model.lastMessages.first == session.turns.first?.message)
         #expect(session.gameState?.choices == [OddOneOut.gotIt, OddOneOut.missedIt])
 
         session.choose(OddOneOut.gotIt)

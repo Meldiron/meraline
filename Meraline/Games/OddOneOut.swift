@@ -5,6 +5,9 @@ import Foundation
 ///
 /// The model's own answer travels after a bar in its reply ("apple · hammer · banana | hammer: not a
 /// fruit"), so your pick is judged on this Mac and the answer stays hidden until you have picked.
+///
+/// Each of the model's puzzles gets a theme and a way to link the two that belong, drawn on this Mac: left to
+/// itself, the model sets fruit and a hammer every game.
 nonisolated enum OddOneOut: GameRules {
     static let title = "Odd One Out"
     static let summary = "Spot the word that doesn’t belong, then set one"
@@ -16,6 +19,7 @@ nonisolated enum OddOneOut: GameRules {
     static let nextPuzzle = "Set the next puzzle, different from the ones so far."
     static let newGame = "Start a new game: set a first puzzle unlike the ones so far."
     private static let gameCues: Set<String> = [opening, newGame]
+    private static let puzzleCues: Set<String> = [opening, nextPuzzle, newGame]
 
     static let gotIt = "It got it"
     static let missedIt = "It missed"
@@ -24,7 +28,8 @@ nonisolated enum OddOneOut: GameRules {
     You are playing Odd one out. When asked to set a puzzle, reply on one line with three words, two that \
     belong together and one that doesn't, in random order and separated by “ · ”, then “ | ”, then the odd one \
     out, a colon, and a few words on why. For example: apple · hammer · banana | hammer: not a fruit. \
-    Make it clever but fair, and different every time. \
+    Build it around the theme the message gives, linking the two that belong the way it suggests if that makes a \
+    fair puzzle. Make it clever but fair, and unlike the puzzles so far. \
     When the user gives you three words, reply on one line with the one you think doesn't belong, a colon, and \
     a few words on why. For example: piano: not a fruit. No quotation marks or Markdown.
     """
@@ -122,6 +127,41 @@ nonisolated enum OddOneOut: GameRules {
     private static func score(of game: [ChatSession.Turn]) -> (you: Int, model: Int) {
         (game.filter { $0.outcome?.youWon == true }.count, game.filter { $0.outcome?.youWon == false }.count)
     }
+
+    /// A puzzle of the model's gets a theme, one the chat hasn't had while others are left, and a way to link the
+    /// two that belong.
+    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String? {
+        guard turn.cue.map(puzzleCues.contains) == true else { return nil }
+        let asides = turns.compactMap(\.aside)
+        guard let theme = dice.pick(from: themes, preferring: { theme in !asides.contains { $0.hasPrefix(themed(theme)) } }) else { return nil }
+        let link = links.randomElement(using: &dice) ?? links[0]
+        return "\(themed(theme)) Link the two that belong by \(link)."
+    }
+
+    private static func themed(_ theme: String) -> String {
+        "This puzzle’s theme: \(theme)."
+    }
+
+    /// What a puzzle of the model's is about.
+    static let themes = [
+        "food", "animals", "music", "sport", "space", "the ocean", "weather", "geography", "history", "science",
+        "the human body", "cooking", "colors", "jobs", "transport", "clothing", "myths and legends", "fairy tales",
+        "the kitchen", "the garden", "the farm", "school", "the office", "travel", "holidays", "games", "toys",
+        "birds", "insects", "trees", "flowers", "fruit", "vegetables", "cheese", "bread", "drinks", "desserts",
+        "spices", "gemstones", "metals", "musical instruments", "dances", "films", "books", "the alphabet",
+        "numbers", "shapes", "time", "money", "tools", "furniture", "rivers and seas", "mountains", "cities",
+        "countries", "languages", "planets", "dinosaurs", "reptiles", "fish", "dogs", "horses", "chess",
+        "playing cards", "the beach", "camping", "winter", "summer", "the circus", "castles", "pirates", "robots",
+        "computers", "cars", "trains", "boats", "aircraft", "buildings", "bridges", "sweets", "breakfast",
+        "coffee and tea", "pasta", "sauces", "herbs", "art", "the theater", "the post office", "the moon"
+    ]
+
+    /// Ways to link the two that belong: “Link the two that belong by …”.
+    static let links = [
+        "what they are", "what they are made of", "where they come from", "what they are used for",
+        "how they are spelled", "their color", "their size", "a word hidden inside them", "the sound they make",
+        "where you find them", "how they move", "when you use them"
+    ]
 
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let game = turns.since(gameCues), let last = game.last else {
