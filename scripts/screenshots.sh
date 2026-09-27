@@ -12,6 +12,8 @@
 #   files     Agent mode: the files an agent handed over, a picture with its preview and a Markdown file
 #   settings  Settings on the Claude Code page, with its MCP servers
 #   permissions  Settings › Permissions
+#   prompt    Settings › Prompt: the LLMs' and the agents' instructions
+#   prompt-games  further down the same page: the games, one of them changed, and Why?
 #
 # It stays out of the way of the copy you use. A throwaway Debug build runs in front of a full-screen
 # gradient backdrop, so nothing else on the screen can appear, and keeps its settings in a defaults suite
@@ -283,7 +285,8 @@ for appearance in $appearances; do
 
   # Agent mode, with the demo stand-in as Claude Code.
   backdrop_up $appearance above
-  prepare ${suites[2]} mode string agent provider string claudeCode claudeCode.enabled bool true claudeCode.baseURL string $demo/claude
+  prepare ${suites[2]} mode string agent provider string claudeCode claudeCode.enabled bool true claudeCode.baseURL string $demo/claude \
+    systemPrompt.wordFootball string "You are playing Word football in Czech. Every word must be a real Czech word."
   launch ${suites[2]} $appearance
   wait_for 'Claude Code lists [0-9]+ MCP server' 30
   if wants agent || wants question; then
@@ -344,6 +347,26 @@ for appearance in $appearances; do
     sleep 0.5
     screencapture -x -l $id "$out/permissions$suffix.png"
     echo "    permissions$suffix.png"
+  fi
+  if wants prompt || wants prompt-games; then
+    url "meraline://settings?pane=prompt"
+    sleep 1.5
+    # Past the pane's header, so both modes' instructions show, then on to the games. The pointer scrolls
+    # from the margin left of the sections, where no text editor takes the wheel.
+    "$tools/press" scroll $(( sx + 230 )) $(( sy + 300 )) 170
+    park
+    sleep 0.5
+    if wants prompt; then
+      screencapture -x -l $id "$out/prompt$suffix.png"
+      echo "    prompt$suffix.png"
+    fi
+    "$tools/press" scroll $(( sx + 230 )) $(( sy + 300 )) 560
+    park
+    sleep 1
+    if wants prompt-games; then
+      screencapture -x -l $id "$out/prompt-games$suffix.png"
+      echo "    prompt-games$suffix.png"
+    fi
   fi
   quit
 
