@@ -1,11 +1,11 @@
 import Foundation
 
-/// Categories: the model picks a category, and you and the model take turns naming things in it, you
-/// first. The model judges each of yours; one that doesn't fit comes back to you. Six each, unless the
-/// model runs out, repeats itself, or you give up.
+/// Categories: you name a category, or take one drawn on this Mac from `categories` (left to itself, the model
+/// picks Kitchen or Animals every time), and you and the model take turns naming things in it, the model
+/// first. The model judges each of yours; one that doesn't fit comes back to you, as does a category it won't
+/// play. Six each, unless the model runs out, repeats itself, or you give up.
 ///
-/// The model picks each round's category from three dealt on this Mac, from `categories`: left to itself, it
-/// picks Kitchen or Animals every time.
+/// A round's first turn holds its category: your question, or the aside of a category drawn for the model.
 nonisolated enum Categories: GameRules {
     static let title = "Categories"
     static let summary = "Take turns naming things in a category"
@@ -14,21 +14,30 @@ nonisolated enum Categories: GameRules {
     static let perSide = 6
     static let limit = perSide * 2
 
-    static let opening = "Pick a category."
-    static let nextCategory = "Pick a new category, different from the ones so far."
-    private static let cues: Set<String> = [opening, nextCategory]
+    /// What the model is asked when this Mac draws the category; the aside names it.
+    static let randomCategory = "Name the first thing in this round’s category, given below."
+    /// What goes with a category you name.
+    static let yourCategory = "The user picked this round’s category, below."
+    private static let cues: Set<String> = [randomCategory, yourCategory]
+
+    static let randomButton = "Random Category"
+    /// What goes with your sixth thing, so the model judges it without naming another.
+    static let lastOne = "That’s the user’s last one: if it belongs, write just “OK”."
 
     static let systemPrompt = """
-    You are playing Categories. When asked to pick a category, reply with just its name and nothing else: one of \
-    the categories the message offers, or, when it offers none, a fun, broad category that has plenty of members. \
-    Then the user and you take turns naming things that belong to it, the user first. \
+    You are playing Categories. Each round has a category, which the user picks or the message gives, and the \
+    user and you take turns naming things that belong to it, you first. \
+    When the user picks the category, write “OK: ” and the first thing in it if it is a fair category with \
+    plenty of members, or “NO: ” and a short, friendly reason if it isn't. \
+    When the message gives the category, write “OK: ” and the first thing in it. \
     Reply to each thing the user names with one line. If it belongs to the category and nobody has named it yet \
     this round, write “OK: ” followed by one new thing of your own that belongs and hasn't been named. \
     If it doesn't belong, or was already named, write “NO: ” followed by a short, friendly reason. \
-    If you can't think of anything new, write “OK: PASS”. No explanations, quotation marks, or Markdown.
+    If you can't think of anything new, write “OK: PASS”. When the message says it is the user's last one, \
+    write just “OK” if it belongs. No explanations, quotation marks, or Markdown.
     """
 
-    static let invitation = "The model picks a category. Take turns naming things in it, you first; type pass to give up."
+    static let invitation = "Name a category, or take a random one. The model names the first thing in it, then you take turns; type pass to give up."
 
     struct Round {
         var category = ""
@@ -39,14 +48,15 @@ nonisolated enum Categories: GameRules {
     static func review(_ turns: [ChatSession.Turn]) -> Round {
         var round = Round()
         guard let first = turns.first else { return round }
-        round.category = first.reply ?? ""
-        for turn in turns.dropFirst() {
+        round.category = category(of: first) ?? ""
+        for (index, turn) in turns.enumerated() {
             if let outcome = turn.outcome {
                 round.ending = outcome
                 break
             }
-            if !turn.question.isEmpty { round.named.append((turn.question, true)) }
-            guard let reply = turn.reply else { continue }
+            if index > 0, !turn.question.isEmpty { round.named.append((turn.question, true)) }
+            // The reply to your last thing only judges it.
+            guard let reply = turn.reply, round.named.count < limit else { continue }
             let word = GameText.verdict(of: reply).rest
             if GameText.isGivingUp(word) {
                 round.ending = GameOutcome(text: "The model ran out of ideas. You win!", youWon: true)
@@ -59,22 +69,30 @@ nonisolated enum Categories: GameRules {
                 break
             }
         }
-        if round.ending == nil, round.named.count >= limit {
+        if round.ending == nil, round.named.count >= limit, turns.last?.isComplete == true {
             round.ending = GameOutcome(text: "Full house: \(perSide) each and nobody slipped. A draw.", youWon: nil)
         }
         return round
     }
 
-    /// A new round gets three categories to pick from, none the chat has played while there are others.
-    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String? {
-        guard turn.cue.map(cues.contains) == true else { return nil }
-        let played = Set(turns.rounds(cues).map { GameText.key(review($0).category) })
-        let offered = dice.deal(offeredCount, from: categories) { !played.contains(GameText.key($0)) }
-        return "Pick one of these categories: \(GameText.list(offered))."
+    /// A round's category: the one you named, or the one drawn for the model.
+    static func category(of first: ChatSession.Turn) -> String? {
+        if first.cue == yourCategory { return first.question }
+        guard let aside = first.aside, let named = aside.firstMatch(of: /category: “(.+)”\./) else { return nil }
+        return String(named.1)
     }
 
-    /// How many categories the model picks from.
-    static let offeredCount = 3
+    /// A category drawn for the model, none the chat has played while there are others; and with your sixth
+    /// thing, that it is the last.
+    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String? {
+        if turn.cue == randomCategory {
+            let played = Set(turns.rounds(cues).map { GameText.key(review($0).category) })
+            guard let category = dice.pick(from: categories, preferring: { !played.contains(GameText.key($0)) }) else { return nil }
+            return "This round’s category: “\(category)”."
+        }
+        guard turn.cue == nil, review((turns.since(cues) ?? []) + [turn]).named.count >= limit else { return nil }
+        return lastOne
+    }
 
     /// Categories with plenty of members, for anyone to name six of.
     static let categories = [
@@ -105,21 +123,30 @@ nonisolated enum Categories: GameRules {
         "Fast food", "Things at a farmers market", "Things you find in a pocket", "Things in a barn"
     ]
 
-    /// The model opens every round, the first with `opening`.
+    /// Left to the model, a round gets a category drawn on this Mac.
     static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
-        .ask(turns.isEmpty ? opening : nextCategory)
+        .ask(randomCategory)
+    }
+
+    /// A category you name opens the round.
+    static func open(with input: String, after turns: [ChatSession.Turn]) -> GameMove {
+        let category = categoryName(input)
+        guard !category.isEmpty else { return .reject("Name a category first.") }
+        guard GameText.words(category).count <= 8 else { return .reject("A category in a few words, please.") }
+        return .open(category, cue: yourCategory)
     }
 
     static func state(of turns: [ChatSession.Turn]) -> GameState {
-        guard let current = turns.since(cues) else { return GameState(phase: .modelMoves(cue: opening), status: title) }
+        guard let current = turns.since(cues) else {
+            let opening = GameOpening(placeholder: "Name a category, or press Return for a random one…", button: randomButton)
+            return GameState(phase: .opening(opening), status: title)
+        }
         let round = review(current)
         let status = round.category.isEmpty ? title : "\(round.category) · \(round.named.count) of \(limit)"
         if current.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if let ending = round.ending {
-            return GameState(
-                phase: .over(outcome: ending, next: GameOpening(placeholder: "Press Return for a new category…", button: "Play Again", takesYourMove: false)),
-                status: status
-            )
+            let next = GameOpening(placeholder: "Name a new category, or press Return for a random one…", button: randomButton)
+            return GameState(phase: .over(outcome: ending, next: next), status: status)
         }
         return GameState(phase: .yourMove(placeholder: "Name one for “\(round.category)”…"), status: status)
     }
@@ -139,14 +166,15 @@ nonisolated enum Categories: GameRules {
 
     static func judge(_ reply: String, in turns: [ChatSession.Turn]) -> GameReply {
         guard let last = turns.last else { return .refuse("Press Return to ask again.") }
-        if last.cue != nil {
-            let name = categoryName(reply)
-            return name.isEmpty ? .refuse("The model couldn’t think of a category. Press Return to ask again.") : .accept(name)
-        }
         let (accepted, rest) = GameText.verdict(of: reply)
         if accepted == false {
+            if last.cue == yourCategory {
+                return .refuse(rest.isEmpty ? "The model won’t play “\(last.question)”. Try another category." : "Not that one: \(GameText.sentence(rest))")
+            }
+            guard last.cue == nil else { return .refuse("The model couldn’t start. Press Return to ask again.") }
             return .refuse(rest.isEmpty ? "The model says “\(last.question)” doesn’t count. Try another." : "Not quite: \(GameText.sentence(rest))")
         }
+        if review(turns.since(cues) ?? []).named.count >= limit { return .accept("OK") }
         var word = rest
         if GameText.words(word).count > 4, let colon = word.lastIndex(of: ":") {
             word = String(word[word.index(after: colon)...])
@@ -186,6 +214,6 @@ nonisolated enum Categories: GameRules {
     }
 
     static func headline(of turns: [ChatSession.Turn]) -> String? {
-        turns.first?.reply
+        turns.first.flatMap(category(of:))
     }
 }

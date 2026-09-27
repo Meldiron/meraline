@@ -81,20 +81,21 @@ struct GameRulesTests {
         #expect(Categories.categoryName("“Things at the beach”") == "Things at the beach")
     }
 
-    @Test func categoriesDealsThreeTheChatHasntPlayed() throws {
+    @Test func categoriesDrawsACategoryTheChatHasntPlayed() throws {
         #expect(Set(Categories.categories.map(GameText.key)).count == Categories.categories.count, "no category twice")
         var dice = GameDice(seed: 5)
-        let first = try #require(Categories.aside(for: Support.turn(cue: Categories.opening), after: [], dice: &dice))
-        let offered = Categories.categories.filter { first.contains("“\($0)”") }
-        #expect(first.hasPrefix("Pick one of these categories: “"))
-        #expect(offered.count == Categories.offeredCount)
-        #expect(Categories.aside(for: Support.turn("spoon"), after: [], dice: &dice) == nil, "only a new round draws")
+        var first = Support.turn(cue: Categories.randomCategory)
+        first.aside = try #require(Categories.aside(for: first, after: [], dice: &dice))
+        let category = try #require(Categories.category(of: first))
+        #expect(Categories.categories.contains(category))
+        #expect(first.aside == "This round’s category: “\(category)”.")
+        #expect(Categories.aside(for: Support.turn("spoon"), after: [first], dice: &dice) == nil, "only a new round draws")
 
-        let played = Categories.categories.dropLast(Categories.offeredCount).map { category in
-            [Support.turn(cue: Categories.nextCategory, reply: category), Support.turn("pass", outcome: GameOutcome(text: "Passed", youWon: false))]
+        let played = Categories.categories.dropLast().map { category in
+            [Support.turn(category, cue: Categories.yourCategory, reply: "OK: one"), Support.turn("pass", outcome: GameOutcome(text: "Passed", youWon: false))]
         }.joined()
-        let next = try #require(Categories.aside(for: Support.turn(cue: Categories.nextCategory), after: Array(played), dice: &dice))
-        #expect(Categories.categories.suffix(Categories.offeredCount).allSatisfy { next.contains("“\($0)”") }, "the three left unplayed")
+        let next = try #require(Categories.aside(for: Support.turn(cue: Categories.randomCategory), after: Array(played), dice: &dice))
+        #expect(next == "This round’s category: “\(try #require(Categories.categories.last))”.", "the one left unplayed")
     }
 
     @Test func oddOneOutGivesEachOfTheModelsPuzzlesAFreshTheme() throws {
@@ -160,45 +161,67 @@ struct GameRulesTests {
 struct GamePlayTests {
     private typealias Support = GameTestSupport
 
-    @Test func categoriesJudgesYourWordsAndPlaysItsOwn() async throws {
-        let model = ScriptedModel(["Kitchen", "OK: spatula", "NO: tigers don’t live in kitchens", "Category: Animals"])
+    @Test func categoriesStartsFromYourCategoryAndTheModelNamesFirst() async throws {
+        let model = ScriptedModel(["NO: that’s a single thing, not a category", "OK: spatula", "OK: fork", "NO: tigers don’t live in kitchens", "OK: pasta"])
         let session = Support.session(model)
         session.startGame(.categories)
-        await Support.settle(session)
-        #expect(session.gameState?.status == "Kitchen · 0 of 12")
+        #expect(session.gameState?.isOpening == true)
+        #expect(session.gameState?.choices == [Categories.randomButton])
+        #expect(model.requests.isEmpty)
+
+        await Support.play("Spoon", in: session)
+        #expect(session.nudge == "Not that one: That’s a single thing, not a category.")
+        #expect(session.draft == "Spoon", "a category the model won’t play comes back")
+        #expect(session.gameState?.isOpening == true)
+
+        await Support.play("Category: **Kitchen**", in: session)
+        #expect(session.turns.first?.cue == Categories.yourCategory)
+        #expect(session.gameState?.status == "Kitchen · 1 of 12", "the model named the first thing")
         #expect(model.requests.first?.systemPrompt == Categories.systemPrompt)
+        #expect(model.lastMessages == ["\(Categories.yourCategory)\n\nKitchen"])
 
         await Support.play("spoon", in: session)
-        #expect(session.gameState?.status == "Kitchen · 2 of 12")
-        #expect(Categories.lines(for: session.turns).map(\.text) == ["Kitchen", "spoon · spatula"])
-        let pick = try #require(session.turns.first?.message)
-        #expect(pick.hasPrefix("\(Categories.opening)\n\nPick one of these categories: "))
-        #expect(model.lastMessages == [pick, "Kitchen", "spoon"], "the model names things without a draw")
+        #expect(session.gameState?.status == "Kitchen · 3 of 12")
+        #expect(Categories.lines(for: session.turns).map(\.text) == ["Kitchen", "spatula · spoon · fork"])
+        #expect(model.lastMessages == ["\(Categories.yourCategory)\n\nKitchen", "OK: spatula", "spoon"], "the model names things without a draw")
 
         await Support.play("Spatulas", in: session)
-        #expect(model.requests.count == 2, "a repeat is caught before asking")
+        #expect(model.requests.count == 3, "a repeat is caught before asking")
         #expect(session.nudge == "“spatula” is taken already. Name something else.")
 
         await Support.play("tiger", in: session)
         #expect(session.nudge == "Not quite: Tigers don’t live in kitchens.")
         #expect(session.draft == "tiger", "a word the model turns down comes back to you")
-        #expect(session.gameState?.status == "Kitchen · 2 of 12")
+        #expect(session.gameState?.status == "Kitchen · 3 of 12")
 
         await Support.play("pass", in: session)
         #expect(session.nudge == "You passed, so the model takes this round.")
+        session.dice = GameDice(seed: 8)
         session.send()
         await Support.settle(session)
-        #expect(session.turns.last?.cue == Categories.nextCategory)
-        #expect(session.gameState?.status == "Animals · 0 of 12")
+        let drawn = try #require(session.turns.last.flatMap(Categories.category(of:)))
+        #expect(session.turns.last?.cue == Categories.randomCategory, "Return with nothing typed draws a category")
+        #expect(drawn != "Kitchen")
+        #expect(session.gameState?.status == "\(drawn) · 1 of 12")
+        #expect(session.history.isEmpty)
+        session.reset()
+        #expect(session.history.first?.title == "Categories: Kitchen")
     }
 
     @Test func categoriesEndsWhenTheModelRepeatsOrPasses() {
-        let kitchen = [Support.turn(cue: Categories.opening, reply: "Kitchen"), Support.turn("spoon", reply: "OK: spoons")]
-        #expect(Categories.review(kitchen).ending == GameOutcome(text: "Foul: “spoons” was named already. You win!", youWon: true))
-        let passed = [Support.turn(cue: Categories.opening, reply: "Kitchen"), Support.turn("spoon", reply: "OK: PASS")]
-        #expect(Categories.review(passed).ending?.youWon == true)
-        let full = [Support.turn(cue: Categories.opening, reply: "Kitchen")] + (1...6).map { Support.turn("mine \($0)", reply: "OK: theirs \($0)") }
+        let kitchen = Support.turn("Kitchen", cue: Categories.yourCategory, reply: "OK: spoon")
+        #expect(Categories.review([kitchen, Support.turn("fork", reply: "OK: spoons")]).ending == GameOutcome(text: "Foul: “spoons” was named already. You win!", youWon: true))
+        #expect(Categories.review([kitchen, Support.turn("fork", reply: "OK: PASS")]).ending?.youWon == true)
+        let five = (1...5).map { Support.turn("mine \($0)", reply: "OK: theirs \($0)") }
+        let last = Support.turn("mine 6")
+        #expect(Categories.review([kitchen] + five + [last]).named.count == Categories.limit)
+        var dice = GameDice(seed: 1)
+        #expect(Categories.aside(for: last, after: [kitchen] + five, dice: &dice) == Categories.lastOne)
+        #expect(Categories.aside(for: five[0], after: [kitchen], dice: &dice) == nil)
+        #expect(Categories.judge("OK", in: [kitchen] + five + [ChatSession.Turn(question: "mine 6", images: [])]) == .accept("OK"))
+        let full = [kitchen] + five + [Support.turn("mine 6", reply: "OK: one more anyway")]
         #expect(Categories.review(full).ending?.youWon == nil, "six each is a draw")
+        #expect(Categories.review(full).named.count == Categories.limit, "nothing after your last one counts")
     }
 
     @Test func wordFootballCallsTheModelsFouls() async throws {
