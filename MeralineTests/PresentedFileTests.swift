@@ -329,6 +329,7 @@ struct PresentedFileTests {
         let (session, requests) = handingSession()
         defer { ChatWorkspace.removeAll(in: root) }
         session.startGame(.rhymeDuel)
+        session.send()
         await GameTestSupport.settle(session)
         #expect(requests.all.last?.presentsFiles == false)
     }

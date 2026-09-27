@@ -77,6 +77,7 @@ struct InsertAnswerTests {
 
         let game = Support.session(ScriptedModel(["A cat sat waiting by the door | floor, more, four"]))
         game.startGame(.rhymeDuel)
+        game.send()
         await Support.settle(game)
         #expect(context(game, Notes().insertion()).chatMenu?.actions.contains { $0.id == "insertAnswer" } == false)
     }

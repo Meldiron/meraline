@@ -176,12 +176,13 @@ struct RhymeDuelRulesTests {
     }
 
     @Test func thePromptAsksForShortEndingsANewWordEachLineAndHiddenRhymes() {
-        #expect(RhymeDuel.systemPrompt.contains("you go first"))
+        #expect(RhymeDuel.systemPrompt.contains("Whoever opens the duel sets each rhyme"))
+        #expect(RhymeDuel.systemPrompt.contains("When the user opens, answer each of the user's lines"))
         #expect(RhymeDuel.systemPrompt.contains("the subject the message gives"))
         #expect(RhymeDuel.systemPrompt.contains("Each message names a few words your line may end on"))
         #expect(!RhymeDuel.systemPrompt.contains("at random"), "the model can't pick at random; this Mac draws")
         #expect(RhymeDuel.systemPrompt.contains("short, common word of one syllable"))
-        #expect(RhymeDuel.systemPrompt.contains("end on a new word"))
+        #expect(RhymeDuel.systemPrompt.contains("ends on a new word, one that rhymes with none of the lines so far"))
         #expect(RhymeDuel.systemPrompt.contains("“ | ”"))
         #expect(RhymeDuel.systemPrompt.contains("One line only"))
         #expect(!RhymeDuel.opening.isEmpty)
@@ -211,16 +212,23 @@ struct RhymeDuelSessionTests {
         return ChatSession.PastChat(turns: turns, date: .now, mode: .game(.rhymeDuel))
     }
 
-    @Test func startingADuelAsksTheModelToOpen() async throws {
+    @Test func aDuelWaitsForYouOrTheModelToOpen() async throws {
         let model = ScriptedModel([openingReply])
         let session = Support.session(model)
         session.draft = "half a question"
         session.startGame(.rhymeDuel)
         #expect(session.game == .rhymeDuel)
         #expect(session.draft.isEmpty)
-        #expect(session.isStreaming, "the model goes first")
-        #expect(session.turns.first?.cue == RhymeDuel.opening)
+        #expect(!session.isStreaming, "nobody has opened yet")
+        #expect(model.requests.isEmpty)
+        #expect(session.gameState?.isOpening == true)
+        #expect(session.gameState?.choices == [RhymeDuel.modelStarts])
+        #expect(session.canSend, "Return with nothing typed lets the model open")
         #expect(session.nudge == RhymeDuel.invitation)
+
+        session.choose(RhymeDuel.modelStarts)
+        #expect(session.isStreaming)
+        #expect(session.turns.first?.cue == RhymeDuel.opening)
         #expect(model.requests.first?.systemPrompt == RhymeDuel.systemPrompt)
         let asked = try #require(session.turns.first?.message)
         #expect(asked.hasPrefix("\(RhymeDuel.opening)\n\nThis duel’s story: "), "the story is drawn on this Mac")
@@ -238,6 +246,8 @@ struct RhymeDuelSessionTests {
         let session = Support.session(ScriptedModel(), withProvider: false)
         session.startGame(.rhymeDuel)
         #expect(session.game == .rhymeDuel)
+        #expect(!session.failureNeedsSettings, "nothing is asked until someone opens")
+        session.send()
         #expect(session.turns.isEmpty)
         #expect(session.failureNeedsSettings)
         #expect(session.canSend, "Return asks the model to open again")
@@ -288,12 +298,68 @@ struct RhymeDuelSessionTests {
         let session = Support.session(model)
         session.dice = GameDice(seed: 3)
         session.startGame(.rhymeDuel)
+        session.send()
         await Support.settle(session)
         let asked = try #require(session.turns.first?.message)
         await Support.play(exchanges[0].0, in: session)
         #expect(model.lastMessages == [asked, openingReply, try #require(session.turns.last?.message)], "a live agent follows on from the same words")
         #expect(RhymeDuel.lines(for: session.turns).map(\.text) == [opening, exchanges[0].0, exchanges[0].1], "what was drawn never shows")
         #expect(session.conversationMarkdown?.contains("story") == false)
+    }
+
+    @Test func whenYouOpenYouSetTheRhymesAndTheModelAnswersThem() async throws {
+        let model = ScriptedModel([
+            "Until the clouds began to pour | more, four",
+            "A soggy dog stood in the light",
+            "It chased a mouse and then it sat", "And ate its supper on a tray"
+        ])
+        let session = Support.session(model)
+        session.dice = GameDice(seed: 4)
+        session.startGame(.rhymeDuel)
+        await Support.play(opening, in: session)
+        let first = try #require(session.turns.first)
+        #expect(first.cue == RhymeDuel.yourOpening)
+        #expect(first.question == opening)
+        let asked = first.message
+        #expect(asked.hasPrefix("\(RhymeDuel.yourOpening)\n\n\(opening)\n\nEnd your line on one of these words: "))
+        let offered = try #require(asked.components(separatedBy: "one of these words: ").last).dropLast().components(separatedBy: ", ")
+        #expect(offered.count == RhymeDuel.offered)
+        #expect(offered.allSatisfy { RhymeDuel.family(of: "door")?.contains($0) == true && $0 != "door" }, "rhymes for your line")
+        #expect(!asked.contains("story:"), "your line sets the story")
+        #expect(session.gameState?.phase == .yourMove(placeholder: "Carry the story on, ending on a new sound…"))
+        #expect(!session.canHint)
+        #expect(RhymeDuel.lines(for: session.turns).map(\.text) == [opening, "Until the clouds began to pour"])
+
+        await Support.play("The rain kept falling on the floor", in: session)
+        #expect(session.nudge?.contains("“floor” sounds like “door”") == true, "a new sound for each couplet")
+        #expect(model.requests.count == 1)
+        await Support.play("She heard a knock, a bark, a bite", in: session)
+        #expect(model.lastMessages.last?.hasPrefix("She heard a knock, a bark, a bite\n\nEnd your line on one of these words: ") == true)
+        await Support.play("A tiny kitten, gray and flat", in: session)
+        #expect(session.gameState?.status == "Line 7 of 8")
+        await Support.play("It dreamed of fish, and far away", in: session)
+        #expect(model.requests.count == 4, "the model answers your last line too")
+        #expect(session.gameState?.status == "Duel done")
+        #expect(session.nudge == RhymeDuel.doneByModel)
+        #expect(session.history.isEmpty)
+        session.reset()
+        #expect(session.history.first?.title == "Rhyme Duel: \(opening)")
+    }
+
+    @Test func aLineTypedOnceADuelIsOverOpensTheNext() async throws {
+        let model = ScriptedModel(["It found a friend, and that was that"])
+        let session = Support.session(model)
+        session.reopen(duel(exchanges: exchanges, closing: closing))
+        guard case .over(_, let next)? = session.gameState?.phase else {
+            Issue.record("the duel should be over")
+            return
+        }
+        #expect(next.takesYourMove)
+        await Support.play("A robot lived beneath the sea", in: session)
+        #expect(session.turns.last?.cue == RhymeDuel.yourOpening)
+        #expect(session.turns.last?.question == "A robot lived beneath the sea")
+        #expect(session.gameState?.status == "Line 3 of 8")
+        #expect(RhymeDuel.lines(for: session.turns).map(\.text).suffix(3) == ["Rematch", "A robot lived beneath the sea", "It found a friend, and that was that"])
     }
 
     @Test func theModelCarriesTheStoryOnWithANewWord() async throws {

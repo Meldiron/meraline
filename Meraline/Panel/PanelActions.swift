@@ -218,10 +218,11 @@ struct PanelContext {
 
     // MARK: The open chat
 
-    /// The open chat's actions, or nil when there is no chat to act on. The first is the primary one: Stop while
-    /// an answer streams, then Copy Answer for a chat, and Hint or End Game for a game.
+    /// The open chat's actions, or nil when there is no chat to act on; a game has them before its first move.
+    /// The first is the primary one: Stop while an answer streams, then Copy Answer for a chat, and Hint or End
+    /// Game for a game.
     var chatMenu: ActionMenu? {
-        guard !session.turns.isEmpty else { return nil }
+        guard !session.turns.isEmpty || session.isPlaying else { return nil }
         return session.game.map(gameMenu) ?? questionMenu
     }
 

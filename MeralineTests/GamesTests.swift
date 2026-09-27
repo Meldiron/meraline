@@ -12,9 +12,9 @@ struct GameRulesTests {
             #expect(!game.summary.isEmpty, "\(game) needs a line for the menu")
             #expect(!game.rules.systemPrompt.isEmpty)
             #expect(!game.rules.invitation.isEmpty)
-            guard case .modelMoves = game.rules.state(of: []).phase else {
-                Issue.record("\(game) should start with the model’s move")
-                continue
+            switch game.rules.state(of: []).phase {
+            case .modelMoves, .opening: break
+            default: Issue.record("\(game) should start with the model’s move, or wait for someone to open")
             }
         }
     }

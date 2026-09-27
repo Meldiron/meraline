@@ -112,6 +112,9 @@ struct PanelActionsTests {
     @Test func aGameOffersItsOwnActions() async {
         let session = Support.session(ScriptedModel(["A cat sat waiting by the door | floor, more, four"]))
         session.startGame(.rhymeDuel)
+        #expect(ids(context(session).chatMenu).contains("endGame"), "a game has its actions before anyone moves")
+        #expect(!ids(context(session).chatMenu).contains("restartGame"), "nothing to restart yet")
+        session.send()
         await Support.settle(session)
         #expect(session.isYourMove)
         let menu = context(session).chatMenu
@@ -312,6 +315,7 @@ struct PanelActionsTests {
     @Test func gamesCannotAskAgain() async {
         let session = Support.session(ScriptedModel(["A cat sat waiting by the door | floor, more, four"]))
         session.startGame(.rhymeDuel)
+        session.send()
         await Support.settle(session)
         #expect(!session.canAskAgain)
     }
