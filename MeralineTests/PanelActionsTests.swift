@@ -126,21 +126,22 @@ struct PanelActionsTests {
     }
 
     @Test func commandRRestartsAGameGoingOnAndPlaysAgainOnceItIsOver() async throws {
-        let model = ScriptedModel(["Banana.", "OK: apple"])
+        let model = ScriptedModel(["OK: apple", "OK: egg"])
         let session = Support.session(model)
         #expect(!ids(context(session).chatMenu).contains("restartGame"), "no game to restart")
         session.startGame(.wordFootball)
-        await Support.settle(session)
+        #expect(!ids(context(session).chatMenu).contains("restartGame"), "nothing to restart before the kickoff")
+        await Support.play("banana", in: session)
         let context = context(session)
         let restart = try #require(context.action(forKeyCode: UInt16(kVK_ANSI_R), characters: "r", modifiers: .command))
         #expect(restart.id == "restartGame")
         #expect(restart.title == "Restart Word Football")
         context.run(restart, in: .chat, fromShortcut: true)
         #expect(session.game == .wordFootball)
-        #expect(session.turns.count == 1, "the new match kicks off at once")
+        #expect(session.turns.isEmpty, "the new match waits for a kickoff")
         #expect(session.history.first?.mode == .game(.wordFootball), "the match so far is in Recent Chats")
-        await Support.settle(session)
 
+        await Support.play("banana", in: session)
         session.draft = "pass"
         session.send()
         #expect(ids(self.context(session).chatMenu).contains("playAgain"))

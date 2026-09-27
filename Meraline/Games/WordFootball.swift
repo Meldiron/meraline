@@ -1,11 +1,12 @@
 import Foundation
 
-/// Word football: the model kicks off with a word, and you and the model take turns playing words that
-/// start with the last letter of the one before. The model referees yours; a word it doesn't know comes
-/// back to you. Eight each is full time, unless the model fouls, runs out, or you give up.
+/// Word football: you kick off with a word, or a word drawn on this Mac from `kickoffs` kicks off for the model,
+/// and you and the model take turns playing words that start with the last letter of the one before. The
+/// model referees yours; a word it doesn't know comes back to you. Eight each is full time, unless the model
+/// fouls, runs out, or you give up.
 ///
-/// The kickoff's first letter and a kind of word for each of the model's are drawn on this Mac: left to
-/// itself, the model kicks off with the same word every match and answers each letter the same way.
+/// A kind of word for each of the model's is drawn on this Mac too: left to itself, the model kicks off with
+/// the same word every match and answers each letter the same way.
 nonisolated enum WordFootball: GameRules {
     static let title = "Word Football"
     static let summary = "Chain words, last letter to first"
@@ -14,22 +15,27 @@ nonisolated enum WordFootball: GameRules {
     static let perSide = 8
     static let limit = perSide * 2
 
+    /// What a drawn kickoff answers, as if the model had been asked for it.
     static let opening = "Kick off with one word."
     static let rematchCue = "Kick off a new match with a different word."
-    private static let cues: Set<String> = [opening, rematchCue]
+    /// What goes with a kickoff of yours.
+    static let yourKickoff = "The user kicks off with the word below."
+    private static let cues: Set<String> = [opening, rematchCue, yourKickoff]
+
+    static let randomButton = "Random Word"
 
     static let systemPrompt = """
-    You are playing Word football, a word-chain game. When asked to kick off, reply with one common English word \
-    and nothing else, starting with the letter the message gives. Then the user and you take turns. Each word must \
-    be a real English word that starts with the last letter of the word before it, and no word may be played twice \
-    in a match. Reply to each word the user plays with one line. If it is a real English word, write “OK: ” followed \
-    by your own word, which must start with the last letter of the user's word and must not have been played yet; \
+    You are playing Word football, a word-chain game. The user and you take turns playing words: each must be a \
+    real English word that starts with the last letter of the word before it, and no word may be played twice in \
+    a match. A match kicks off with a word the user plays, or with one drawn for you. \
+    Reply to each word the user plays with one line. If it is a real English word, write “OK: ” followed by your \
+    own word, which must start with the last letter of the user's word and must not have been played yet; \
     when the message suggests a kind of word, play one of that kind if one fits. \
     If it isn't a real English word, write “NO: ” followed by a short, friendly reason. \
     If you can't think of a word, write “OK: PASS”. No explanations, quotation marks, or Markdown.
     """
 
-    static let invitation = "The model kicks off. Each word starts with the last letter of the one before; type pass to give up."
+    static let invitation = "Kick off with a word, or take a random one. Each word starts with the last letter of the one before; type pass to give up."
 
     struct Match {
         var words: [(text: String, byYou: Bool)] = []
@@ -51,8 +57,10 @@ nonisolated enum WordFootball: GameRules {
     static func review(_ turns: [ChatSession.Turn]) -> Match {
         var match = Match()
         guard let kickoff = turns.first else { return match }
-        if let word = kickoff.reply { match.words.append((word, false)) }
-        for turn in turns.dropFirst() {
+        // A kickoff of the model's side is its reply; yours is a word the model answers like any other.
+        let isYours = kickoff.cue == yourKickoff
+        if !isYours, let word = kickoff.reply { match.words.append((word, false)) }
+        for turn in isYours ? turns[...] : turns.dropFirst() {
             if let outcome = turn.outcome {
                 match.ending = outcome
                 break
@@ -82,16 +90,43 @@ nonisolated enum WordFootball: GameRules {
         return match
     }
 
-    /// The kickoff gets a first letter and a kind of word; your word, a kind for the model's answer.
+    /// Your word gets a kind of word for the model's answer.
     static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String? {
-        let kind = kinds.randomElement(using: &dice) ?? kinds[0]
-        guard turn.cue.map(cues.contains) == true else { return "For your own word, try \(kind) if one fits." }
-        let letter = kickoffLetters.randomElement(using: &dice) ?? "s"
-        return "Kick off with a word that starts with “\(letter.uppercased())”, \(kind) if one comes to mind."
+        guard !turn.question.isEmpty else { return nil }
+        return "For your own word, try \(kinds.randomElement(using: &dice) ?? kinds[0]) if one fits."
     }
 
-    /// The letters a kickoff may start with: those that start plenty of common words.
-    static let kickoffLetters = Array("abcdefghijklmnoprstw")
+    /// Left to the other side, a match kicks off with a word drawn on this Mac, one the chat hasn't played while
+    /// there are others, kept as the model's.
+    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+        let played = Set(turns.rounds(cues).flatMap { review($0).words.map { GameText.key($0.text) } })
+        let word = dice.pick(from: kickoffs) { !played.contains($0) } ?? kickoffs[0]
+        return .drawn(cue: turns.isEmpty ? opening : rematchCue, move: word)
+    }
+
+    /// Your word kicks off the match.
+    static func open(with input: String, after turns: [ChatSession.Turn]) -> GameMove {
+        let words = GameText.words(GameText.firstLine(input))
+        guard let first = words.first, !GameText.isGivingUp(first) else { return .reject("Kick off with a word first.") }
+        guard words.count == 1 else { return .reject("One word at a time.") }
+        let word = String(first.lowercased().filter(\.isLetter))
+        guard word.count >= 2 else { return .reject("A word of at least two letters, please.") }
+        return .open(word, cue: yourKickoff)
+    }
+
+    /// Common words that kick off a match, a few for most letters.
+    static let kickoffs = [
+        "apple", "anchor", "arrow", "banana", "basket", "button", "candle", "castle", "cactus", "dragon", "drum",
+        "desert", "eagle", "engine", "elbow", "forest", "feather", "fountain", "garden", "guitar", "glacier",
+        "hammer", "harbor", "helmet", "island", "igloo", "insect", "jacket", "jungle", "journey", "kitten",
+        "kettle", "keyboard", "lantern", "lemon", "ladder", "mountain", "mirror", "marble", "needle", "noodle",
+        "orange", "octopus", "oven", "pencil", "parrot", "pillow", "planet", "quilt", "queen", "rocket", "river",
+        "rabbit", "saddle", "spoon", "sunflower", "tiger", "teapot", "tunnel", "umbrella", "unicorn", "violin",
+        "valley", "velvet", "window", "walrus", "wizard", "yogurt", "yacht", "zebra", "zipper", "bridge", "cloud",
+        "daisy", "ember", "falcon", "goblin", "honey", "ivory", "jigsaw", "koala", "lizard", "magnet", "nest",
+        "olive", "puzzle", "radio", "shadow", "thunder", "volcano", "wagon", "blanket", "comet", "dolphin",
+        "garlic", "harp", "meadow", "pirate", "robot", "scarf", "tractor", "whistle"
+    ]
 
     /// The kinds of word the model is nudged toward, so its words differ from match to match.
     static let kinds = [
@@ -104,19 +139,17 @@ nonisolated enum WordFootball: GameRules {
         "a shape", "something that makes a noise"
     ]
 
-    /// The model opens every round, the first with `opening`.
-    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
-        .ask(turns.isEmpty ? opening : rematchCue)
-    }
-
     static func state(of turns: [ChatSession.Turn]) -> GameState {
-        guard let current = turns.since(cues) else { return GameState(phase: .modelMoves(cue: opening), status: title) }
+        guard let current = turns.since(cues) else {
+            let opening = GameOpening(placeholder: "Kick off with a word, or press Return for a random one…", button: randomButton)
+            return GameState(phase: .opening(opening), status: title)
+        }
         let match = review(current)
         let status = "\(match.played) of \(limit) words"
         if current.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if let ending = match.ending {
             return GameState(
-                phase: .over(outcome: ending, next: GameOpening(placeholder: "Press Return for a new match…", button: "Play Again", takesYourMove: false)),
+                phase: .over(outcome: ending, next: GameOpening(placeholder: "Kick off a new match with a word, or press Return for a random one…", button: randomButton)),
                 status: status
             )
         }
@@ -145,10 +178,6 @@ nonisolated enum WordFootball: GameRules {
 
     static func judge(_ reply: String, in turns: [ChatSession.Turn]) -> GameReply {
         guard let last = turns.last else { return .refuse("Press Return to ask again.") }
-        if last.cue != nil {
-            let word = cleanWord(GameText.firstLine(reply))
-            return word.count < 2 ? .refuse("The model fluffed the kickoff. Press Return to try again.") : .accept(word)
-        }
         let (accepted, rest) = GameText.verdict(of: reply)
         if accepted == false {
             return .refuse(rest.isEmpty ? "The ref says “\(last.question)” isn’t a word. Try another." : "The ref says no: \(GameText.sentence(rest))")
@@ -179,6 +208,6 @@ nonisolated enum WordFootball: GameRules {
     }
 
     static func headline(of turns: [ChatSession.Turn]) -> String? {
-        turns.first?.reply
+        turns.rounds(cues).first.flatMap { review($0).words.first?.text }
     }
 }

@@ -119,24 +119,25 @@ struct GameRulesTests {
         #expect(aside.hasPrefix("This puzzle’s theme: \(last). "), "the one theme the chat hasn't had")
     }
 
-    @Test func wordFootballDrawsTheKickoffsLetterAndAKindOfWord() throws {
-        var letters: Set<String> = []
-        for seed: UInt64 in 0..<40 {
-            var dice = GameDice(seed: seed)
-            let cue = Support.turn(cue: seed.isMultiple(of: 2) ? WordFootball.opening : WordFootball.rematchCue)
-            let kickoff = try #require(WordFootball.aside(for: cue, after: [], dice: &dice))
-            let letter = try #require(kickoff.firstMatch(of: #/starts with “([A-Z])”, (.+) if one comes to mind\./#))
-            #expect(WordFootball.kickoffLetters.contains(Character(letter.1.lowercased())))
-            #expect(WordFootball.kinds.contains(String(letter.2)))
-            letters.insert(String(letter.1))
+    @Test func wordFootballKicksOffFromAFreshWordAndNudgesTheModelsWords() throws {
+        #expect(Set(WordFootball.kickoffs).count == WordFootball.kickoffs.count, "no kickoff twice")
+        #expect(WordFootball.kickoffs.allSatisfy { $0 == WordFootball.cleanWord($0) && $0.count >= 2 })
+        var dice = GameDice(seed: 3)
+        guard case .drawn(let cue, let word) = WordFootball.opener(after: [], dice: &dice) else {
+            Issue.record("the kickoff is drawn on this Mac")
+            return
         }
-        #expect(letters.count >= 10, "a different letter from match to match")
+        #expect(cue == WordFootball.opening)
+        #expect(WordFootball.kickoffs.contains(word))
+        let played = WordFootball.kickoffs.dropLast().map { Support.turn(cue: WordFootball.rematchCue, reply: $0) }
+        #expect(WordFootball.opener(after: played, dice: &dice) == .drawn(cue: WordFootball.rematchCue, move: try #require(WordFootball.kickoffs.last)))
 
-        var dice = GameDice(seed: 1)
         let turns = [Support.turn(cue: WordFootball.opening, reply: "banana")]
         let answer = try #require(WordFootball.aside(for: Support.turn("apple"), after: turns, dice: &dice))
-        #expect(answer.hasPrefix("For your own word, try "))
         #expect(WordFootball.kinds.contains { answer == "For your own word, try \($0) if one fits." })
+        #expect(WordFootball.aside(for: Support.turn(cue: WordFootball.opening), after: [], dice: &dice) == nil)
+        #expect(WordFootball.open(with: "Apple!", after: []) == .open("apple", cue: WordFootball.yourKickoff))
+        #expect(WordFootball.open(with: "pass", after: []) == .reject("Kick off with a word first."))
     }
 
     @Test func aTurnSendsItsCueQuestionAndAsideInThatOrder() {
@@ -225,31 +226,44 @@ struct GamePlayTests {
     }
 
     @Test func wordFootballCallsTheModelsFouls() async throws {
-        let model = ScriptedModel(["Banana.", "OK: elephant", "NO: that isn’t a word", "OK: salmon"])
+        let model = ScriptedModel(["OK: apple", "NO: that isn’t a word", "OK: salmon"])
         let session = Support.session(model)
         session.startGame(.wordFootball)
-        await Support.settle(session)
-        #expect(session.gameState?.phase == .yourMove(placeholder: "A word starting with “A”…"))
-        let kickoff = try #require(session.turns.first?.message)
-        #expect(kickoff.hasPrefix("\(WordFootball.opening)\n\nKick off with a word that starts with “"))
+        #expect(session.gameState?.choices == [WordFootball.randomButton])
+        await Support.play("Banana", in: session)
+        let kickoff = try #require(session.turns.first)
+        #expect(kickoff.cue == WordFootball.yourKickoff)
+        #expect(kickoff.message.hasPrefix("\(WordFootball.yourKickoff)\n\nbanana\n\nFor your own word, try "))
+        #expect(session.gameState?.phase == .yourMove(placeholder: "A word starting with “E”…"))
+        #expect(session.gameState?.status == "1 of 16 words")
 
-        await Support.play("apple", in: session)
-        #expect(model.lastMessages == [kickoff, "banana", try #require(session.turns.last?.message)])
-        #expect(session.turns.last?.message.hasPrefix("apple\n\nFor your own word, try ") == true)
-        #expect(session.gameState?.phase == .yourMove(placeholder: "A word starting with “T”…"))
-        #expect(session.gameState?.status == "2 of 16 words")
-
-        await Support.play("tzzq", in: session)
+        await Support.play("ezzq", in: session)
         #expect(session.nudge == "The ref says no: That isn’t a word.")
-        #expect(session.draft == "tzzq")
+        #expect(session.draft == "ezzq")
 
-        await Support.play("tiger", in: session)
-        #expect(session.nudge == "Foul! “salmon” doesn’t start with “R”. You win!")
+        await Support.play("egg", in: session)
+        #expect(model.lastMessages.prefix(2) == [kickoff.message, "OK: apple"])
+        #expect(session.nudge == "Foul! “salmon” doesn’t start with “G”. You win!")
         guard case .over = session.gameState?.phase else {
             Issue.record("the foul should end the match")
             return
         }
-        #expect(WordFootball.lines(for: session.turns).map(\.text).first == "banana → apple → elephant → tiger → salmon")
+        #expect(WordFootball.lines(for: session.turns).map(\.text).first == "banana → apple → egg → salmon")
+        session.reset()
+        #expect(session.history.first?.title == "Word Football: banana")
+    }
+
+    @Test func wordFootballCanKickOffFromARandomWord() async throws {
+        let model = ScriptedModel(["OK: salmon"])
+        let session = Support.session(model)
+        session.startGame(.wordFootball)
+        session.send()
+        #expect(model.requests.isEmpty, "the kickoff is drawn on this Mac")
+        let kickoff = try #require(session.turns.first?.answer)
+        #expect(WordFootball.kickoffs.contains(kickoff))
+        let letter = try #require(WordFootball.lastLetter(of: kickoff)).uppercased()
+        #expect(session.gameState?.phase == .yourMove(placeholder: "A word starting with “\(letter)”…"))
+        #expect(WordFootball.lines(for: session.turns).first?.pieces.first?.voice == .model)
     }
 
     @Test func addAWordBuildsAStoryFromYourFirstWordAndScoresEachSentence() async {
