@@ -3,6 +3,9 @@ import Foundation
 /// Word football: the model kicks off with a word, and you and the model take turns playing words that
 /// start with the last letter of the one before. The model referees yours; a word it doesn't know comes
 /// back to you. Eight each is full time, unless the model fouls, runs out, or you give up.
+///
+/// The kickoff's first letter and a kind of word for each of the model's are drawn on this Mac: left to
+/// itself, the model kicks off with the same word every match and answers each letter the same way.
 nonisolated enum WordFootball: GameRules {
     static let title = "Word Football"
     static let summary = "Chain words, last letter to first"
@@ -17,10 +20,11 @@ nonisolated enum WordFootball: GameRules {
 
     static let systemPrompt = """
     You are playing Word football, a word-chain game. When asked to kick off, reply with one common English word \
-    and nothing else. Then the user and you take turns. Each word must be a real English word that starts with \
-    the last letter of the word before it, and no word may be played twice in a match. \
-    Reply to each word the user plays with one line. If it is a real English word, write “OK: ” followed by your \
-    own word, which must start with the last letter of the user's word and must not have been played yet. \
+    and nothing else, starting with the letter the message gives. Then the user and you take turns. Each word must \
+    be a real English word that starts with the last letter of the word before it, and no word may be played twice \
+    in a match. Reply to each word the user plays with one line. If it is a real English word, write “OK: ” followed \
+    by your own word, which must start with the last letter of the user's word and must not have been played yet; \
+    when the message suggests a kind of word, play one of that kind if one fits. \
     If it isn't a real English word, write “NO: ” followed by a short, friendly reason. \
     If you can't think of a word, write “OK: PASS”. No explanations, quotation marks, or Markdown.
     """
@@ -77,6 +81,28 @@ nonisolated enum WordFootball: GameRules {
         }
         return match
     }
+
+    /// The kickoff gets a first letter and a kind of word; your word, a kind for the model's answer.
+    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String? {
+        let kind = kinds.randomElement(using: &dice) ?? kinds[0]
+        guard turn.cue.map(cues.contains) == true else { return "For your own word, try \(kind) if one fits." }
+        let letter = kickoffLetters.randomElement(using: &dice) ?? "s"
+        return "Kick off with a word that starts with “\(letter.uppercased())”, \(kind) if one comes to mind."
+    }
+
+    /// The letters a kickoff may start with: those that start plenty of common words.
+    static let kickoffLetters = Array("abcdefghijklmnoprstw")
+
+    /// The kinds of word the model is nudged toward, so its words differ from match to match.
+    static let kinds = [
+        "an animal", "a food", "something in a kitchen", "a place", "a job", "something you wear", "a sport",
+        "a plant", "something in the sky", "a tool", "a musical instrument", "a vehicle", "something at the beach",
+        "a toy", "a drink", "a feeling", "something in an office", "a kind of weather", "a building", "a city",
+        "a country", "a piece of furniture", "something sweet", "a bird", "a sea creature", "something in a bathroom",
+        "a verb", "an adjective", "a part of the body", "something made of metal", "something in a garden",
+        "a color", "something at school", "a fruit", "a vegetable", "an insect", "a hobby", "something in space",
+        "a shape", "something that makes a noise"
+    ]
 
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let current = turns.since(cues) else { return GameState(phase: .modelMoves(cue: opening), status: title) }

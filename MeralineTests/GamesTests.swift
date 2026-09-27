@@ -81,6 +81,26 @@ struct GameRulesTests {
         #expect(Categories.categoryName("“Things at the beach”") == "Things at the beach")
     }
 
+    @Test func wordFootballDrawsTheKickoffsLetterAndAKindOfWord() throws {
+        var letters: Set<String> = []
+        for seed: UInt64 in 0..<40 {
+            var dice = GameDice(seed: seed)
+            let cue = Support.turn(cue: seed.isMultiple(of: 2) ? WordFootball.opening : WordFootball.rematchCue)
+            let kickoff = try #require(WordFootball.aside(for: cue, after: [], dice: &dice))
+            let letter = try #require(kickoff.firstMatch(of: #/starts with “([A-Z])”, (.+) if one comes to mind\./#))
+            #expect(WordFootball.kickoffLetters.contains(Character(letter.1.lowercased())))
+            #expect(WordFootball.kinds.contains(String(letter.2)))
+            letters.insert(String(letter.1))
+        }
+        #expect(letters.count >= 10, "a different letter from match to match")
+
+        var dice = GameDice(seed: 1)
+        let turns = [Support.turn(cue: WordFootball.opening, reply: "banana")]
+        let answer = try #require(WordFootball.aside(for: Support.turn("apple"), after: turns, dice: &dice))
+        #expect(answer.hasPrefix("For your own word, try "))
+        #expect(WordFootball.kinds.contains { answer == "For your own word, try \($0) if one fits." })
+    }
+
     @Test func wordFootballChecksTheChainBeforeAsking() {
         let turns = [Support.turn(cue: WordFootball.opening, reply: "banana")]
         #expect(WordFootball.play("egg", in: turns, insisting: false) == .reject("“egg” starts with “E”. You need a word starting with “A”."))
@@ -134,14 +154,18 @@ struct GamePlayTests {
         #expect(Categories.review(full).ending?.youWon == nil, "six each is a draw")
     }
 
-    @Test func wordFootballCallsTheModelsFouls() async {
+    @Test func wordFootballCallsTheModelsFouls() async throws {
         let model = ScriptedModel(["Banana.", "OK: elephant", "NO: that isn’t a word", "OK: salmon"])
         let session = Support.session(model)
         session.startGame(.wordFootball)
         await Support.settle(session)
         #expect(session.gameState?.phase == .yourMove(placeholder: "A word starting with “A”…"))
+        let kickoff = try #require(session.turns.first?.message)
+        #expect(kickoff.hasPrefix("\(WordFootball.opening)\n\nKick off with a word that starts with “"))
 
         await Support.play("apple", in: session)
+        #expect(model.lastMessages == [kickoff, "banana", try #require(session.turns.last?.message)])
+        #expect(session.turns.last?.message.hasPrefix("apple\n\nFor your own word, try ") == true)
         #expect(session.gameState?.phase == .yourMove(placeholder: "A word starting with “T”…"))
         #expect(session.gameState?.status == "2 of 16 words")
 
