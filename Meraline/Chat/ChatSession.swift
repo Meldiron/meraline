@@ -67,7 +67,8 @@ final class ChatSession {
     }
 
     /// How long a chat lasts after its last message, open or in Recent Chats, before it goes with its workspace.
-    /// A message, the end of an answer, reopening the chat, or a click on the timer under the card starts it over.
+    /// A message, the end of an answer, or a click on the timer under the card starts it over; reopening the chat
+    /// doesn't.
     static let chatLifetime: TimeInterval = 30 * 60
     /// The most chats in memory, the open one included, and so the most workspaces on disk. Recent Chats lets go
     /// of its oldest to stay under it.
@@ -588,15 +589,21 @@ final class ChatSession {
         reopen(chat)
     }
 
-    /// Makes a past chat the open one, in the mode it was in, with its 30 minutes started over. Whatever was
-    /// open moves to Recent Chats. The chat leaves Recent Chats, so its workspace belongs to one chat only.
+    /// Makes a past chat the open one, in the mode it was in, with the time it has left. Whatever was open moves
+    /// to Recent Chats. The chat leaves Recent Chats, so its workspace belongs to one chat only. A chat whose time
+    /// is already up goes instead, workspace and all, and the open one stays.
     func reopen(_ chat: PastChat) {
         history.removeAll { $0.id == chat.id }
+        guard chat.expiresAt > .now else {
+            chat.workspace?.remove()
+            Log.chat.info("A recent chat ran out of time as it was reopened")
+            return
+        }
         reset()
         turns = chat.turns
         mode = chat.mode
         workspace = chat.workspace
-        restartClock()
+        deadline = chat.expiresAt
         if case .game(let game) = mode { lastGame = game }
         if case .over(let outcome, _)? = gameState?.phase { nudge = outcome.text }
     }

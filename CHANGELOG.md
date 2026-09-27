@@ -16,6 +16,10 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ![Settings › Prompt further down: the eight games, with Word Football's rules changed](https://raw.githubusercontent.com/Meldiron/meraline/v1.7.0/docs/screenshots/prompt-games-light.png)
 
+### Privacy
+
+- **Reopening a chat keeps its time.** A chat you reopen from Recent Chats comes back with the time it had left, instead of another 30 minutes. A message or a click on the timer still gives it 30 minutes again.
+
 ## v1.6.0 - 2026-09-27
 
 ### Ask

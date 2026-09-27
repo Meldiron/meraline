@@ -81,7 +81,7 @@ struct ChatLifetimeTests {
         ChatWorkspace.removeAll(in: root)
     }
 
-    @Test func theTimerAndReopeningStartTheTimeOver() async throws {
+    @Test func theTimerStartsTheTimeOverAndReopeningKeepsIt() async throws {
         let session = GameTestSupport.session(ScriptedModel(["Hello"]))
         await GameTestSupport.play("Hi", in: session)
         let first = try #require(session.expiresAt)
@@ -94,7 +94,24 @@ struct ChatLifetimeTests {
         let id = try #require(session.history.first?.id)
         try await Task.sleep(for: .milliseconds(20))
         session.reopen(id)
-        #expect(try #require(session.expiresAt) > kept)
+        #expect(session.expiresAt == kept)
+    }
+
+    @Test func aChatWhoseTimeIsUpGoesInsteadOfReopening() async throws {
+        let session = agentSession(ScriptedModel(["One", "Two"]))
+        await GameTestSupport.play("First", in: session)
+        let workspace = try #require(session.workspace).url
+        session.reset()
+        await GameTestSupport.play("Second", in: session)
+        // Its time ran out a moment ago, before the expiry that was due could run.
+        var past = try #require(session.history.first)
+        past.expiresAt = .now.addingTimeInterval(-1)
+
+        session.reopen(past)
+        #expect(session.turns.first?.question == "Second", "the open chat stays")
+        #expect(session.history.isEmpty)
+        #expect(!exists(workspace))
+        ChatWorkspace.removeAll(in: root)
     }
 
     @Test func anAnswerStillComingKeepsItsChat() async throws {
