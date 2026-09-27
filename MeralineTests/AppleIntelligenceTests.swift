@@ -65,8 +65,9 @@ struct AppleIntelligenceTests {
         let request = ChatRequest(
             provider: .apple,
             settings: ProviderSettings(model: "", baseURL: "", apiKey: "", isEnabled: true),
-            systemPrompt: "Reply with exactly one lowercase word.",
-            messages: [ChatMessage(role: .user, text: "Say ready.")]
+            systemPrompt: "Repeat the word you are given, and nothing else.",
+            // The macOS 27 model takes "Say ready." for a request to acknowledge, and answers "Okay".
+            messages: [ChatMessage(role: .user, text: "The word is: ready")]
         )
         var answer = ""
         for try await output in LLMClient.stream(request) {
