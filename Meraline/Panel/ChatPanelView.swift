@@ -141,6 +141,8 @@ struct ChatPanelView: View {
                 }
             }
             .frame(width: PanelController.width)
+            // Empty space in the card moves the window.
+            .background { WindowDragArea() }
             .glassEffect(.regular, in: .rect(cornerRadius: 26))
             .overlay {
                 if isDropTargeted {
