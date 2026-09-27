@@ -6,9 +6,12 @@
 #   actions   the chat's panel of actions (⌘K) over that answer: Insert Answer into TextEdit and the rewrites
 #   game      Odd One Out after the model's first move, with its choice buttons and the games unfolded
 #   menu      the panel of recent chats behind the clock, with the chat asked for the panel shot in it
+#   note      an answer with code in it, and the same answer torn off into a floating note beside the window
 #   agent     Agent mode: an answer, its trail of MCP tools, and a request to write a file with its Why?
 #   question  Agent mode: a question from the agent with its choices
+#   files     Agent mode: the files an agent handed over, a picture with its preview and a Markdown file
 #   settings  Settings on the Claude Code page, with its MCP servers
+#   permissions  Settings › Permissions
 #
 # It stays out of the way of the copy you use. A throwaway Debug build runs in front of a full-screen
 # gradient backdrop, so nothing else on the screen can appear, and keeps its settings in a defaults suite
@@ -75,6 +78,10 @@ demo=/tmp/meraline-demo
 mkdir -p $demo
 cp "$here/lib/screenshots/demo-agent.sh" $demo/claude
 chmod +x $demo/claude
+# The picture the demo agent hands over for the files shot: Meraline's own icon.
+for icon in "$app/Contents/Resources/AppIcon.icns" /Applications/Meraline.app/Contents/Resources/AppIcon.icns; do
+  [[ -f $icon ]] && sips -s format png -Z 1024 "$icon" --out $demo/icon.png >/dev/null 2>&1 && break
+done
 
 # The throwaway copy can write the Settings window's frame to the shared preferences; put it back after.
 frame_key="NSWindow Frame MeralineSettings"
@@ -249,6 +256,31 @@ for appearance in $appearances; do
   quit
   fi
 
+  # An answer with code, torn off into a note beside the window through the chat's actions.
+  if wants note; then
+  backdrop_up $appearance above
+  prepare ${suites[1]} mode string llm provider string $llm claudeCode.enabled bool false
+  [[ -n $model ]] && defaults write ${suites[1]} "$llm.model" -string "$model"
+  launch ${suites[1]} $appearance
+  ask "How do I find which app is using port 3000 on my Mac, and stop it? Keep it short: a sentence or two and the commands."
+  wait_for 'Answer (complete|failed)' 120
+  since_mark | grep -q 'Answer complete' || { echo "The LLM did not answer." >&2; return 1; }
+  sleep 1.5
+  click Actions
+  sleep 1
+  click "Tear Off Answer"
+  park
+  sleep 1.5
+  read -r x y w h <<< "$(window $pid panel)"
+  read -r nx ny nw nh <<< "$(window $pid note)"
+  [[ -n ${nx:-} ]] || { echo "The note never appeared." >&2; return 1; }
+  local left=$(( x < nx ? x : nx )) top=$(( y < ny ? y : ny ))
+  local right=$(( x + w > nx + nw ? x + w : nx + nw )) bottom=$(( y + h > ny + nh ? y + h : ny + nh ))
+  screencapture -x -R "$left,$top,$(( right - left )),$(( bottom - top ))" "$out/note$suffix.png"
+  echo "    note$suffix.png"
+  quit
+  fi
+
   # Agent mode, with the demo stand-in as Claude Code.
   backdrop_up $appearance above
   prepare ${suites[2]} mode string agent provider string claudeCode claudeCode.enabled bool true claudeCode.baseURL string $demo/claude
@@ -273,6 +305,15 @@ for appearance in $appearances; do
   shoot_panel question
   fi
 
+  if wants files; then
+  url "meraline://new"
+  sleep 1
+  ask "Export the app icon at 1024 pixels for the press kit, with a short note on where each size goes."
+  wait_for 'Answer complete' 60
+  sleep 1.5
+  shoot_panel files
+  fi
+
   backdrop_up $appearance normal
   url "meraline://settings?pane=claudeCode"
   for _ in {1..40}; do
@@ -293,6 +334,16 @@ for appearance in $appearances; do
   if wants settings; then
     screencapture -x -l $id "$out/settings$suffix.png"
     echo "    settings$suffix.png"
+  fi
+  if wants permissions; then
+    url "meraline://settings?pane=permissions"
+    sleep 1.5
+    # Past the pane's header, so both permissions show.
+    "$tools/press" scroll $(( sx + 480 )) $(( sy + 300 )) 170
+    park
+    sleep 0.5
+    screencapture -x -l $id "$out/permissions$suffix.png"
+    echo "    permissions$suffix.png"
   fi
   quit
 

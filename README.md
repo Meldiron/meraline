@@ -32,7 +32,7 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/panel.png">
-    <img src="docs/screenshots/panel-light.png" width="704" alt="Meraline's floating glass panel: a question about selected text, quoted above it, and the streamed answer, with the buttons for selected text, the clipboard, and a screenshot above the window, the LLM and Agent toggle, the games controller, and the recent chats clock under the input, and Copy Answer and Actions in the footer">
+    <img src="docs/screenshots/panel-light.png" width="704" alt="Meraline's floating glass panel: a question about selected text, quoted above it, and the streamed answer, with the buttons for selected text, the clipboard, and a screenshot above the window, the LLM and Agent toggle, the games controller, and the recent chats clock under the input, Copy Answer and Actions in the footer, and the time the chat has left under the window">
   </picture>
 </p>
 
@@ -106,12 +106,41 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
     <td align="center" colspan="2">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/actions.png">
-        <img src="docs/screenshots/actions-light.png" width="440" alt="The chat's actions over an answer: Insert Answer into TextEdit, Copy Conversation, Ask Again, and the rewrites Make Shorter, Make Longer, Make Simpler, Make More Concrete, and Turn into Bullet List">
+        <img src="docs/screenshots/actions-light.png" width="440" alt="The chat's actions over an answer: Insert Answer into TextEdit, Copy Conversation, Tear Off Answer, Ask Again, Ask Again with Apple Intelligence, and the rewrites Make Shorter, Make Longer, and Make Simpler">
       </picture>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2"><sub>Rewrite an answer in place, or paste it where you were</sub></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/note.png">
+        <img src="docs/screenshots/note-light.png" width="700" alt="An answer with its commands in code boxes with a Copy button, and the same answer torn off into a floating note beside the window">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><sub>Code comes in a box with a Copy button; tear an answer off into a note that stays on screen</sub></td>
+  </tr>
+  <tr>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/files.png">
+        <img src="docs/screenshots/files-light.png" width="440" alt="Claude Code hands over the app icon, shown as a picture, and a Markdown note, each with Open, Show in Finder, Copy, and Save to Downloads">
+      </picture>
+    </td>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/permissions.png">
+        <img src="docs/screenshots/permissions-light.png" width="440" alt="Settings › Permissions: Accessibility and Screen Recording, what each one turns on, and whether macOS allows it">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Agents hand over the files they make, ready to open, copy, or save</sub></td>
+    <td align="center"><sub>Every permission in one place, with what it's for</sub></td>
   </tr>
   <tr>
     <td align="center" colspan="2">

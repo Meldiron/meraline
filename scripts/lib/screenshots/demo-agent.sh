@@ -6,9 +6,11 @@
 #
 #   demo-agent.sh mcp list     the demo servers, in the format of `claude mcp list`
 #   demo-agent.sh --print …    reads one user message on stdin and plays a scripted run. A message that
-#                              mentions a changelog gets a question with two choices; anything else
-#                              searches two MCP servers, answers, and asks to write notes.md. The short
-#                              run behind Why? (ToolReason's system prompt) gets its one-line reason.
+#                              mentions a changelog gets a question with two choices; one that mentions
+#                              a press kit exports icon.png from beside this script and hands it over with
+#                              a note, through Meraline's present_files; anything else searches two MCP
+#                              servers, answers, and asks to write notes.md. The short run behind Why?
+#                              (ToolReason's system prompt) gets its one-line reason.
 
 case " $* " in
     *"You explain why an AI agent"*)
@@ -47,6 +49,22 @@ case "$message" in
     *changelog*)
         ask req-release '{"subtype":"can_use_tool","tool_name":"AskUserQuestion","input":{"questions":[{"question":"Which release is this changelog entry for?","header":"Release","options":[{"label":"1.3.0","description":"New features, nothing breaks"},{"label":"2.0.0","description":"Includes breaking changes"}],"multiSelect":false}]}}'
         text "Got it. Drafting the entry now."
+        finish
+        ;;
+    *"press kit"*)
+        tool 4 Bash '{"command":"sips -Z 1024 AppIcon.icns --out meraline-icon-1024.png"}'
+        cp "$(dirname "$0")/icon.png" "$PWD/meraline-icon-1024.png" 2>/dev/null
+        printf '%s\n' "# Press kit" "" "- meraline-icon-1024.png: the App Store and press size" "- Scale it down for the web; keep the rounded square as it is." > "$PWD/press-kit.md"
+        sleep 0.8
+        for chunk in \
+            "Here's the app icon at **1024 × 1024**, with a short note for the press kit." \
+            "\\n\\n- Use the full size for press and store pages." \
+            "\\n- Scale it down for the web, and keep the rounded square as it is."; do
+            text "$chunk"
+            sleep 0.15
+        done
+        tool 5 mcp__meraline__present_files '{"filepaths":["meraline-icon-1024.png","press-kit.md"]}'
+        sleep 0.5
         finish
         ;;
     *)
