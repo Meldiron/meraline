@@ -21,6 +21,16 @@ Dependencies are pinned to exact versions in `project.yml` (Sparkle, KeyboardSho
 
 A Developer ID certificate is optional. `dev_run.sh`, `test.sh`, and `release.sh --adhoc` sign ad-hoc when the certificate is missing; only `install.sh` and real releases need it. When it is there, don't force ad-hoc signing (`CODE_SIGN_IDENTITY=-`): macOS treats every ad-hoc build as a new app, so a build that runs asks for the Keychain password and loses Accessibility access each time. The test host never starts the app (`MeralineApp.isHostingTests`), so tests don't read the Keychain or take the shortcut, however they are signed.
 
+## Commits
+
+Commit as you go. Every change that is done and passes its tests gets its own commit right away, so the history reads as a list of what changed, one step at a time. Don't leave finished work uncommitted at the end of a session, and don't save a day of work for one big commit.
+
+- **One change per commit.** A feature, a fix, a refactor, a batch of screenshots, or a docs pass is each its own commit. The code, its tests, the docs it changes (README, AGENTS.md, `docs/`), and its bullet under `## Unreleased` in CHANGELOG.md go in together. Every commit builds and passes `scripts/test.sh`.
+- **Say what changed, in plain words.** The subject is one line, in sentence case with no prefix and no final period, that says what the change does for someone using Meraline or working on it, the way the changelog would: "Agents hand files over with present_files", "Fix the window not moving on macOS 27". Keep it under about 70 characters. When the reason isn't obvious from the subject, add a body after a blank line.
+- **Commit only your own work.** Several sessions often edit this checkout at once. Stage what you changed by path (`git add <path>`; never `git add -A`, `git add .`, or `git commit -a`) and read `git diff --cached` before you commit. When a file you changed also holds another session's unfinished edits, stage only your hunks (save `git diff <path>` to a patch, cut it down to yours, and `git apply --cached` it), or wait until theirs are committed.
+- **Commit on `main`, push when asked.** Never amend, rebase, or force-push a commit that has been pushed or that another session made.
+- **Never commit** `SESSION_NOTES.md`, `research_notes/`, or `reports/` (they are in `.git/info/exclude`), `build/`, or the generated `Meraline.xcodeproj`.
+
 ## Layout
 
 | Path | What lives there |

@@ -37,6 +37,7 @@ Use the bug report template. Settings › About › **Copy Diagnostics** puts a 
 ## Pull requests
 
 - Keep the change focused and describe what it does and why in the pull request template.
+- Commit in small steps: one change per commit, each building and passing the tests, with a one-line subject in plain words that says what it does ("Fix the window not moving on macOS 27"). [AGENTS.md](AGENTS.md#commits) has the details.
 - Run `scripts/test.sh` before pushing. Add a test when you fix a bug that a test could have caught; the suites in `MeralineTests/` show the style (Swift Testing, injected `UserDefaults` and `SecretStore`).
 - Follow the rules in [AGENTS.md](AGENTS.md): nothing on disk, secrets only in the Keychain, logging through `Log`, pink only as an accent.
 - Screenshots or a short recording help for anything visible.
