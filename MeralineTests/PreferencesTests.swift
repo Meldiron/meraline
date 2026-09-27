@@ -52,13 +52,58 @@ struct PreferencesTests {
         ollama.model = "qwen3"
         preferences[.ollama] = ollama
         preferences.placement = .pointer
-        preferences.systemPrompt = "Custom"
+        preferences[prompt: .chat(.llm)] = "Custom"
 
         let reloaded = Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: false)
         #expect(reloaded[.ollama].model == "qwen3")
         #expect(reloaded.activeProvider == .ollama)
         #expect(reloaded.placement == .pointer)
-        #expect(reloaded.systemPrompt == "Custom")
+        #expect(reloaded[prompt: .chat(.llm)] == "Custom")
+    }
+
+    @Test func eachPromptIsKeptOnlyWhileChanged() {
+        let defaults = makeDefaults()
+        let preferences = Preferences(defaults: defaults, secrets: noSecrets)
+        for prompt in SystemPrompt.allCases {
+            #expect(preferences[prompt: prompt] == prompt.standard)
+            #expect(!preferences.isChanged(prompt))
+        }
+        #expect(Set(SystemPrompt.allCases.map(\.key)).count == SystemPrompt.allCases.count, "every prompt has a key of its own")
+        #expect(SystemPrompt.llm != SystemPrompt.agent)
+
+        preferences[prompt: .chat(.agent)] = "Agents only."
+        preferences[prompt: .game(.rhymeDuel)] = "Rhyme in Czech."
+        #expect(preferences[prompt: .chat(.llm)] == SystemPrompt.llm, "changing the agents' prompt leaves the LLMs' alone")
+        #expect(preferences.isChanged(.game(.rhymeDuel)))
+        #expect(!preferences.isChanged(.game(.categories)))
+
+        let reloaded = Preferences(defaults: defaults, secrets: noSecrets)
+        #expect(reloaded[prompt: .chat(.agent)] == "Agents only.")
+        #expect(reloaded[prompt: .game(.rhymeDuel)] == "Rhyme in Czech.")
+
+        reloaded[prompt: .game(.rhymeDuel)] = RhymeDuel.systemPrompt
+        #expect(!reloaded.isChanged(.game(.rhymeDuel)))
+        #expect(defaults.object(forKey: SystemPrompt.game(.rhymeDuel).key) == nil, "a prompt set back to its default follows later defaults")
+    }
+
+    @Test func theOnePromptOfOlderVersionsCarriesOverToBothModes() {
+        let changed = makeDefaults()
+        changed.set("Answer in Czech.", forKey: SystemPrompt.legacyKey)
+        let preferences = Preferences(defaults: changed, secrets: noSecrets)
+        #expect(preferences[prompt: .chat(.llm)] == "Answer in Czech.")
+        #expect(preferences[prompt: .chat(.agent)] == "Answer in Czech.")
+        #expect(changed.object(forKey: SystemPrompt.legacyKey) == nil)
+
+        preferences[prompt: .chat(.agent)] = SystemPrompt.agent
+        let reloaded = Preferences(defaults: changed, secrets: noSecrets)
+        #expect(reloaded[prompt: .chat(.agent)] == SystemPrompt.agent, "restoring the agents' default sticks")
+        #expect(reloaded[prompt: .chat(.llm)] == "Answer in Czech.")
+
+        let untouched = makeDefaults()
+        untouched.set(SystemPrompt.llm, forKey: SystemPrompt.legacyKey)
+        let fresh = Preferences(defaults: untouched, secrets: noSecrets)
+        #expect(!fresh.isChanged(.chat(.llm)))
+        #expect(!fresh.isChanged(.chat(.agent)), "the old default isn't a change, so agents get their own default")
     }
 
     @Test func mcpChoicesPersist() {

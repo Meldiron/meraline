@@ -4,6 +4,12 @@ Notable changes in each Meraline release, newest first.
 
 When a version has an entry here, the Release workflow uses it as the release notes on GitHub and in the in-app update window. A version without an entry gets the list of commits since the previous tag instead. Headings are `## vX.Y.Z - YYYY-MM-DD`.
 
+## Unreleased
+
+### Ask
+
+- **Every prompt in Settings.** Settings › Prompt now has separate instructions for LLMs and for agents, and under them the rules of each of the eight games and the instructions Why? explains an agent's ask with, each with Restore Default. A prompt you changed before carries over to both LLMs and agents.
+
 ## v1.6.0 - 2026-09-27
 
 ### Ask

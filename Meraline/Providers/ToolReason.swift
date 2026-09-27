@@ -14,34 +14,42 @@ nonisolated enum ToolReason {
     static let textLimit = 1_500
     static let inputLimit = 3_000
 
+    /// The instructions until Settings › Prompt changes them.
     static let systemPrompt = """
     You explain why an AI agent wants to use a tool, so the person it works for can decide whether to allow it. \
     Reply with one plain sentence of at most 25 words: what the call would do and how it serves what the person asked. \
     If it goes beyond what they asked, or looks risky, say so. No preamble, no quotes, no Markdown.
     """
 
-    static let arguments = [
-        "--print",
-        "--model", model,
-        "--tools", "",
-        "--strict-mcp-config",
-        "--no-session-persistence",
-        "--system-prompt", systemPrompt
-    ]
+    static func arguments(instructions: String) -> [String] {
+        [
+            "--print",
+            "--model", model,
+            "--tools", "",
+            "--strict-mcp-config",
+            "--no-session-persistence",
+            "--system-prompt", instructions
+        ]
+    }
 
     /// A thinking pass would triple the wait for one sentence.
     static let environment = ["MAX_THINKING_TOKENS": "0"]
 
     /// Asks Claude Code why it wants what `prompt` asks for, reading the chat's last turns. `settings` are
-    /// Claude Code's own, for the command to run.
-    static func explain(_ prompt: AgentPrompt, in turns: [ChatSession.Turn], settings: ProviderSettings) async throws -> String {
+    /// Claude Code's own, for the command to run, and `instructions` the prompt Settings › Prompt has for Why?.
+    static func explain(
+        _ prompt: AgentPrompt,
+        in turns: [ChatSession.Turn],
+        settings: ProviderSettings,
+        instructions: String = systemPrompt
+    ) async throws -> String {
         guard let executable = CommandLineClient.resolve(settings.baseURL) else {
             throw LLMError.commandNotFound(.claudeCode, settings.baseURL.trimmed)
         }
         Log.commandLine.info("Asking Claude Code why it asks \(prompt.kind.logDescription)")
         let output = try await CommandLineClient.output(
             of: executable,
-            arguments: arguments,
+            arguments: arguments(instructions: instructions),
             input: Data(question(for: prompt, in: turns).utf8),
             extraEnvironment: environment,
             timeout: .seconds(60)

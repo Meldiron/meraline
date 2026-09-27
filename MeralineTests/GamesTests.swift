@@ -272,15 +272,21 @@ struct GamePlayTests {
         #expect(session.turns.last?.outcome == GameOutcome(text: "It was “recieve”, spelled “receive”.", youWon: false))
     }
 
-    @Test func aGameIgnoresTheSettingsPromptAndTheChatDoesNot() {
+    @Test func aGameSendsItsOwnPromptAndTheChatSendsItsModes() {
         let preferences = Support.preferences()
         let session = ChatSession(preferences: preferences) { ScriptedModel().stream($0) }
         for game in Game.allCases {
             session.startGame(game)
             #expect(session.makeRequest(asking: "Hi", images: [], of: .custom).systemPrompt == game.rules.systemPrompt)
         }
+        preferences[prompt: .game(.oddOneOut)] = "Odd one out, in Czech."
+        session.startGame(.oddOneOut)
+        #expect(session.makeRequest(asking: "Hi", images: [], of: .custom).systemPrompt == "Odd one out, in Czech.")
         session.reset()
-        #expect(session.makeRequest(asking: "Hi", images: [], of: .custom).systemPrompt == preferences.systemPrompt)
+        preferences[prompt: .chat(.agent)] = "Agents only."
+        #expect(session.makeRequest(asking: "Hi", images: [], of: .custom).systemPrompt == SystemPrompt.llm)
+        #expect(session.makeRequest(asking: "Hi", images: [], of: .claudeCode).systemPrompt == "Agents only.")
+        session.reset() // drops the workspace the agent's request made
     }
 
     @Test func stoppingTheModelsMoveTakesItBack() async {

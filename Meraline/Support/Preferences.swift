@@ -61,13 +61,6 @@ extension UserDefaults {
 final class Preferences {
     static let shared = Preferences()
 
-    static let defaultSystemPrompt = """
-    You answer quick questions asked from a small floating window. Lead with the answer. \
-    Keep it brief: a sentence or a short paragraph, or up to five bullets when a list is clearer. \
-    Use Markdown bold, italics, inline code, and links only when they help. \
-    Skip headings, preambles, and offers of further help.
-    """
-
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let secrets: SecretStore
 
@@ -114,9 +107,8 @@ final class Preferences {
     var bringsSelection: Bool {
         didSet { defaults.set(bringsSelection, forKey: "bringsSelection") }
     }
-    var systemPrompt: String {
-        didSet { defaults.set(systemPrompt, forKey: "systemPrompt") }
-    }
+    /// The prompts changed in Settings › Prompt. One left out says what it says by default.
+    private var changedPrompts: [SystemPrompt: String]
     var updateChannel: UpdateChannel {
         didSet { defaults.set(updateChannel.rawValue, forKey: "updateChannel") }
     }
@@ -155,7 +147,25 @@ final class Preferences {
         isPinned = defaults.bool(forKey: "isPinned")
         showsMenuBarIcon = defaults.object(forKey: "showsMenuBarIcon") as? Bool ?? true
         bringsSelection = defaults.object(forKey: "bringsSelection") as? Bool ?? true
-        systemPrompt = defaults.string(forKey: "systemPrompt") ?? Self.defaultSystemPrompt
+        // Before each mode had a prompt of its own, one prompt went to both, so a change to it carries over to each.
+        if let legacy = defaults.string(forKey: SystemPrompt.legacyKey) {
+            if legacy != SystemPrompt.llm {
+                for kind in ProviderKind.allCases where defaults.object(forKey: SystemPrompt.chat(kind).key) == nil {
+                    defaults.set(legacy, forKey: SystemPrompt.chat(kind).key)
+                }
+            }
+            defaults.removeObject(forKey: SystemPrompt.legacyKey)
+        }
+        var changedPrompts: [SystemPrompt: String] = [:]
+        for prompt in SystemPrompt.allCases {
+            guard let text = defaults.string(forKey: prompt.key) else { continue }
+            if text == prompt.standard {
+                defaults.removeObject(forKey: prompt.key)
+            } else {
+                changedPrompts[prompt] = text
+            }
+        }
+        self.changedPrompts = changedPrompts
         updateChannel = defaults.string(forKey: "updateChannel").flatMap(UpdateChannel.init(rawValue:)) ?? .stable
         hidesFromScreenSharing = defaults.bool(forKey: "hidesFromScreenSharing")
         providerSettings = Dictionary(uniqueKeysWithValues: Provider.allCases.map { provider in
@@ -196,6 +206,25 @@ final class Preferences {
             if old.apiKey != newValue.apiKey { secrets.write(provider.rawValue, newValue.apiKey.trimmed) }
             reconcile(provider.kind)
         }
+    }
+
+    /// A prompt as Settings › Prompt has it. Setting it back to its default forgets the change.
+    subscript(prompt prompt: SystemPrompt) -> String {
+        get { changedPrompts[prompt] ?? prompt.standard }
+        set {
+            guard newValue != self[prompt: prompt] else { return }
+            if newValue == prompt.standard {
+                changedPrompts[prompt] = nil
+                defaults.removeObject(forKey: prompt.key)
+            } else {
+                changedPrompts[prompt] = newValue
+                defaults.set(newValue, forKey: prompt.key)
+            }
+        }
+    }
+
+    func isChanged(_ prompt: SystemPrompt) -> Bool {
+        changedPrompts[prompt] != nil
     }
 
     /// Every ready provider. A cloud provider comes before Apple Intelligence, so a configured one

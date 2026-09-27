@@ -44,7 +44,8 @@ nonisolated protocol GameRules {
     /// The tooltip of the game's button.
     static var summary: String { get }
     static var symbol: String { get }
-    /// Replaces the prompt from Settings for the game's requests, and only for those.
+    /// The game's instructions until Settings › Prompt changes them. They replace the chat's prompt for the
+    /// game's requests, and only for those.
     static var systemPrompt: String { get }
     /// The nudge while the model makes the first move.
     static var invitation: String { get }

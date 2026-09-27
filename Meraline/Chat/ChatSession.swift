@@ -403,9 +403,9 @@ final class ChatSession {
         }
     }
 
-    /// The request a question or a game move makes. A game sends its own prompt and the cue of each move
-    /// the model made on its own; the prompt from Settings stays out of it. Two messages in a row from one
-    /// side, which a game can leave, are joined into one.
+    /// The request a question or a game move makes, with the prompt Settings › Prompt has for the provider's
+    /// mode. A game sends its own prompt instead, and the cue of each move the model made on its own. Two
+    /// messages in a row from one side, which a game can leave, are joined into one.
     func makeRequest(asking question: String, images: [ImageAttachment], files: [FileAttachment] = [], of provider: Provider) -> ChatRequest {
         var messages: [ChatMessage] = []
         func add(_ role: ChatMessage.Role, _ text: String, _ images: [ImageAttachment] = [], _ files: [FileAttachment] = [], presented: [String] = []) {
@@ -431,7 +431,7 @@ final class ChatSession {
         return ChatRequest(
             provider: provider,
             settings: preferences[provider],
-            systemPrompt: game?.rules.systemPrompt ?? preferences.systemPrompt,
+            systemPrompt: preferences[prompt: game.map(SystemPrompt.game) ?? .chat(provider.kind)],
             messages: messages,
             workspace: provider.isCommandLine ? workspaceForAgents()?.url : nil,
             presentsFiles: provider.isCommandLine && game == nil

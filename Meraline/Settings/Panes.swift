@@ -140,25 +140,79 @@ struct PromptPane: View {
 
     var body: some View {
         Form {
-            PaneHeader(pane: .prompt, summary: "Tell the model how to answer. These instructions are sent with every question.")
+            PaneHeader(pane: .prompt, summary: "Tell the models how to answer. LLMs and agents each have their own instructions, and each game plays by its own.")
+
+            ForEach(ProviderKind.allCases) { kind in
+                Section {
+                    editor(for: .chat(kind))
+                } header: {
+                    Text(kind.pluralTitle)
+                } footer: {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(kind == .llm
+                            ? "Sent with every question to Apple Intelligence and the other LLMs."
+                            : "Sent with every question to Claude Code, Codex, and OpenCode, with a word from Meraline on handing files over to you.")
+                        Spacer()
+                        restoreButton(for: .chat(kind))
+                    }
+                }
+            }
 
             Section {
-                TextEditor(text: $preferences.systemPrompt)
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 140)
-                    .labelsHidden()
-            } header: {
-                Text("Instructions")
-            } footer: {
-                HStack {
-                    Spacer()
-                    Button("Restore Default") { preferences.systemPrompt = Preferences.defaultSystemPrompt }
-                        .disabled(preferences.systemPrompt == Preferences.defaultSystemPrompt)
+                ForEach(Game.allCases) { game in
+                    disclosure(for: .game(game), symbol: game.symbol)
                 }
+            } header: {
+                Text("Games")
+            } footer: {
+                Text("A game sends its own instructions instead of the LLMs’ or the agents’. It reads the model’s moves in the format they ask for, such as “OK: ” or the “ | ” before a hidden answer, so keep those as they are.")
+            }
+
+            Section {
+                disclosure(for: .toolReason, symbol: "questionmark.bubble")
+            } header: {
+                Text("Agent Asks")
+            } footer: {
+                Text("When Claude Code asks before it writes a file, runs a command, or uses a skill, Why? has it say in one line why it wants to.")
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func editor(for prompt: SystemPrompt, minHeight: CGFloat = 140) -> some View {
+        TextEditor(text: $preferences[prompt: prompt])
+            .font(.body)
+            .scrollContentBackground(.hidden)
+            .frame(minHeight: minHeight)
+            .labelsHidden()
+    }
+
+    private func restoreButton(for prompt: SystemPrompt) -> some View {
+        Button("Restore Default") { preferences[prompt: prompt] = prompt.standard }
+            .disabled(!preferences.isChanged(prompt))
+    }
+
+    /// A prompt folded under its title, which says when it was changed.
+    private func disclosure(for prompt: SystemPrompt, symbol: String) -> some View {
+        DisclosureGroup {
+            editor(for: prompt, minHeight: 220)
+            HStack {
+                Spacer()
+                restoreButton(for: prompt)
+            }
+        } label: {
+            HStack {
+                Label {
+                    Text(prompt.title)
+                } icon: {
+                    Image(systemName: symbol).frame(width: 22)
+                }
+                Spacer()
+                if preferences.isChanged(prompt) {
+                    Text("Changed").foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 }
 

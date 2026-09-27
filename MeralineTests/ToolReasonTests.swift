@@ -41,7 +41,9 @@ struct ToolReasonTests {
     }
 
     @Test func runsWithoutToolsServersOrThinking() throws {
-        let arguments = ToolReason.arguments
+        let arguments = ToolReason.arguments(instructions: "Say why in Czech.")
+        let prompt = try #require(arguments.firstIndex(of: "--system-prompt"))
+        #expect(arguments[prompt + 1] == "Say why in Czech.")
         let tools = try #require(arguments.firstIndex(of: "--tools"))
         #expect(arguments[tools + 1] == "")
         #expect(arguments.contains("--strict-mcp-config"))
