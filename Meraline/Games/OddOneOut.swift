@@ -119,10 +119,7 @@ nonisolated enum OddOneOut: GameRules {
 
     /// Whether you said the model got your puzzle.
     static func judgement(_ input: String) -> Bool? {
-        let key = GameText.key(input)
-        if [GameText.key(gotIt), "gotit", "yes", "y", "yep", "right", "correct"].contains(key) { return true }
-        if [GameText.key(missedIt), "missed", "no", "n", "nope", "wrong"].contains(key) { return false }
-        return nil
+        GameText.judgement(input, yes: gotIt, no: missedIt)
     }
 
     static func format(_ puzzle: Puzzle) -> String {

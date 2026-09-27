@@ -304,6 +304,14 @@ nonisolated enum GameText {
         return (score, comment)
     }
 
+    /// Whether you said the model got it: the buttons' `yes` or `no`, or a word like them; nil for neither.
+    static func judgement(_ input: String, yes: String, no: String) -> Bool? {
+        let typed = key(input)
+        if [key(yes), "gotit", "foundit", "yes", "y", "yep", "right", "correct"].contains(typed) { return true }
+        if [key(no), "missed", "no", "n", "nope", "wrong"].contains(typed) { return false }
+        return nil
+    }
+
     /// Typed to give up a round.
     static func isGivingUp(_ text: String) -> Bool {
         ["pass", "giveup", "igiveup"].contains(key(text))

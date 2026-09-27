@@ -74,6 +74,9 @@ struct GameRulesTests {
         #expect(FixTheTypo.puzzle(from: "We will meet at the libary after lunch.\nlibary → library") == expected)
         #expect(FixTheTypo.puzzle(from: "We will meet at the library after lunch. | libary → library") == nil, "the typo isn’t in the sentence")
         #expect(FixTheTypo.puzzle(from: "We will meet at the libary after lunch.") == nil)
+        #expect(FixTheTypo.correction(in: "The word “tomorow” → tomorrow.")?.typo == "tomorow")
+        #expect(FixTheTypo.correction(in: "Typo: hapy -> happy")?.fix == "happy")
+        #expect(FixTheTypo.correction(in: "Nothing to fix") == nil)
     }
 
     @Test func categoryNamesLoseTheirDecoration() {
@@ -410,6 +413,8 @@ struct GamePlayTests {
         ])
         let session = Support.session(model)
         session.startGame(.fixTheTypo)
+        #expect(session.gameState?.choices == [FixTheTypo.modelsSentence])
+        session.send()
         await Support.settle(session)
         #expect(FixTheTypo.lines(for: session.turns).map(\.text) == ["We will meet at the libary after lunch."])
         #expect(model.requests.first?.systemPrompt == FixTheTypo.systemPrompt)
@@ -429,6 +434,55 @@ struct GamePlayTests {
         #expect(session.gameState?.status == "Sentence 2 of 5 · 1 fixed")
         await Support.play("pass", in: session)
         #expect(session.turns.last?.outcome == GameOutcome(text: "It was “recieve”, spelled “receive”.", youWon: false))
+    }
+
+    @Test func fixTheTypoCanHaveYouWriteTheSentences() async throws {
+        let model = ScriptedModel([
+            "libary → library",
+            "The word “tomorow” → tomorrow",
+            "yesterday → yesturday",
+            "NONE",
+            "hapy → happy", "freind → friend"
+        ])
+        let session = Support.session(model)
+        session.startGame(.fixTheTypo)
+        await Support.play("Too short", in: session)
+        #expect(session.nudge == "A sentence of a few words, with one of them misspelled.")
+        await Support.play("We will meet at the libary after lunch.", in: session)
+        #expect(session.turns.first?.cue == FixTheTypo.yourGame)
+        #expect(model.lastMessages == ["\(FixTheTypo.yourGame)\n\nWe will meet at the libary after lunch."])
+        #expect(session.gameState?.choices == [FixTheTypo.foundIt, FixTheTypo.missedIt])
+        #expect(FixTheTypo.lines(for: session.turns).map(\.text) == ["We will meet at the libary after lunch.", "The model says “libary” should be “library”."])
+
+        session.choose(FixTheTypo.foundIt)
+        #expect(session.turns.first?.outcome == GameOutcome(text: "The model found it.", youWon: false))
+        #expect(session.gameState?.phase == .yourMove(placeholder: "Your next sentence, with one misspelled word…"), "you write every sentence this game")
+        #expect(session.gameState?.status == "Sentence 2 of 5 · Model found 1")
+        #expect(model.requests.count == 1)
+
+        await Support.play("See you tomorow at the station.", in: session)
+        #expect(session.turns.last?.cue == nil)
+        #expect(session.turns.last?.answer == "tomorow → tomorrow")
+        session.choose(FixTheTypo.foundIt)
+
+        await Support.play("I saw it yesturday by the river.", in: session)
+        #expect(session.nudge == "The model named “yesterday”, which isn’t in your sentence. Press Return to ask again.")
+        #expect(session.draft == "I saw it yesturday by the river.")
+        await Support.play("I saw it yesturday by the river.", in: session)
+        #expect(session.turns.last?.answer == FixTheTypo.nothingWrong)
+        #expect(FixTheTypo.lines(for: session.turns).last?.text == "The model found nothing misspelled.")
+        session.choose(FixTheTypo.missedIt)
+        await Support.play("What a hapy little dog it is.", in: session)
+        session.draft = "yes"
+        session.send()
+        await Support.play("My best freind lives next door.", in: session)
+        session.choose(FixTheTypo.missedIt)
+        #expect(session.nudge == "Game done: the model found 3 of 5, and missed 2.")
+        guard case .over(let outcome, _)? = session.gameState?.phase else {
+            Issue.record("five sentences should end the game")
+            return
+        }
+        #expect(outcome.youWon == false)
     }
 
     @Test func aGameSendsItsOwnPromptAndTheChatSendsItsModes() {
@@ -451,6 +505,7 @@ struct GamePlayTests {
     @Test func stoppingTheModelsMoveTakesItBack() async {
         let session = Support.session(ScriptedModel())
         session.startGame(.fixTheTypo)
+        session.send()
         session.stop()
         await Support.settle(session)
         #expect(session.turns.isEmpty)
