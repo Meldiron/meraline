@@ -4,6 +4,8 @@ import Testing
 @testable import Meraline
 
 struct RhymeDuelRulesTests {
+    private typealias Support = GameTestSupport
+
     @Test func theLastWordIsWhatHasToRhyme() {
         #expect(RhymeDuel.rhymeWord(of: "I went out walking in the rain,") == "rain")
         #expect(RhymeDuel.rhymeWord(of: "Don't stop!!!") == "stop")
@@ -43,14 +45,106 @@ struct RhymeDuelRulesTests {
     }
 
     @Test func aRhymeTheModelGaveCountsWhateverTheEarSays() {
+        #expect(!RhymeDuel.rhymes("group", with: "stoop"), "spelling alone misses this one")
+        #expect(RhymeDuel.family(of: "stoop") == nil)
+        let bare = RhymeDuel.Verse(line: "A cat sat waiting on the stoop")
+        let hinted = RhymeDuel.Verse(line: bare.line, rhymes: ["group", "loop"])
+        #expect(RhymeDuel.complaint(about: "She waited for the group", after: bare) != nil)
+        #expect(RhymeDuel.complaint(about: "She waited for the Group!", after: hinted) == nil)
+        #expect(RhymeDuel.complaint(about: "And had a bowl of soup", after: bare) != nil)
+        #expect(RhymeDuel.complaint(about: "And had a bowl of soup", after: .init(line: bare.line, rhymes: ["group"])) == nil, "by way of “group”")
+        #expect(RhymeDuel.complaint(about: "And then I saw the sun", after: hinted)?.contains("“stoop”") == true)
+    }
+
+    @Test func aWordOfTheEndingsFamilyCountsToo() {
         #expect(!RhymeDuel.rhymes("more", with: "door"), "spelling alone misses this one")
-        let bare = RhymeDuel.Verse(line: "A cat sat waiting by the door")
-        let hinted = RhymeDuel.Verse(line: bare.line, rhymes: ["floor", "more"])
-        #expect(RhymeDuel.complaint(about: "She wanted nothing more", after: bare) != nil)
-        #expect(RhymeDuel.complaint(about: "She wanted nothing More!", after: hinted) == nil)
-        #expect(RhymeDuel.complaint(about: "Until the clouds began to pour", after: bare) != nil)
-        #expect(RhymeDuel.complaint(about: "Until the clouds began to pour", after: .init(line: bare.line, rhymes: ["four"])) == nil, "by way of “four”")
-        #expect(RhymeDuel.complaint(about: "And then I saw the sun", after: hinted)?.contains("“door”") == true)
+        let opening = RhymeDuel.Verse(line: "A cat sat waiting by the door")
+        #expect(RhymeDuel.complaint(about: "She wanted nothing more", after: opening) == nil)
+        #expect(RhymeDuel.complaint(about: "Until the clouds began to pour", after: opening) == nil)
+        #expect(RhymeDuel.complaint(about: "And then I saw the sun", after: opening)?.contains("“door”") == true)
+        let rhymes = RhymeDuel.rhymes(for: .init(line: opening.line, rhymes: ["floor", "adore"]))
+        #expect(rhymes.prefix(2) == ["floor", "adore"], "the model's own come first")
+        #expect(rhymes.contains("more"))
+        #expect(!rhymes.contains("door"), "not the word to rhyme with")
+        #expect(rhymes.filter { $0 == "floor" }.count == 1)
+    }
+
+    @Test func theFamiliesAreDifferentSoundsWithRoomForHints() {
+        var seen: Set<String> = []
+        for family in RhymeDuel.families {
+            #expect(family.count >= RhymeDuel.offered + 3, "\(family[0]) needs words to offer and to hint")
+            for word in family {
+                #expect(word.allSatisfy { $0.isLowercase && $0.isLetter }, "\(word)")
+                #expect(seen.insert(word).inserted, "\(word) is in two families")
+                #expect(RhymeDuel.family(of: word) == family)
+            }
+        }
+        for (index, family) in RhymeDuel.families.enumerated() {
+            for other in RhymeDuel.families[(index + 1)...] {
+                #expect(!RhymeDuel.rhymes(family[0], with: other[0]), "\(family[0]) and \(other[0]) sound alike")
+            }
+        }
+    }
+
+    @Test func aNewDuelGetsAStoryAndThreeWordsOfOneSound() throws {
+        for seed: UInt64 in 0..<50 {
+            var dice = GameDice(seed: seed)
+            let cue = Support.turn(cue: seed.isMultiple(of: 2) ? RhymeDuel.opening : RhymeDuel.rematchCue)
+            let aside = try #require(RhymeDuel.aside(for: cue, after: [], dice: &dice))
+            #expect(aside.hasPrefix("This duel’s story: "))
+            #expect(aside.contains(". Make it "))
+            let words = try offered(in: aside)
+            #expect(words.count == RhymeDuel.offered)
+            #expect(Set(words).count == words.count)
+            let family = try #require(RhymeDuel.family(of: words[0]))
+            #expect(words.allSatisfy(family.contains), "one sound: \(words)")
+        }
+    }
+
+    @Test func theStoriesAndSoundsVaryFromDuelToDuel() throws {
+        var dice = GameDice(seed: 7)
+        var stories: Set<String> = []
+        var sounds: Set<String> = []
+        for _ in 0..<20 {
+            let aside = try #require(RhymeDuel.aside(for: Support.turn(cue: RhymeDuel.opening), after: [], dice: &dice))
+            stories.insert(String(aside.prefix { $0 != "." }))
+            sounds.insert(try #require(RhymeDuel.family(of: try offered(in: aside)[0]))[0])
+        }
+        #expect(stories.count == 20)
+        #expect(sounds.count >= 12)
+    }
+
+    @Test func theModelsNextWordsRhymeWithNoLineSoFar() throws {
+        let duel = [
+            Support.turn(cue: RhymeDuel.opening, reply: "A cat sat waiting by the door | floor, more"),
+            Support.turn("Until the clouds began to pour", reply: "She heard a knock and then a shout | out, doubt")
+        ]
+        for seed: UInt64 in 0..<100 {
+            var dice = GameDice(seed: seed)
+            let aside = try #require(RhymeDuel.aside(for: Support.turn("A tiny voice said let me out"), after: duel, dice: &dice))
+            #expect(aside.hasPrefix("End your line on one of these words: "), "no new story mid-duel")
+            let family = try #require(RhymeDuel.family(of: try offered(in: aside)[0]))
+            #expect(!family.contains("door") && !family.contains("shout"), "\(family[0])")
+        }
+    }
+
+    @Test func aRematchAvoidsTheSoundsOfEarlierDuelsWhileItCan() throws {
+        let earlier = RhymeDuel.families.prefix(RhymeDuel.families.count - 1).map { family in
+            Support.turn(family[0], reply: "And so it went on to the \(family[1])")
+        }
+        let turns = [Support.turn(cue: RhymeDuel.opening, reply: "It all began one sunny day")] + earlier
+        let left = try #require(RhymeDuel.families.last)
+        for seed: UInt64 in 0..<10 {
+            var dice = GameDice(seed: seed)
+            let aside = try #require(RhymeDuel.aside(for: Support.turn(cue: RhymeDuel.rematchCue), after: turns, dice: &dice))
+            #expect(try offered(in: aside).allSatisfy(left.contains), "the one sound the chat hasn't heard")
+        }
+    }
+
+    /// The words an aside offers the model to end its line on.
+    private func offered(in aside: String) throws -> [String] {
+        let list = try #require(aside.components(separatedBy: "End your line on one of these words: ").last)
+        return list.dropLast().components(separatedBy: ", ")
     }
 
     @Test func onlyTheFirstLineCounts() {
@@ -83,6 +177,9 @@ struct RhymeDuelRulesTests {
 
     @Test func thePromptAsksForShortEndingsANewWordEachLineAndHiddenRhymes() {
         #expect(RhymeDuel.systemPrompt.contains("you go first"))
+        #expect(RhymeDuel.systemPrompt.contains("the subject the message gives"))
+        #expect(RhymeDuel.systemPrompt.contains("Each message names a few words your line may end on"))
+        #expect(!RhymeDuel.systemPrompt.contains("at random"), "the model can't pick at random; this Mac draws")
         #expect(RhymeDuel.systemPrompt.contains("short, common word of one syllable"))
         #expect(RhymeDuel.systemPrompt.contains("end on a new word"))
         #expect(RhymeDuel.systemPrompt.contains("“ | ”"))
@@ -114,7 +211,7 @@ struct RhymeDuelSessionTests {
         return ChatSession.PastChat(turns: turns, date: .now, mode: .game(.rhymeDuel))
     }
 
-    @Test func startingADuelAsksTheModelToOpen() async {
+    @Test func startingADuelAsksTheModelToOpen() async throws {
         let model = ScriptedModel([openingReply])
         let session = Support.session(model)
         session.draft = "half a question"
@@ -125,7 +222,9 @@ struct RhymeDuelSessionTests {
         #expect(session.turns.first?.cue == RhymeDuel.opening)
         #expect(session.nudge == RhymeDuel.invitation)
         #expect(model.requests.first?.systemPrompt == RhymeDuel.systemPrompt)
-        #expect(model.lastMessages == [RhymeDuel.opening])
+        let asked = try #require(session.turns.first?.message)
+        #expect(asked.hasPrefix("\(RhymeDuel.opening)\n\nThis duel’s story: "), "the story is drawn on this Mac")
+        #expect(model.lastMessages == [asked])
         await Support.settle(session)
         #expect(session.isYourMove)
         #expect(session.gameState?.status == "Line 2 of 8")
@@ -172,14 +271,29 @@ struct RhymeDuelSessionTests {
         #expect(session.isStreaming)
     }
 
-    @Test func theModelsLineIsCleanedUp() async {
+    @Test func theModelsLineIsCleanedUp() async throws {
         let model = ScriptedModel(["“She heard a knock and then a shout.”\n\nWant another?"])
         let session = Support.session(model)
         session.reopen(duel())
         await Support.play(exchanges[0].0, in: session)
         #expect(session.turns.last?.answer == "She heard a knock and then a shout.")
         #expect(model.requests.first?.messages.map(\.role) == [.user, .assistant, .user])
-        #expect(model.lastMessages == [RhymeDuel.opening, openingReply, exchanges[0].0], "the model sees the rhymes it hid")
+        let asked = try #require(session.turns.last?.message)
+        #expect(asked.hasPrefix("\(exchanges[0].0)\n\nEnd your line on one of these words: "))
+        #expect(model.lastMessages == [RhymeDuel.opening, openingReply, asked], "the model sees the rhymes it hid")
+    }
+
+    @Test func theTurnKeepsWhatWasDrawnForTheModelToReadAgain() async throws {
+        let model = ScriptedModel([openingReply, "She heard a knock and then a shout | out, about"])
+        let session = Support.session(model)
+        session.dice = GameDice(seed: 3)
+        session.startGame(.rhymeDuel)
+        await Support.settle(session)
+        let asked = try #require(session.turns.first?.message)
+        await Support.play(exchanges[0].0, in: session)
+        #expect(model.lastMessages == [asked, openingReply, try #require(session.turns.last?.message)], "a live agent follows on from the same words")
+        #expect(RhymeDuel.lines(for: session.turns).map(\.text) == [opening, exchanges[0].0, exchanges[0].1], "what was drawn never shows")
+        #expect(session.conversationMarkdown?.contains("story") == false)
     }
 
     @Test func theModelCarriesTheStoryOnWithANewWord() async throws {
@@ -190,7 +304,8 @@ struct RhymeDuelSessionTests {
         #expect(session.isYourMove)
         #expect(session.gameState?.status == "Line 4 of 8")
         let state = try #require(session.gameState)
-        #expect(state.phase == .yourMove(placeholder: "Rhyme with “shout”…", hints: RhymeDuel.hints(for: .init(line: "", rhymes: ["out", "about", "doubt", "sprout"]))))
+        #expect(state.phase == .yourMove(placeholder: "Rhyme with “shout”…", hints: RhymeDuel.hints(for: .init(line: "and then a shout", rhymes: ["out", "about", "doubt", "sprout"]))))
+        #expect(state.hints.contains("Try ending your line on “scout”."), "the family of “shout” helps out")
         #expect(RhymeDuel.lines(for: session.turns).map(\.text) == [opening, exchanges[0].0, exchanges[0].1], "the rhymes stay hidden")
     }
 
@@ -220,9 +335,9 @@ struct RhymeDuelSessionTests {
         }
     }
 
-    @Test func noHintsWithoutTheModelsRhymesOrOffYourMove() {
+    @Test func noHintsWithoutAnyKnownRhymesOrOffYourMove() {
         let session = Support.session(ScriptedModel())
-        session.reopen(ChatSession.PastChat(turns: [Support.turn(cue: RhymeDuel.opening, reply: opening)], date: .now, mode: .game(.rhymeDuel)))
+        session.reopen(ChatSession.PastChat(turns: [Support.turn(cue: RhymeDuel.opening, reply: "A cat sat waiting on the stoop")], date: .now, mode: .game(.rhymeDuel)))
         #expect(session.isYourMove)
         #expect(!session.canHint)
         session.reopen(duel(exchanges: exchanges, closing: closing))
@@ -231,7 +346,7 @@ struct RhymeDuelSessionTests {
         #expect(session.nudge == RhymeDuel.done)
     }
 
-    @Test func theLastWordIsYoursAndReturnStartsARematch() {
+    @Test func theLastWordIsYoursAndReturnStartsARematch() throws {
         let model = ScriptedModel()
         let session = Support.session(model)
         session.reopen(duel(exchanges: exchanges))
@@ -249,7 +364,9 @@ struct RhymeDuelSessionTests {
         session.send()
         #expect(model.requests.count == 1, "Return asks for a rematch")
         #expect(session.turns.last?.cue == RhymeDuel.rematchCue)
-        #expect(model.requests.last?.messages.last?.text == "\(closing)\n\n\(RhymeDuel.rematchCue)", "two user messages in a row are joined")
+        let rematch = try #require(session.turns.last?.message)
+        #expect(rematch.hasPrefix("\(RhymeDuel.rematchCue)\n\nThis duel’s story: "))
+        #expect(model.requests.last?.messages.last?.text == "\(closing)\n\n\(rematch)", "two user messages in a row are joined")
     }
 
     @Test func imagesSitTheDuelOut() {

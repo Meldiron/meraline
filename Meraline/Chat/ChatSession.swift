@@ -30,6 +30,9 @@ final class ChatSession {
         var startsOverOnNextText = false
         /// In a game, what the model was asked when it moved on its own; nil for a move of yours.
         var cue: String?
+        /// In a game, what this Mac drew to go with the move, such as a story's subject or the words a line
+        /// may end on (see `GameDice`). The model reads it after the move; the transcript never shows it.
+        var aside: String?
         /// In a game, how the round settled on this Mac.
         var outcome: GameOutcome?
         /// A warning that goes with this question, such as the chat's folder having been cleared.
@@ -41,7 +44,14 @@ final class ChatSession {
         /// Roughly how much memory the turn takes: its pictures, mostly, and its text.
         var byteCount: Int {
             images.reduce(0) { $0 + $1.data.count } + question.utf8.count + answer.utf8.count
-                + selections.reduce(0) { $0 + $1.text.utf8.count } + (cue?.utf8.count ?? 0)
+                + selections.reduce(0) { $0 + $1.text.utf8.count } + (cue?.utf8.count ?? 0) + (aside?.utf8.count ?? 0)
+        }
+
+        /// What the model is sent for this turn: the cue, or the question after the text it is about, then the aside.
+        var message: String {
+            let asked = cue ?? SelectedText.message(question, about: selections)
+            guard let aside, !aside.isEmpty else { return asked }
+            return asked.isEmpty ? aside : "\(asked)\n\n\(aside)"
         }
     }
 
@@ -136,6 +146,8 @@ final class ChatSession {
     @ObservationIgnored private var remadeWorkspace = false
     /// The most memory the chat may take; `chatByteLimit`, lower in tests.
     @ObservationIgnored var byteLimit = ChatSession.chatByteLimit
+    /// What the games draw with before a move goes to the model; seeded in tests.
+    @ObservationIgnored var dice = GameDice()
     @ObservationIgnored private let preferences: Preferences
     @ObservationIgnored private let workspaceRoot: URL
     @ObservationIgnored private let streamReplies: @MainActor (ChatRequest) -> AsyncThrowingStream<StreamOutput, Error>
@@ -311,11 +323,12 @@ final class ChatSession {
                     fail(with: setupMessage(to: "play"), needsSettings: true)
                     return
                 }
-                let request = makeRequest(asking: line, images: [], of: provider)
+                var turn = Turn(question: line, images: [])
+                turn.aside = game.rules.aside(for: turn, after: turns, dice: &dice)
+                let request = makeRequest(asking: turn.message, images: [], of: provider)
                 draft = ""
                 failure = nil
                 nudge = nil
-                let turn = Turn(question: line, images: [])
                 turns.append(turn)
                 isStreaming = true
                 Log.chat.info("\(game.title): your move to \(provider.name) (\(modelName(for: provider))), turn \(turns.count)")
@@ -362,10 +375,11 @@ final class ChatSession {
             fail(with: setupMessage(to: "play"), needsSettings: true)
             return
         }
-        let request = makeRequest(asking: cue, images: [], of: provider)
+        var turn = Turn(question: "", images: [], cue: cue)
+        turn.aside = game.rules.aside(for: turn, after: turns, dice: &dice)
+        let request = makeRequest(asking: turn.message, images: [], of: provider)
         failure = nil
         nudge = nil
-        let turn = Turn(question: "", images: [], cue: cue)
         turns.append(turn)
         isStreaming = true
         Log.chat.info("\(game.title): \(provider.name) (\(modelName(for: provider))) moves, turn \(turns.count)")
@@ -405,8 +419,8 @@ final class ChatSession {
     }
 
     /// The request a question or a game move makes, with the prompt Settings › Prompt has for the provider's
-    /// mode. A game sends its own prompt instead, and the cue of each move the model made on its own. Two
-    /// messages in a row from one side, which a game can leave, are joined into one.
+    /// mode. A game sends its own prompt instead, the cue of each move the model made on its own, and what was
+    /// drawn for each move. Two messages in a row from one side, which a game can leave, are joined into one.
     func makeRequest(asking question: String, images: [ImageAttachment], files: [FileAttachment] = [], of provider: Provider) -> ChatRequest {
         var messages: [ChatMessage] = []
         func add(_ role: ChatMessage.Role, _ text: String, _ images: [ImageAttachment] = [], _ files: [FileAttachment] = [], presented: [String] = []) {
@@ -425,7 +439,7 @@ final class ChatSession {
             }
         }
         for turn in turns where turn.isComplete {
-            add(.user, turn.cue ?? SelectedText.message(turn.question, about: turn.selections), turn.images, turn.files)
+            add(.user, turn.message, turn.images, turn.files)
             add(.assistant, turn.answer, presented: turn.presentedFiles.map(\.path))
         }
         add(.user, question, images, files)

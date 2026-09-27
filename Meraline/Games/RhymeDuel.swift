@@ -5,9 +5,13 @@ import Foundation
 /// ends on a new word; four lines each, so the last word is yours. Your line is a turn's question and the
 /// model's line its answer; the opening turn has only a cue and the closing turn no answer.
 ///
+/// Each duel's story and the words each of the model's lines may end on are drawn on this Mac: a model left to
+/// choose opens every duel alike and ends on the same few words. The words come from `families`, one rhyming
+/// sound at a time, never one a line of the duel has ended on.
+///
 /// A few words that rhyme with the model's ending travel after a bar in its reply ("The cat sat waiting by
-/// the door | floor, more, four"), hidden. Hint shows one of them, and a line that ends on one of them
-/// rhymes whatever this Mac's ear says.
+/// the door | floor, more, four"), hidden. Hint shows one of them or of the ending's family, and a line that
+/// ends on one of them rhymes whatever this Mac's ear says.
 nonisolated enum RhymeDuel: GameRules {
     static let title = "Rhyme Duel"
     static let summary = "Tell a story in rhyming couplets, four lines each"
@@ -19,12 +23,12 @@ nonisolated enum RhymeDuel: GameRules {
 
     static let systemPrompt = """
     You are playing a rhyme duel: you and the user tell a short story in verse, one line each, and you go first. \
-    Every line you write ends on a short, common word of one syllable that is easy to rhyme with. \
     The user answers each of your lines with one that rhymes with it. \
-    When asked to open, write the first line of a story; for a new duel, pick a new subject. \
+    When asked to open, write the first line of a story about the subject the message gives, in its mood. \
     After each line the user writes, write the next line of the story: carry on from the user's line, in the same \
     spirit and about the same length, but end on a new word that rhymes with none of the lines so far. \
-    Pick each ending word at random, and never end on the same word twice. \
+    Each message names a few words your line may end on: end it on whichever of them suits the story best. \
+    When a message names none, end on a short, common word of one syllable that is easy to rhyme with, never the same word twice. \
     After your line, write “ | ” and six common words that rhyme with your last word, separated by commas. \
     For example: The cat sat waiting by the door | floor, more, four, shore, roar, core. \
     One line only: no preamble, no quotation marks, no Markdown, no explanation.
@@ -54,6 +58,74 @@ nonisolated enum RhymeDuel: GameRules {
     static func status(linesPlayed: Int) -> String {
         linesPlayed >= lineLimit ? "Duel done" : "Line \(linesPlayed + 1) of \(lineLimit)"
     }
+
+    /// A new duel gets a story to tell and the words its first line may end on; your line, the words the model's
+    /// next may end on. The words share a sound that no line of the duel has ended on yet, nor of the chat's
+    /// earlier duels while there are sounds left.
+    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String? {
+        let opens = turn.cue.map(cues.contains) == true
+        let duel = opens ? [] : turns.since(cues) ?? []
+        let ending = rhymeWord(of: turn.question).map { [$0] } ?? []
+        let inDuel = families(heardIn: duel.flatMap(endings(of:)) + ending)
+        let inChat = families(heardIn: turns.flatMap(endings(of:)) + ending)
+        let open = families.indices.filter { !inDuel.contains($0) }
+        guard let family = dice.pick(from: open.isEmpty ? Array(families.indices) : open, preferring: { !inChat.contains($0) }) else {
+            return nil
+        }
+        let words = dice.deal(offered, from: families[family])
+        let end = "End your line on one of these words: \(words.joined(separator: ", "))."
+        guard opens else { return end }
+        return "This duel’s story: \(premise(dice: &dice)). \(end)"
+    }
+
+    /// How many words of a family the model is offered for a line.
+    static let offered = 3
+
+    /// A story to tell: someone, somewhere, something happening, and a mood, such as “a retired pirate in a
+    /// laundromat loses a bet. Make it spooky”.
+    static func premise(dice: inout GameDice) -> String {
+        let who = heroes.randomElement(using: &dice) ?? heroes[0]
+        let place = places.randomElement(using: &dice) ?? places[0]
+        let event = events.randomElement(using: &dice) ?? events[0]
+        let mood = moods.randomElement(using: &dice) ?? moods[0]
+        return "\(who) \(place) \(event). Make it \(mood)"
+    }
+
+    /// The words the lines of a duel ended on, yours and the model's.
+    private static func endings(of turn: ChatSession.Turn) -> [String] {
+        [rhymeWord(of: turn.question), turn.reply.flatMap { rhymeWord(of: verse(from: $0).line) }].compactMap { $0 }
+    }
+
+    /// The families, by number, that the words sound like: those they are in or rhyme with a word of.
+    private static func families(heardIn words: [String]) -> Set<Int> {
+        var heard: Set<Int> = []
+        for word in words {
+            let letters = word.lowercased().filter(\.isLetter)
+            guard !letters.isEmpty else { continue }
+            if let known = familyIndex[letters] { heard.insert(known) }
+            let key = rhymeKey(of: letters)
+            for (number, family) in familySounds.enumerated() where !heard.contains(number) {
+                if family.contains(where: { $0.word != letters && rhymes(letters, key, with: $0.word, $0.key) }) { heard.insert(number) }
+            }
+        }
+        return heard
+    }
+
+    /// Each family's words with their rough sound, worked out once.
+    private static let familySounds: [[(word: String, key: String)]] = families.map { $0.map { ($0, rhymeKey(of: $0)) } }
+
+    /// The family a word is in, if any.
+    static func family(of word: String) -> [String]? {
+        familyIndex[GameText.key(word)].map { families[$0] }
+    }
+
+    private static let familyIndex: [String: Int] = {
+        var index: [String: Int] = [:]
+        for (number, family) in families.enumerated() {
+            for word in family { index[word] = number }
+        }
+        return index
+    }()
 
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let duel = turns.since(cues) else {
@@ -123,7 +195,18 @@ nonisolated enum RhymeDuel: GameRules {
 
     /// What Hint shows for a line of the model's, one at a time.
     static func hints(for verse: Verse) -> [String] {
-        verse.rhymes.map { "Try ending your line on “\($0)”." }
+        rhymes(for: verse).map { "Try ending your line on “\($0)”." }
+    }
+
+    /// The words known to rhyme with a line of the model's: those it hid after the bar, then the rest of its
+    /// ending's family.
+    static func rhymes(for verse: Verse) -> [String] {
+        guard let ending = rhymeWord(of: verse.line).map(GameText.key) else { return verse.rhymes }
+        var words = verse.rhymes
+        for word in family(of: ending) ?? [] where word != ending && !words.contains(where: { GameText.key($0) == word }) {
+            words.append(word)
+        }
+        return words
     }
 
     /// The first non-empty line of what was typed or answered: a duel goes one line at a time.
@@ -168,8 +251,9 @@ nonisolated enum RhymeDuel: GameRules {
     }
 
     /// Why a line cannot go to the model yet, or nil when it can. A line after one with no word to rhyme
-    /// with always can; the first line of a duel is never checked. A word the model gave as a rhyme counts
-    /// as one, and so does a word that rhymes with one of those: "pour" answers "door" by way of "four".
+    /// with always can; the first line of a duel is never checked. A word the model gave as a rhyme, or of
+    /// the ending's family, counts as one, and so does a word that rhymes with one of those: "pour" answers
+    /// "door" by way of "four".
     static func complaint(about line: String, after previous: Verse) -> String? {
         guard let target = rhymeWord(of: previous.line) else { return nil }
         guard let word = rhymeWord(of: line) else {
@@ -178,7 +262,7 @@ nonisolated enum RhymeDuel: GameRules {
         if word.lowercased() == target.lowercased() {
             return "“\(target)” again? Find another rhyme for it, or send the line again as it is."
         }
-        guard rhymes(word, with: target) || previous.rhymes.contains(where: { GameText.key($0) == GameText.key(word) || rhymes(word, with: $0) }) else {
+        guard rhymes(word, with: target) || rhymes(for: previous).contains(where: { GameText.key($0) == GameText.key(word) || rhymes(word, with: $0) }) else {
             return "“\(word)” doesn’t rhyme with “\(target)”, not to my ear. Try another ending, or send the line again as it is."
         }
         return nil
@@ -191,7 +275,12 @@ nonisolated enum RhymeDuel: GameRules {
         let a = word.lowercased().filter(\.isLetter)
         let b = other.lowercased().filter(\.isLetter)
         guard !a.isEmpty, !b.isEmpty, a != b else { return false }
-        if rhymeKey(of: a) == rhymeKey(of: b) { return true }
+        return rhymes(a, rhymeKey(of: a), with: b, rhymeKey(of: b))
+    }
+
+    /// The same for two different words in lower-case letters, with their sounds worked out already.
+    private static func rhymes(_ a: String, _ aKey: String, with b: String, _ bKey: String) -> Bool {
+        if aKey == bKey { return true }
         let length = min(a.count, b.count, 3)
         return length >= 2 && a.suffix(length) == b.suffix(length)
     }
@@ -270,4 +359,118 @@ nonisolated enum RhymeDuel: GameRules {
         for character in text where result.last != character { result.append(character) }
         return result
     }
+
+    /// Words of one syllable that rhyme, a family to a sound, each sound its own: the model's lines end on them.
+    /// Every family has enough members for three to offer and a few left over for Hint.
+    static let families: [[String]] = [
+        ["day", "way", "play", "stay", "gray", "clay", "tray", "sway", "pay", "say"],
+        ["tree", "sea", "free", "key", "knee", "bee", "tea", "three", "glee", "flea"],
+        ["night", "light", "bright", "kite", "white", "bite", "flight", "sight", "fright", "height"],
+        ["door", "floor", "more", "shore", "roar", "four", "core", "store", "snore", "pour"],
+        ["gold", "cold", "bold", "told", "fold", "old", "hold", "sold", "scold"],
+        ["ring", "king", "sing", "wing", "spring", "thing", "string", "swing", "bring"],
+        ["bell", "shell", "well", "spell", "smell", "tell", "yell", "fell", "cell"],
+        ["ball", "wall", "hall", "fall", "call", "tall", "small", "stall"],
+        ["cake", "lake", "snake", "wake", "shake", "bake", "flake", "rake"],
+        ["rain", "train", "chain", "plane", "lane", "brain", "grain", "cane", "pain", "crane"],
+        ["moon", "spoon", "soon", "tune", "noon", "croon", "dune", "prune"],
+        ["cat", "hat", "bat", "mat", "flat", "rat", "chat", "sat"],
+        ["dog", "frog", "log", "fog", "jog", "bog", "clog", "hog"],
+        ["bed", "red", "bread", "head", "shed", "fed", "sled", "thread"],
+        ["pot", "hot", "knot", "spot", "lot", "dot", "shot", "plot", "trot"],
+        ["bug", "mug", "rug", "hug", "plug", "jug", "tug", "slug"],
+        ["nose", "rose", "hose", "toes", "froze", "those", "knows", "goes"],
+        ["ear", "fear", "near", "clear", "deer", "year", "cheer", "gear", "steer", "here"],
+        ["chair", "hair", "air", "stair", "fair", "pair", "care", "square", "dare", "share"],
+        ["heart", "art", "cart", "start", "part", "smart", "dart", "chart"],
+        ["dark", "park", "bark", "shark", "spark", "mark", "stark", "lark"],
+        ["town", "crown", "down", "gown", "brown", "frown", "clown", "drown"],
+        ["sound", "ground", "round", "found", "hound", "pound", "bound", "mound"],
+        ["ride", "side", "wide", "tide", "hide", "slide", "pride", "guide", "bride"],
+        ["line", "mine", "fine", "pine", "wine", "sign", "shine", "nine", "spine", "vine"],
+        ["time", "rhyme", "lime", "climb", "dime", "chime", "crime", "slime"],
+        ["smile", "mile", "pile", "tile", "file", "while", "style"],
+        ["wave", "cave", "brave", "grave", "save", "gave", "shave", "crave"],
+        ["gate", "late", "plate", "skate", "date", "great", "wait", "eight", "straight", "state"],
+        ["fast", "past", "last", "cast", "blast", "mast", "vast"],
+        ["best", "nest", "rest", "test", "west", "chest", "guest", "vest", "quest"],
+        ["stick", "quick", "brick", "trick", "kick", "pick", "thick", "click"],
+        ["rock", "clock", "sock", "lock", "dock", "block", "knock", "shock", "flock"],
+        ["book", "cook", "hook", "look", "nook", "shook", "brook", "took"],
+        ["boat", "coat", "goat", "note", "float", "throat", "wrote", "vote"],
+        ["blue", "shoe", "glue", "true", "new", "flew", "zoo", "crew", "stew", "grew"],
+        ["sand", "hand", "land", "band", "stand", "grand", "brand", "planned"],
+        ["bank", "tank", "plank", "thank", "drank", "sank", "blank", "prank"],
+        ["jump", "bump", "lump", "pump", "stump", "thump", "grump"],
+        ["hill", "still", "will", "chill", "spill", "mill", "fill", "drill", "thrill"],
+        ["snow", "glow", "slow", "show", "grow", "go", "toe", "know", "flow", "crow"],
+        ["star", "car", "far", "jar", "bar", "scar", "are", "tar"],
+        ["feet", "street", "sweet", "heat", "beat", "seat", "meet", "treat", "wheat"],
+        ["dream", "stream", "team", "cream", "beam", "steam", "seem", "scream"],
+        ["face", "space", "race", "place", "lace", "chase", "case", "base", "grace"],
+        ["room", "broom", "doom", "bloom", "zoom", "gloom", "boom", "groom"],
+        ["ship", "trip", "lip", "drip", "flip", "slip", "grip", "tip", "chip"],
+        ["top", "shop", "drop", "mop", "hop", "stop", "pop", "crop"],
+        ["ten", "pen", "hen", "men", "then", "when", "den", "glen"],
+        ["turn", "burn", "learn", "fern", "churn", "earn", "stern"],
+        ["bird", "word", "heard", "third", "herd", "nerd", "stirred"],
+        ["find", "mind", "kind", "blind", "grind", "signed"],
+        ["out", "shout", "doubt", "scout", "sprout", "trout", "snout", "pout"],
+        ["sun", "fun", "run", "one", "done", "bun", "won", "spun", "ton"],
+        ["dress", "mess", "guess", "less", "press", "chess", "bless"],
+        ["tail", "mail", "sail", "snail", "whale", "pale", "trail", "nail"],
+        ["meal", "wheel", "steel", "heel", "deal", "feel", "peel", "seal"],
+        ["pool", "cool", "school", "fool", "tool", "stool", "rule", "mule"],
+        ["joke", "smoke", "oak", "cloak", "poke", "woke", "broke", "spoke"],
+        ["bang", "sang", "rang", "hang", "fang", "gang", "slang"],
+        ["drum", "hum", "plum", "gum", "thumb", "crumb", "come", "some"]
+    ]
+
+    /// Who a duel's story is about.
+    static let heroes = [
+        "a retired pirate", "a nervous dragon", "a tiny robot", "a lighthouse keeper", "a lost penguin",
+        "a sleepy wizard", "a grumpy cat", "a young knight", "a ghost afraid of the dark", "a very old tortoise",
+        "a chef who can’t taste", "a clumsy astronaut", "a talking teapot", "a shy giant", "a runaway kite",
+        "a detective duck", "a goat who plays chess", "a lonely scarecrow", "a traveling musician", "a stubborn mule",
+        "a forgetful king", "a brave little mouse", "a fox in a borrowed coat", "a queen who hates hats",
+        "a bored vampire", "a mermaid who can’t swim", "a firefighter on a day off", "a squirrel with a secret",
+        "a night-shift museum guard", "a dancing bear", "a homesick alien", "a reluctant hero", "a pair of old boots",
+        "a broken clock", "a bus driver", "a grandmother who races cars", "a dog who wants to fly",
+        "an owl who can’t stay up late", "a parrot who tells tales", "a sock without its pair", "a tired dentist",
+        "a magician’s rabbit", "a worried farmer", "a wandering troll", "a runaway balloon", "a champion snail",
+        "a baker with a sweet tooth", "a spy who can’t whisper"
+    ]
+
+    /// Where it happens.
+    static let places = [
+        "in a laundromat", "on the moon", "at a school dance", "in a submarine", "at the bottom of the sea",
+        "in a snowed-in cabin", "on a night train", "in a museum after closing", "at a busy airport",
+        "in a haunted library", "on a tiny island", "at a county fair", "in a bakery", "on a rooftop",
+        "in a jungle", "at a wedding", "in the desert", "in thick fog", "at a bus stop", "on a pirate ship",
+        "in a castle kitchen", "at the zoo", "in a garden shed", "on a mountaintop", "in a traffic jam",
+        "at a football match", "in a cave", "on a frozen lake", "at a night market", "in a stuck elevator",
+        "on a farm", "in a toy shop", "at a birthday party", "on a sinking raft", "in a lighthouse",
+        "at a spelling bee", "in outer space", "at the dentist", "in a thunderstorm", "at a flea market",
+        "in a dark forest", "on a camping trip", "at a talent show", "in a candy factory", "deep underground",
+        "on a hot-air balloon", "at the North Pole", "in a hotel lobby"
+    ]
+
+    /// What happens.
+    static let events = [
+        "loses a bet", "finds a door that wasn’t there yesterday", "has to bake a cake for a king",
+        "forgets something important", "is chased by bees", "wins a prize by mistake", "gets stuck",
+        "falls in love", "meets their double", "tries to keep a secret", "starts a band", "finds a treasure map",
+        "oversleeps on the big day", "learns to dance", "tries to catch a thief", "gets a strange letter",
+        "loses their shadow", "swaps places with a friend", "has one wish left", "runs for mayor",
+        "adopts a very large pet", "misses the last train", "cooks dinner for a crowd", "is late for everything",
+        "plants a magic seed", "can’t stop sneezing", "hears a strange noise", "builds a rocket",
+        "tells one lie too many", "gets hiccups before a speech", "wakes up famous", "finds a message in a bottle",
+        "breaks something precious", "turns invisible for a day", "gets hopelessly lost", "enters a contest",
+        "finds a baby dragon", "hides from the rain", "loses the keys", "throws a surprise party"
+    ]
+
+    /// The mood it is told in: “Make it …”.
+    static let moods = [
+        "funny", "spooky", "heroic", "gentle", "dramatic", "silly", "mysterious", "cozy", "sad but hopeful", "grand", "cheeky"
+    ]
 }
