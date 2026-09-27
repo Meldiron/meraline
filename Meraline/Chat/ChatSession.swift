@@ -28,7 +28,8 @@ final class ChatSession {
         var presentedFiles: [PresentedFile] = []
         var isComplete = false
         var startsOverOnNextText = false
-        /// In a game, what the model was asked when it moved on its own; nil for a move of yours.
+        /// In a game, what the model was asked when it moved on its own, or what told it that your move opens
+        /// a round; nil for any other move of yours.
         var cue: String?
         /// In a game, what this Mac drew to go with the move, such as a story's subject or the words a line
         /// may end on (see `GameDice`). The model reads it after the move; the transcript never shows it.
@@ -47,11 +48,9 @@ final class ChatSession {
                 + selections.reduce(0) { $0 + $1.text.utf8.count } + (cue?.utf8.count ?? 0) + (aside?.utf8.count ?? 0)
         }
 
-        /// What the model is sent for this turn: the cue, or the question after the text it is about, then the aside.
+        /// What the model is sent for this turn: the cue, the question after the text it is about, and the aside.
         var message: String {
-            let asked = cue ?? SelectedText.message(question, about: selections)
-            guard let aside, !aside.isEmpty else { return asked }
-            return asked.isEmpty ? aside : "\(asked)\n\n\(aside)"
+            [cue ?? "", SelectedText.message(question, about: selections), aside ?? ""].filter { !$0.isEmpty }.joined(separator: "\n\n")
         }
     }
 
@@ -170,7 +169,7 @@ final class ChatSession {
             return fileNotice == nil && (!draft.trimmed.isEmpty || !draftImages.isEmpty || !draftFiles.isEmpty || !draftSelections.isEmpty)
         }
         switch gameState.phase {
-        case .modelMoves, .over: return true
+        case .modelMoves, .opening, .over: return true
         case .yourMove: return !draft.trimmed.isEmpty
         case .waiting: return false
         }
@@ -300,57 +299,92 @@ final class ChatSession {
         stream(request, for: turn.id)
     }
 
-    /// What Return does in a game: asks the model for its move, starts the next round, or plays your line.
+    /// What Return does in a game: asks the model for its move, opens a round with your line or leaves it to
+    /// the other side when nothing is typed, or plays your line.
     private func play(_ game: Game) {
         switch game.rules.state(of: turns).phase {
         case .modelMoves(let cue):
             askModel(cue, in: game)
-        case .over(_, let rematch):
-            askModel(rematch.cue, in: game)
+        case .opening(let opening), .over(_, let opening):
+            let input = draft.trimmed
+            guard opening.takesYourMove, !input.isEmpty else {
+                open(game)
+                return
+            }
+            insistedInput = nil
+            make(game.rules.open(with: input, after: turns), from: input, in: game)
         case .waiting:
             break
         case .yourMove:
             let input = draft.trimmed
             let move = game.rules.play(input, in: turns, insisting: input == insistedInput)
             insistedInput = nil
-            switch move {
-            case .reject(let message):
-                Log.chat.info("\(game.title): your move came back")
-                nudge = message
-                insistedInput = input
-            case .ask(let line):
-                guard let provider = preferences.activeProvider else {
-                    fail(with: setupMessage(to: "play"), needsSettings: true)
-                    return
-                }
-                var turn = Turn(question: line, images: [])
-                turn.aside = game.rules.aside(for: turn, after: turns, dice: &dice)
-                let request = makeRequest(asking: turn.message, images: [], of: provider)
-                draft = ""
-                failure = nil
-                nudge = nil
-                turns.append(turn)
-                isStreaming = true
-                Log.chat.info("\(game.title): your move to \(provider.name) (\(modelName(for: provider))), turn \(turns.count)")
-                stream(request, for: turn.id)
-            case .record(let line, let outcome):
-                draft = ""
-                failure = nil
-                nudge = nil
-                turns.append(Turn(question: line, images: [], isComplete: true, outcome: outcome))
-                restartClock()
-                Log.chat.info("\(game.title): your move kept, turn \(turns.count)")
-                advance(game, asksModel: true)
-            case .settle(let outcome):
-                guard !turns.isEmpty else { return }
-                draft = ""
-                failure = nil
-                nudge = nil
-                turns[turns.count - 1].outcome = outcome
-                restartClock()
-                Log.chat.info("\(game.title): round settled, turn \(turns.count)")
-                advance(game, asksModel: true)
-            }
+            make(move, from: input, in: game)
+        }
+    }
+
+    /// Carries out a move you typed as `input`.
+    private func make(_ move: GameMove, from input: String, in game: Game) {
+        switch move {
+        case .reject(let message):
+            Log.chat.info("\(game.title): your move came back")
+            nudge = message
+            insistedInput = input
+        case .ask(let line):
+            ask(Turn(question: line, images: []), in: game)
+        case .open(let line, let cue):
+            ask(Turn(question: line, images: [], cue: cue), in: game)
+        case .record(let line, let outcome):
+            draft = ""
+            failure = nil
+            nudge = nil
+            turns.append(Turn(question: line, images: [], isComplete: true, outcome: outcome))
+            restartClock()
+            Log.chat.info("\(game.title): your move kept, turn \(turns.count)")
+            advance(game, asksModel: true)
+        case .settle(let outcome):
+            guard !turns.isEmpty else { return }
+            draft = ""
+            failure = nil
+            nudge = nil
+            turns[turns.count - 1].outcome = outcome
+            restartClock()
+            Log.chat.info("\(game.title): round settled, turn \(turns.count)")
+            advance(game, asksModel: true)
+        }
+    }
+
+    /// Sends your move to the model, which replies with its own.
+    private func ask(_ move: Turn, in game: Game) {
+        guard let provider = preferences.activeProvider else {
+            fail(with: setupMessage(to: "play"), needsSettings: true)
+            return
+        }
+        var turn = move
+        turn.aside = game.rules.aside(for: turn, after: turns, dice: &dice)
+        let request = makeRequest(asking: turn.message, images: [], of: provider)
+        draft = ""
+        failure = nil
+        nudge = nil
+        turns.append(turn)
+        isStreaming = true
+        Log.chat.info("\(game.title): your move to \(provider.name) (\(modelName(for: provider))), turn \(turns.count)")
+        stream(request, for: turn.id)
+    }
+
+    /// Leaves the round's opening to the other side: the model, asked with a cue, or this Mac, with a move it
+    /// drew and keeps as the model's. Anything typed stays in the input.
+    private func open(_ game: Game) {
+        switch game.rules.opener(after: turns, dice: &dice) {
+        case .ask(let cue):
+            askModel(cue, in: game)
+        case .drawn(let cue, let move):
+            failure = nil
+            nudge = nil
+            turns.append(Turn(question: "", images: [], answer: move, isComplete: true, cue: cue))
+            restartClock()
+            Log.chat.info("\(game.title): this Mac opened the round, turn \(turns.count)")
+            advance(game, asksModel: true)
         }
     }
 
@@ -564,8 +598,12 @@ final class ChatSession {
         startGame(game)
     }
 
-    /// Plays one of a game's buttons, such as a word to pick.
+    /// Plays one of a game's buttons, such as a word to pick, or the other side's opening.
     func choose(_ choice: String) {
+        if let game, !isStreaming, case .opening(let opening)? = gameState?.phase, choice == opening.button {
+            open(game)
+            return
+        }
         guard isYourMove else { return }
         draft = choice
         send()
@@ -590,13 +628,14 @@ final class ChatSession {
         return RematchOffer(game: lastGame, message: lastGame.title, versus: versus[lastGame] ?? Versus(), isAfterGame: true)
     }
 
-    /// Play Again in the rematch tray: the next round, like Return, or the last game started over.
+    /// Play Again in the rematch tray: the next round, opened by the other side as Return with nothing typed
+    /// opens it, or the last game started over.
     func playAgain() {
         guard let rematch else { return }
         if rematch.isAfterGame {
             startGame(rematch.game)
         } else {
-            send()
+            open(rematch.game)
         }
     }
 

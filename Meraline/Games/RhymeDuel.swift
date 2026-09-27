@@ -127,6 +127,11 @@ nonisolated enum RhymeDuel: GameRules {
         return index
     }()
 
+    /// The model opens every round, the first with `opening`.
+    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+        .ask(turns.isEmpty ? opening : rematchCue)
+    }
+
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let duel = turns.since(cues) else {
             return GameState(phase: .modelMoves(cue: opening), status: status(linesPlayed: 0))
@@ -135,7 +140,7 @@ nonisolated enum RhymeDuel: GameRules {
         let status = status(linesPlayed: played)
         if duel.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if played >= lineLimit {
-            return GameState(phase: .over(outcome: GameOutcome(text: done, youWon: nil), rematch: Rematch(cue: rematchCue, placeholder: "Press Return for a rematch…")), status: status)
+            return GameState(phase: .over(outcome: GameOutcome(text: done, youWon: nil), next: GameOpening(placeholder: "Press Return for a rematch…", button: "Play Again", takesYourMove: false)), status: status)
         }
         let previous = lastVerse(of: duel)
         let placeholder = previous.flatMap { rhymeWord(of: $0.line) }.map { "Rhyme with “\($0)”…" } ?? "Your line…"

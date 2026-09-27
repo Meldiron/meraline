@@ -105,6 +105,11 @@ nonisolated enum Categories: GameRules {
         "Fast food", "Things at a farmers market", "Things you find in a pocket", "Things in a barn"
     ]
 
+    /// The model opens every round, the first with `opening`.
+    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+        .ask(turns.isEmpty ? opening : nextCategory)
+    }
+
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let current = turns.since(cues) else { return GameState(phase: .modelMoves(cue: opening), status: title) }
         let round = review(current)
@@ -112,7 +117,7 @@ nonisolated enum Categories: GameRules {
         if current.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if let ending = round.ending {
             return GameState(
-                phase: .over(outcome: ending, rematch: Rematch(cue: nextCategory, placeholder: "Press Return for a new category…")),
+                phase: .over(outcome: ending, next: GameOpening(placeholder: "Press Return for a new category…", button: "Play Again", takesYourMove: false)),
                 status: status
             )
         }

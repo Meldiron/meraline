@@ -79,6 +79,11 @@ nonisolated enum AddAWord: GameRules {
         return sentence
     }
 
+    /// The model opens every round, the first with `opening`.
+    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+        .ask(turns.isEmpty ? opening : nextSentence)
+    }
+
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         let sentences = turns.rounds(cues)
         guard let current = sentences.last else {
@@ -90,12 +95,12 @@ nonisolated enum AddAWord: GameRules {
         let status = "Sentence \(number) · \(count) \(count == 1 ? "word" : "words")"
         if current.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if sentence.isFinished {
-            let rematch = Rematch(cue: nextSentence, placeholder: "Press Return for the next sentence…")
+            let next = GameOpening(placeholder: "Press Return for the next sentence…", button: "Play Again", takesYourMove: false)
             guard let score = sentence.score else {
-                return GameState(phase: .over(outcome: GameOutcome(text: "Sentence done. The story carries on in the next one.", youWon: nil), rematch: rematch), status: "Sentence \(number) done")
+                return GameState(phase: .over(outcome: GameOutcome(text: "Sentence done. The story carries on in the next one.", youWon: nil), next: next), status: "Sentence \(number) done")
             }
             return GameState(
-                phase: .over(outcome: GameOutcome(text: "Sentence done: \(score) out of 10 for sense. The story carries on in the next one.", youWon: nil), rematch: rematch),
+                phase: .over(outcome: GameOutcome(text: "Sentence done: \(score) out of 10 for sense. The story carries on in the next one.", youWon: nil), next: next),
                 status: "Sentence \(number) · \(score)/10"
             )
         }

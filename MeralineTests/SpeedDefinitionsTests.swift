@@ -109,12 +109,12 @@ struct SpeedDefinitionsTests {
         await Support.play("everywhere at once", in: session)
 
         #expect(session.nudge == "Game done: 28 of 50 points, and 3 of 5 definitions landed.")
-        guard case .over(let outcome, let rematch)? = session.gameState?.phase else {
+        guard case .over(let outcome, _)? = session.gameState?.phase else {
             Issue.record("five words should end the game")
             return
         }
         #expect(outcome.youWon == true)
-        #expect(rematch.cue == SpeedDefinitions.newGame)
+        #expect(SpeedDefinitions.opener(after: session.turns, dice: &session.dice) == .ask(SpeedDefinitions.newGame))
         #expect(session.conversationMarkdown?.hasPrefix("serendipity: finding something good without looking for it\nYou: a happy accident (8/10 · nails the luck part)") == true)
     }
 

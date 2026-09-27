@@ -171,6 +171,11 @@ nonisolated enum LetterAuction: GameRules {
         return auction
     }
 
+    /// The model opens every round, the first with `opening`.
+    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+        .ask(turns.isEmpty ? opening : newDeal)
+    }
+
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let current = turns.since(cues) else { return GameState(phase: .modelMoves(cue: opening), status: title) }
         let auction = review(current)
@@ -179,7 +184,7 @@ nonisolated enum LetterAuction: GameRules {
             : "\(auction.left.count) \(auction.left.count == 1 ? "letter" : "letters") left · You \(auction.you), Banker \(auction.banker)"
         if current.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if let ending = auction.ending {
-            return GameState(phase: .over(outcome: ending, rematch: Rematch(cue: newDeal, placeholder: "Press Return for a new deal…")), status: status)
+            return GameState(phase: .over(outcome: ending, next: GameOpening(placeholder: "Press Return for a new deal…", button: "Play Again", takesYourMove: false)), status: status)
         }
         return GameState(phase: .yourMove(placeholder: "A word from the pool…", hints: hints(for: auction)), status: status)
     }

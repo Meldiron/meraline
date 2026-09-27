@@ -56,6 +56,11 @@ nonisolated enum FixTheTypo: GameRules {
         "\(puzzle.sentence) | \(puzzle.typo) → \(puzzle.fix)"
     }
 
+    /// The model opens every round, the first with `opening`.
+    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+        .ask(turns.isEmpty ? opening : newGame)
+    }
+
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let game = turns.since(gameCues), let last = game.last else {
             return GameState(phase: .modelMoves(cue: opening), status: title)
@@ -68,7 +73,7 @@ nonisolated enum FixTheTypo: GameRules {
             return GameState(
                 phase: .over(
                     outcome: GameOutcome(text: "Game done: \(fixed) of \(roundLimit) fixed.", youWon: fixed * 2 > roundLimit),
-                    rematch: Rematch(cue: newGame, placeholder: "Press Return for a new game…")
+                    next: GameOpening(placeholder: "Press Return for a new game…", button: "Play Again", takesYourMove: false)
                 ),
                 status: "Game done · \(fixed) of \(roundLimit) fixed"
             )

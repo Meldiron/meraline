@@ -104,6 +104,11 @@ nonisolated enum WordFootball: GameRules {
         "a shape", "something that makes a noise"
     ]
 
+    /// The model opens every round, the first with `opening`.
+    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+        .ask(turns.isEmpty ? opening : rematchCue)
+    }
+
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let current = turns.since(cues) else { return GameState(phase: .modelMoves(cue: opening), status: title) }
         let match = review(current)
@@ -111,7 +116,7 @@ nonisolated enum WordFootball: GameRules {
         if current.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if let ending = match.ending {
             return GameState(
-                phase: .over(outcome: ending, rematch: Rematch(cue: rematchCue, placeholder: "Press Return for a new match…")),
+                phase: .over(outcome: ending, next: GameOpening(placeholder: "Press Return for a new match…", button: "Play Again", takesYourMove: false)),
                 status: status
             )
         }

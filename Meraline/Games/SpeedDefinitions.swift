@@ -230,6 +230,11 @@ nonisolated enum SpeedDefinitions: GameRules {
         "Word \(number) of \(roundLimit) · \(points) \(points == 1 ? "point" : "points")"
     }
 
+    /// The model opens every round, the first with `opening`.
+    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+        .ask(turns.isEmpty ? opening : newGame)
+    }
+
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let game = turns.since(gameCues), let last = game.last else {
             return GameState(phase: .modelMoves(cue: opening), status: title)
@@ -249,7 +254,7 @@ nonisolated enum SpeedDefinitions: GameRules {
                 youWon: landed * 2 > roundLimit
             )
             return GameState(
-                phase: .over(outcome: outcome, rematch: Rematch(cue: newGame, placeholder: "Press Return for a new game…")),
+                phase: .over(outcome: outcome, next: GameOpening(placeholder: "Press Return for a new game…", button: "Play Again", takesYourMove: false)),
                 status: "Game done · \(points) of \(roundLimit * 10)"
             )
         }

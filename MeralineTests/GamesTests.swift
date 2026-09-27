@@ -138,6 +138,14 @@ struct GameRulesTests {
         #expect(WordFootball.kinds.contains { answer == "For your own word, try \($0) if one fits." })
     }
 
+    @Test func aTurnSendsItsCueQuestionAndAsideInThatOrder() {
+        var opening = ChatSession.Turn(question: "Once a cat", images: [], cue: "The user opens the round.")
+        opening.aside = "End on a rhyme."
+        #expect(opening.message == "The user opens the round.\n\nOnce a cat\n\nEnd on a rhyme.")
+        #expect(ChatSession.Turn(question: "", images: [], cue: "Open the round.").message == "Open the round.")
+        #expect(ChatSession.Turn(question: "apple", images: []).message == "apple")
+    }
+
     @Test func wordFootballChecksTheChainBeforeAsking() {
         let turns = [Support.turn(cue: WordFootball.opening, reply: "banana")]
         #expect(WordFootball.play("egg", in: turns, insisting: false) == .reject("“egg” starts with “E”. You need a word starting with “A”."))
@@ -300,12 +308,13 @@ struct GamePlayTests {
                 turns.append(Support.turn("pear, plum, piano", reply: "piano: not a fruit", outcome: GameOutcome(text: "Got it", youWon: false)))
             }
         }
-        guard case .over(let outcome, let rematch) = OddOneOut.state(of: turns).phase else {
+        guard case .over(let outcome, _) = OddOneOut.state(of: turns).phase else {
             Issue.record("six rounds should end the game")
             return
         }
         #expect(outcome == GameOutcome(text: "Game done: a draw, 3 all.", youWon: nil))
-        #expect(rematch.cue == OddOneOut.newGame)
+        var dice = GameDice(seed: 1)
+        #expect(OddOneOut.opener(after: turns, dice: &dice) == .ask(OddOneOut.newGame))
     }
 
     @Test func fixTheTypoJudgesYourFixOnThisMac() async {

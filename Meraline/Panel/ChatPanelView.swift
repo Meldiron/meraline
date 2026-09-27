@@ -43,7 +43,8 @@ struct ChatPanelView: View {
     @State private var actionPanelSpan: ActionPanelSpan?
     @State private var roomAbove: CGFloat = 0
 
-    private var hasConversation: Bool { !session.turns.isEmpty }
+    /// A game shows its transcript and footer from the start, with the button that lets the other side open.
+    private var hasConversation: Bool { !session.turns.isEmpty || session.isPlaying }
     private var context: PanelContext {
         PanelContext(session: session, preferences: preferences, layout: layout, openSettings: openSettings, insertion: inserter?.insertion)
     }
@@ -269,7 +270,7 @@ struct ChatPanelView: View {
         case .yourMove(let placeholder, _, _): return placeholder
         case .waiting: return "The model is thinking…"
         case .modelMoves: return "Press Return for the model’s move…"
-        case .over(_, let rematch): return rematch.placeholder
+        case .opening(let opening), .over(_, let opening): return opening.placeholder
         }
     }
 
@@ -313,7 +314,7 @@ struct ChatPanelView: View {
                 if let game = session.game {
                     GameTranscript(
                         lines: game.rules.lines(for: session.turns),
-                        choices: session.isYourMove ? session.gameState?.choices ?? [] : [],
+                        choices: session.isStreaming ? [] : session.gameState?.choices ?? [],
                         activity: session.isStreaming ? .some(session.turns.last?.activity) : nil,
                         prompt: session.isStreaming ? session.turns.last?.pendingPrompt : nil,
                         agent: agentName,
@@ -355,7 +356,7 @@ struct ChatPanelView: View {
             if let game = session.game, let state = session.gameState {
                 Label(state.status, systemImage: game.symbol)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(session.isYourMove ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(session.isYourMove || state.isOpening ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
                     .lineLimit(1)
             } else if let provider = preferences.activeProvider {
                 Label(preferences[provider].model.isEmpty ? provider.name : preferences[provider].model, systemImage: provider.symbol)

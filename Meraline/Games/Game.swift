@@ -55,6 +55,12 @@ nonisolated protocol GameRules {
     /// What a line typed on your move does. `insisting` is true when the same line came back last time
     /// and was sent again unchanged.
     static func play(_ input: String, in turns: [ChatSession.Turn], insisting: Bool) -> GameMove
+    /// What a line typed to open a round does, when the round waits to be opened (`.opening`, or `.over` for
+    /// the next one): usually `.open`, with the cue that tells the model you opened it.
+    static func open(with input: String, after turns: [ChatSession.Turn]) -> GameMove
+    /// How the other side opens a round when you leave it to them: the model, asked with a cue, or this Mac,
+    /// with a move it drew and keeps as the model's.
+    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener
     /// What to make of the model's complete reply to the last turn.
     static func judge(_ reply: String, in turns: [ChatSession.Turn]) -> GameReply
     /// What this Mac draws to go with a move before it goes to the model, such as a story's subject or the
@@ -72,6 +78,7 @@ nonisolated protocol GameRules {
 
 nonisolated extension GameRules {
     static func headline(of turns: [ChatSession.Turn]) -> String? { nil }
+    static func open(with input: String, after turns: [ChatSession.Turn]) -> GameMove { .reject("Press Return to start.") }
     static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String? { nil }
 }
 
@@ -84,8 +91,11 @@ nonisolated struct GameState: Equatable, Sendable {
         case waiting
         /// Your move. `choices` show as buttons that play themselves; Hint shows one of `hints` at a time.
         case yourMove(placeholder: String, choices: [String] = [], hints: [String] = [])
-        /// The round is over, with who won it, and Return or Play Again starts the next one.
-        case over(outcome: GameOutcome, rematch: Rematch)
+        /// Nobody has opened the round yet: you, with what you type, or the other side (see `GameOpening`).
+        case opening(GameOpening)
+        /// The round is over, with who won it. The next one opens as `next` says; Play Again leaves it to the
+        /// other side.
+        case over(outcome: GameOutcome, next: GameOpening)
     }
 
     var phase: Phase
@@ -96,8 +106,18 @@ nonisolated struct GameState: Equatable, Sendable {
         if case .yourMove = phase { true } else { false }
     }
 
+    /// Whether the round waits for someone to open it.
+    var isOpening: Bool {
+        if case .opening = phase { true } else { false }
+    }
+
+    /// The buttons under the transcript: your move's choices, or the other side's opening.
     var choices: [String] {
-        if case .yourMove(_, let choices, _) = phase { choices } else { [] }
+        switch phase {
+        case .yourMove(_, let choices, _): choices
+        case .opening(let opening): [opening.button]
+        default: []
+        }
     }
 
     var hints: [String] {
@@ -105,10 +125,22 @@ nonisolated struct GameState: Equatable, Sendable {
     }
 }
 
-nonisolated struct Rematch: Equatable, Sendable {
-    /// What the model is asked to start the next round.
-    let cue: String
+/// How a round opens: with what you type, when `takesYourMove`, or from the other side, when Return finds
+/// nothing typed or `button` is pressed (`GameRules.opener(after:dice:)`).
+nonisolated struct GameOpening: Equatable, Sendable {
+    /// The input's placeholder, which says both ways.
     let placeholder: String
+    /// The other side's opening, such as “Model Starts” or “Random Word”.
+    let button: String
+    var takesYourMove = true
+}
+
+/// The other side's opening of a round.
+nonisolated enum GameOpener: Equatable, Sendable {
+    /// The model opens, asked with this cue.
+    case ask(String)
+    /// This Mac opens with `move`, a word or line it drew, kept as the model's reply to `cue` without asking it.
+    case drawn(cue: String, move: String)
 }
 
 nonisolated enum GameMove: Equatable, Sendable {
@@ -116,6 +148,8 @@ nonisolated enum GameMove: Equatable, Sendable {
     case reject(String)
     /// The line goes to the model, which replies with its move.
     case ask(String)
+    /// The line opens a round and goes to the model with `cue`, which marks where the round starts.
+    case open(String, cue: String)
     /// The line becomes a finished turn, and nothing is sent: a last word, or giving up.
     case record(String, outcome: GameOutcome?)
     /// The line settles the round on this Mac: the last turn gets the outcome, and nothing is sent.

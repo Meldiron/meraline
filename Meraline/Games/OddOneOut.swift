@@ -163,6 +163,11 @@ nonisolated enum OddOneOut: GameRules {
         "where you find them", "how they move", "when you use them"
     ]
 
+    /// The model opens every round, the first with `opening`.
+    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+        .ask(turns.isEmpty ? opening : newGame)
+    }
+
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let game = turns.since(gameCues), let last = game.last else {
             return GameState(phase: .modelMoves(cue: opening), status: title)
@@ -189,7 +194,7 @@ nonisolated enum OddOneOut: GameRules {
                 outcome = GameOutcome(text: "Game done: a draw, \(score.you) all.", youWon: nil)
             }
             return GameState(
-                phase: .over(outcome: outcome, rematch: Rematch(cue: newGame, placeholder: "Press Return for a new game…")),
+                phase: .over(outcome: outcome, next: GameOpening(placeholder: "Press Return for a new game…", button: "Play Again", takesYourMove: false)),
                 status: "Game done · \(tally)"
             )
         }
