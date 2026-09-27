@@ -39,6 +39,17 @@ struct ChatLifetimeTests {
         #expect(session.expiresAt == nil)
     }
 
+    @Test func aGameStartsItsTimeWithItsFirstMove() async throws {
+        let session = GameTestSupport.session(ScriptedModel(["OK: salmon"]))
+        session.startGame(.wordFootball)
+        #expect(session.expiresAt == nil, "nothing to lose before anyone moves")
+        session.expireChats(now: .now.addingTimeInterval(ChatSession.chatLifetime * 2))
+        #expect(session.game == .wordFootball, "a game nobody has moved in doesn't run out")
+        await GameTestSupport.play("apple", in: session)
+        let expiresAt = try #require(session.expiresAt)
+        #expect(abs(expiresAt.timeIntervalSinceNow - ChatSession.chatLifetime) < 5)
+    }
+
     @Test func theOpenChatGoesWithItsWorkspaceWhenItsTimeRunsOut() async throws {
         let session = agentSession(ScriptedModel(["Hello"]))
         await GameTestSupport.play("Hi", in: session)

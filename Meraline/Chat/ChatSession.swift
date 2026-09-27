@@ -182,9 +182,10 @@ final class ChatSession {
 
     var isPlaying: Bool { game != nil }
 
-    /// When the open chat goes, workspace and all, for the timer under the card. Nil while there is no chat.
+    /// When the open chat goes, workspace and all, for the timer under the card. Nil while there is no chat, and
+    /// while a game waits for its first move, which starts its time.
     var expiresAt: Date? {
-        turns.isEmpty && !isPlaying ? nil : deadline
+        (turns.isEmpty && !isPlaying) || deadline == .distantFuture ? nil : deadline
     }
 
     /// Where the game stands, worked out from the turns by its rules.
