@@ -35,6 +35,8 @@ struct PresentedFileTests {
         #expect(throws: PresentedFile.Problem.missing("nope.pdf")) { try PresentedFile.resolve("nope.pdf", in: workspace) }
         #expect(throws: PresentedFile.Problem.outside("escape")) { try PresentedFile.resolve("escape", in: workspace) }
         #expect(throws: PresentedFile.Problem.outside("escape/.zshrc")) { try PresentedFile.resolve("escape/.zshrc", in: workspace) }
+        // A file that isn't there behind the link is still outside, not missing.
+        #expect(throws: PresentedFile.Problem.outside("escape/not-here/notes.md")) { try PresentedFile.resolve("escape/not-here/notes.md", in: workspace) }
         #expect(throws: PresentedFile.Problem.outside("../other")) { try PresentedFile.resolve("../other", in: workspace) }
         #expect(throws: PresentedFile.Problem.outside("/etc/hosts")) { try PresentedFile.resolve("/etc/hosts", in: workspace) }
         #expect(throws: PresentedFile.Problem.workspace) { try PresentedFile.resolve(".", in: workspace) }

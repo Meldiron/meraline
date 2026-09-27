@@ -43,13 +43,24 @@ nonisolated struct PresentedFile: Identifiable, Equatable, Sendable {
         guard !given.isEmpty else { throw .missing(path) }
         let root = workspace.standardizedFileURL.resolvingSymlinksInPath().path
         let candidate = given.hasPrefix("/") ? URL(fileURLWithPath: given) : workspace.appending(path: given)
-        let url = candidate.standardizedFileURL.resolvingSymlinksInPath()
+        let url = resolved(candidate)
         if url.path == root { throw .workspace }
         guard url.path.hasPrefix(root + "/") else { throw .outside(path) }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { throw .missing(path) }
         let isPackage = (try? url.resourceValues(forKeys: [.isPackageKey]))?.isPackage == true
         return PresentedFile(url: url, path: String(url.path.dropFirst(root.count + 1)), isFolder: isDirectory.boolValue && !isPackage)
+    }
+
+    /// `url` with every symlink in it followed, even when its last parts don't exist: `resolvingSymlinksInPath()`
+    /// leaves a path that doesn't exist as it is, so a missing file behind a link out of the workspace would seem
+    /// to be inside it. The part that exists is resolved, and the rest goes on the end.
+    private static func resolved(_ url: URL) -> URL {
+        let standardized = url.standardizedFileURL
+        guard standardized.path != "/", !FileManager.default.fileExists(atPath: standardized.path) else {
+            return standardized.resolvingSymlinksInPath()
+        }
+        return resolved(standardized.deletingLastPathComponent()).appending(path: standardized.lastPathComponent)
     }
 
     /// The files `paths` name inside `workspace`, each once, and what is wrong with the others. Meraline's MCP
