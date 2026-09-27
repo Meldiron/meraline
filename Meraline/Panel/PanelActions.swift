@@ -258,6 +258,12 @@ struct PanelContext {
                 layout.copyNotice += 1
             })
         }
+        if !session.isStreaming, let answer = session.lastAnswer {
+            let question = session.turns.last { !$0.answer.isEmpty }?.question ?? ""
+            copy.append(PanelAction(id: "tearOff", title: "Tear Off Answer", icon: .symbol("macwindow.on.rectangle"), shortcut: .command("t"), keywords: ["note", "float", "keep", "pin"]) {
+                AnswerNotes.shared.open(answer: answer, question: question)
+            })
+        }
         var answer: [PanelAction] = []
         if session.canAskAgain {
             answer.append(PanelAction(id: "askAgain", title: "Ask Again", icon: .symbol("arrow.clockwise"), shortcut: .command("r")) {

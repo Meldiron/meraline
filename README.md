@@ -44,7 +44,7 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
 
 ✂️ **Knows what you selected.** Select text in any app and press <kbd>⌥</kbd> <kbd>Space</kbd>, then click the text cursor above the window: the text comes along as context, so "summarize this" or "what does this mean?" is all you type. It never joins a question until you add it, and texts from several apps can go together. Select files or folders in Finder instead and they're attached: photos for any model, anything for an agent. It needs Accessibility access, which Meraline asks for. **Services › Ask Meraline** works without it.
 
-✍️ **Puts the answer to work.** **Actions** (<kbd>⌘</kbd> <kbd>K</kbd>) under an answer make it shorter, longer, simpler, more concrete, or a bullet list, in place, so the next rewrite or follow-up builds on what you see. <kbd>⌘</kbd> <kbd>↩</kbd> closes the window and pastes the answer at the cursor of the app you were in: select a paragraph, ask for it friendlier, press <kbd>⌘</kbd> <kbd>↩</kbd>, and the new text replaces the old.
+✍️ **Puts the answer to work.** **Actions** (<kbd>⌘</kbd> <kbd>K</kbd>) under an answer make it shorter, longer, simpler, more concrete, or a bullet list, in place, so the next rewrite or follow-up builds on what you see. <kbd>⌘</kbd> <kbd>↩</kbd> closes the window and pastes the answer at the cursor of the app you were in: select a paragraph, ask for it friendlier, press <kbd>⌘</kbd> <kbd>↩</kbd>, and the new text replaces the old. <kbd>⌘</kbd> <kbd>T</kbd> tears the answer off into a small floating note that stays on screen while you follow it in another app.
 
 🖼️ **Understands images and files.** Paste a screenshot or drop an image into the window and ask about it, or use the two buttons above the window: one adds whatever you copied, the other a screenshot of your screen without Meraline in it. Agents take PDFs, spreadsheets, and any other file too, and whole folders: drop a project and ask about it, and the agent works on a copy of it, never on your own.
 
@@ -159,6 +159,7 @@ That's it. Press <kbd>⌥</kbd> <kbd>Space</kbd> whenever you have a question.
 | <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>C</kbd> | Copy the last answer |
 | <kbd>⌘</kbd> <kbd>↩</kbd> | Close the window and paste the last answer into the app you were in |
 | <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>C</kbd> | Copy the whole conversation as Markdown |
+| <kbd>⌘</kbd> <kbd>T</kbd> | Tear the last answer off into a floating note |
 | <kbd>⌘</kbd> <kbd>R</kbd> | Ask the last question again; in a finished game, play again |
 | <kbd>⌘</kbd> <kbd>I</kbd> | Show a hint in a game |
 | <kbd>⌘</kbd> <kbd>1</kbd> or <kbd>⌘</kbd> <kbd>2</kbd> | Ask an LLM or an agent |

@@ -139,6 +139,7 @@ final class PanelController: NSObject {
         panel.onClose = { [weak self] in self?.close() }
         observeScreenSharingPreference()
         inserter.closeWindow = { [weak self] in self?.close() }
+        AnswerNotes.shared.configure(preferences: preferences) { [weak self] in self?.cardFrame }
 
         let view = ChatPanelView(
             session: session,
@@ -183,6 +184,15 @@ final class PanelController: NSObject {
     }
 
     var isVisible: Bool { panel.isVisible }
+
+    /// The card on the screen while the window is up, for a torn-off answer to open beside.
+    private var cardFrame: NSRect? {
+        guard panel.isVisible else { return nil }
+        let frame = panel.frame
+        let top = frame.maxY - roomAbove - Self.margin - ContextButtons.roomAbove
+        let bottom = frame.minY + Self.margin
+        return NSRect(x: frame.minX + Self.margin, y: bottom, width: Self.width, height: max(0, top - bottom))
+    }
 
     func toggle() {
         isVisible ? close() : show()

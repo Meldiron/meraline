@@ -57,7 +57,7 @@ struct PanelActionsTests {
         #expect(menu?.title == "Capital of France?")
         #expect(menu?.marksPrimary == true)
         #expect(menu?.primary?.id == "copyAnswer")
-        #expect(ids(menu) == ["copyAnswer", "copyConversation", "askAgain"] + Rewrite.allCases.map { "rewrite.\($0.rawValue)" } + ["newChat", "deleteChat"])
+        #expect(ids(menu) == ["copyAnswer", "copyConversation", "tearOff", "askAgain"] + Rewrite.allCases.map { "rewrite.\($0.rawValue)" } + ["newChat", "deleteChat"])
         #expect(menu?.actions.last?.confirmation != nil)
         #expect(menu?.actions.last?.isDestructive == true)
     }
@@ -70,6 +70,13 @@ struct PanelActionsTests {
         #expect(rows.map(\.title) == ["Copy Code Block 1", "Copy Code Block 2"])
         #expect(rows.map(\.subtitle) == ["sh · ls -la", "pwd"])
         #expect(menu?.filtered(by: "snippet").flatMap(\.actions).map(\.id) == ["copyCode.0", "copyCode.1"])
+    }
+
+    @Test func tearOffIsCommandT() async throws {
+        let session = Support.session(ScriptedModel(["Step one, then step two."]))
+        await Support.play("How?", in: session)
+        let tearOff = try #require(context(session).action(forKeyCode: UInt16(kVK_ANSI_T), characters: "t", modifiers: .command))
+        #expect(tearOff.id == "tearOff")
     }
 
     @Test func whileAnsweringStopComesFirst() {
