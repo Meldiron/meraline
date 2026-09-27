@@ -3,7 +3,7 @@ import Carbon.HIToolbox
 import Observation
 import SwiftUI
 
-final class FloatingPanel: NSPanel {
+final class FloatingPanel: EditingPanel {
     var onEscape: (() -> Void)?
     var onClose: (() -> Void)?
 

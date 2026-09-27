@@ -250,7 +250,7 @@ private final class AnswerNoteWindow: NSObject, NSWindowDelegate {
     }
 }
 
-private final class NotePanel: NSPanel {
+private final class NotePanel: EditingPanel {
     var onClose: (() -> Void)?
 
     override var canBecomeKey: Bool { true }

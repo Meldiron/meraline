@@ -12,7 +12,7 @@ final class SettingsWindowController: NSWindowController {
         )
         hostingController.sceneBridgingOptions = [.toolbars]
 
-        let window = NSWindow(contentViewController: hostingController)
+        let window = EditingWindow(contentViewController: hostingController)
         window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
         window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .automatic
