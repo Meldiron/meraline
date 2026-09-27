@@ -8,7 +8,8 @@ import Foundation
 ///
 /// Each duel's story and the words each of the model's lines may end on are drawn on this Mac: a model left to
 /// choose opens every duel alike and ends on the same few words. The words come from `families`, one rhyming
-/// sound at a time, never one a line of the duel has ended on.
+/// sound at a time, never one a line of the duel has ended on. They are English, so a duel in another language
+/// draws only its story, and its rhymes are the model's.
 ///
 /// A few words that rhyme with the model's ending travel after a bar in its reply ("The cat sat waiting by
 /// the door | floor, more, four"), hidden. Hint shows one of them or of the ending's family, and a line that
@@ -70,10 +71,11 @@ nonisolated enum RhymeDuel: GameRules {
     /// the model's next may end on. The words share a sound that no line of the duel has ended on yet, nor of the
     /// chat's earlier duels while there are sounds left. In a duel you opened, the model's line answers yours,
     /// so the words rhyme with your line instead.
-    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String? {
+    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> String? {
         let opens = turn.cue.map(cues.contains) == true
         let duel = opens ? [turn] : (turns.since(cues) ?? []) + [turn]
-        if youSetRhymes(in: duel) { return rhyming(with: turn.question, dice: &dice) }
+        if youSetRhymes(in: duel) { return rhyming(with: turn.question, in: language, dice: &dice) }
+        guard language == .english else { return opens ? "This duel’s story: \(premise(dice: &dice))." : nil }
         let ending = rhymeWord(of: turn.question).map { [$0] } ?? []
         let inDuel = families(heardIn: duel.dropLast().flatMap(endings(of:)) + ending)
         let inChat = families(heardIn: turns.flatMap(endings(of:)) + ending)
@@ -82,7 +84,7 @@ nonisolated enum RhymeDuel: GameRules {
             return nil
         }
         let words = dice.deal(offered, from: families[family])
-        let end = "End your line on one of these words: \(words.joined(separator: ", "))."
+        let end = "\(offering)\(words.joined(separator: ", "))."
         guard opens else { return end }
         return "This duel’s story: \(premise(dice: &dice)). \(end)"
     }
@@ -90,13 +92,16 @@ nonisolated enum RhymeDuel: GameRules {
     /// How many words of a family the model is offered for a line.
     static let offered = 3
 
-    /// The words the model's line may end on to answer your line: others of its ending's family.
-    private static func rhyming(with line: String, dice: inout GameDice) -> String? {
+    /// How an aside offers the words a line may end on.
+    private static let offering = "End your line on one of these words: "
+
+    /// The words the model's line may end on to answer your line: others of its ending's family, in English.
+    private static func rhyming(with line: String, in language: AnswerLanguage, dice: inout GameDice) -> String? {
         guard let word = rhymeWord(of: line) else { return nil }
         let key = GameText.key(word)
-        guard let family = family(of: word) else { return "End your line on a word that rhymes with “\(word)”." }
+        guard language == .english, let family = family(of: word) else { return "End your line on a word that rhymes with “\(word)”." }
         let words = dice.deal(offered, from: family.filter { $0 != key })
-        return "End your line on one of these words: \(words.joined(separator: ", "))."
+        return "\(offering)\(words.joined(separator: ", "))."
     }
 
     /// Whether you opened the duel, and so set each rhyme while the model answers it.
@@ -151,7 +156,7 @@ nonisolated enum RhymeDuel: GameRules {
     }()
 
     /// The model opens a duel you leave to it, the first with `opening`.
-    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+    static func opener(after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> GameOpener {
         .ask(turns.isEmpty ? opening : rematchCue)
     }
 
@@ -232,14 +237,18 @@ nonisolated enum RhymeDuel: GameRules {
         duel.reduce(0) { count, turn in count + (turn.question.isEmpty ? 0 : 1) + (turn.reply == nil ? 0 : 1) }
     }
 
-    /// The model's last line, which your next one has to rhyme with.
+    /// The model's last line, which your next one has to rhyme with, with the words known to rhyme with it: those
+    /// it hid after the bar, and the rest of its ending's family when the line ended on one of them as offered.
     private static func lastVerse(of duel: [ChatSession.Turn]) -> Verse? {
-        duel.last { $0.reply != nil }?.reply.map(verse(from:))
+        guard let turn = duel.last(where: { $0.reply != nil }), let reply = turn.reply else { return nil }
+        let verse = verse(from: reply)
+        guard turn.aside?.contains(offering) == true else { return verse }
+        return Verse(line: verse.line, rhymes: rhymes(for: verse))
     }
 
     /// What Hint shows for a line of the model's, one at a time.
     static func hints(for verse: Verse) -> [String] {
-        rhymes(for: verse).map { "Try ending your line on “\($0)”." }
+        verse.rhymes.map { "Try ending your line on “\($0)”." }
     }
 
     /// The words known to rhyme with a line of the model's: those it hid after the bar, then the rest of its
@@ -295,8 +304,8 @@ nonisolated enum RhymeDuel: GameRules {
     }
 
     /// Why a line cannot go to the model yet, or nil when it can. A line after one with no word to rhyme
-    /// with always can; the first line of a duel is never checked. A word the model gave as a rhyme, or of
-    /// the ending's family, counts as one, and so does a word that rhymes with one of those: "pour" answers
+    /// with always can; the first line of a duel is never checked. A word known to rhyme with the line (see
+    /// `lastVerse(of:)`) counts as one, and so does a word that rhymes with one of those: "pour" answers
     /// "door" by way of "four".
     static func complaint(about line: String, after previous: Verse) -> String? {
         guard let target = rhymeWord(of: previous.line) else { return nil }
@@ -306,7 +315,7 @@ nonisolated enum RhymeDuel: GameRules {
         if word.lowercased() == target.lowercased() {
             return "“\(target)” again? Find another rhyme for it, or send the line again as it is."
         }
-        guard rhymes(word, with: target) || rhymes(for: previous).contains(where: { GameText.key($0) == GameText.key(word) || rhymes(word, with: $0) }) else {
+        guard rhymes(word, with: target) || previous.rhymes.contains(where: { GameText.key($0) == GameText.key(word) || rhymes(word, with: $0) }) else {
             return "“\(word)” doesn’t rhyme with “\(target)”, not to my ear. Try another ending, or send the line again as it is."
         }
         return nil
@@ -321,11 +330,11 @@ nonisolated enum RhymeDuel: GameRules {
     }
 
     /// Whether two words rhyme, by ear rather than by dictionary: the same rough ending sound, or the
-    /// same last letters. Lenient on purpose; a game should let "heart" answer "art". The same word
-    /// twice never counts.
+    /// same last letters, accents aside ("rád" and "hrad"). Lenient on purpose; a game should let "heart"
+    /// answer "art". The same word twice never counts.
     static func rhymes(_ word: String, with other: String) -> Bool {
-        let a = word.lowercased().filter(\.isLetter)
-        let b = other.lowercased().filter(\.isLetter)
+        let a = GameText.folded(word.lowercased()).filter(\.isLetter)
+        let b = GameText.folded(other.lowercased()).filter(\.isLetter)
         guard !a.isEmpty, !b.isEmpty, a != b else { return false }
         return rhymes(a, rhymeKey(of: a), with: b, rhymeKey(of: b))
     }

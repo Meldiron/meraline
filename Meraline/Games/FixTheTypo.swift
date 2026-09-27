@@ -80,7 +80,7 @@ nonisolated enum FixTheTypo: GameRules {
     }
 
     /// Left to the model, it writes the game's sentences.
-    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+    static func opener(after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> GameOpener {
         .ask(turns.isEmpty ? opening : newGame)
     }
 

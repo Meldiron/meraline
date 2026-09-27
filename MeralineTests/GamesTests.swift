@@ -88,16 +88,16 @@ struct GameRulesTests {
         #expect(Set(Categories.categories.map(GameText.key)).count == Categories.categories.count, "no category twice")
         var dice = GameDice(seed: 5)
         var first = Support.turn(cue: Categories.randomCategory)
-        first.aside = try #require(Categories.aside(for: first, after: [], dice: &dice))
+        first.aside = try #require(Categories.aside(for: first, after: [], in: .english, dice: &dice))
         let category = try #require(Categories.category(of: first))
         #expect(Categories.categories.contains(category))
         #expect(first.aside == "This round’s category: “\(category)”.")
-        #expect(Categories.aside(for: Support.turn("spoon"), after: [first], dice: &dice) == nil, "only a new round draws")
+        #expect(Categories.aside(for: Support.turn("spoon"), after: [first], in: .english, dice: &dice) == nil, "only a new round draws")
 
         let played = Categories.categories.dropLast().map { category in
             [Support.turn(category, cue: Categories.yourCategory, reply: "OK: one"), Support.turn("pass", outcome: GameOutcome(text: "Passed", youWon: false))]
         }.joined()
-        let next = try #require(Categories.aside(for: Support.turn(cue: Categories.randomCategory), after: Array(played), dice: &dice))
+        let next = try #require(Categories.aside(for: Support.turn(cue: Categories.randomCategory), after: Array(played), in: .english, dice: &dice))
         #expect(next == "This round’s category: “\(try #require(Categories.categories.last))”.", "the one left unplayed")
     }
 
@@ -105,11 +105,11 @@ struct GameRulesTests {
         #expect(Set(OddOneOut.themes).count == OddOneOut.themes.count, "no theme twice")
         var dice = GameDice(seed: 9)
         for cue in [OddOneOut.opening, OddOneOut.nextPuzzle, OddOneOut.newGame] {
-            let aside = try #require(OddOneOut.aside(for: Support.turn(cue: cue), after: [], dice: &dice))
+            let aside = try #require(OddOneOut.aside(for: Support.turn(cue: cue), after: [], in: .english, dice: &dice))
             #expect(OddOneOut.themes.contains { aside.hasPrefix("This puzzle’s theme: \($0). ") })
             #expect(OddOneOut.links.contains { aside.hasSuffix(" Link the two that belong by \($0).") })
         }
-        #expect(OddOneOut.aside(for: Support.turn("pear, plum, piano"), after: [], dice: &dice) == nil, "the model picks yours without a draw")
+        #expect(OddOneOut.aside(for: Support.turn("pear, plum, piano"), after: [], in: .english, dice: &dice) == nil, "the model picks yours without a draw")
 
         var turns: [ChatSession.Turn] = []
         for theme in OddOneOut.themes.dropLast() {
@@ -118,7 +118,7 @@ struct GameRulesTests {
             turns.append(turn)
         }
         let last = try #require(OddOneOut.themes.last)
-        let aside = try #require(OddOneOut.aside(for: Support.turn(cue: OddOneOut.nextPuzzle), after: turns, dice: &dice))
+        let aside = try #require(OddOneOut.aside(for: Support.turn(cue: OddOneOut.nextPuzzle), after: turns, in: .english, dice: &dice))
         #expect(aside.hasPrefix("This puzzle’s theme: \(last). "), "the one theme the chat hasn't had")
     }
 
@@ -126,19 +126,19 @@ struct GameRulesTests {
         #expect(Set(WordFootball.kickoffs).count == WordFootball.kickoffs.count, "no kickoff twice")
         #expect(WordFootball.kickoffs.allSatisfy { $0 == WordFootball.cleanWord($0) && $0.count >= 2 })
         var dice = GameDice(seed: 3)
-        guard case .drawn(let cue, let word) = WordFootball.opener(after: [], dice: &dice) else {
+        guard case .drawn(let cue, let word) = WordFootball.opener(after: [], in: .english, dice: &dice) else {
             Issue.record("the kickoff is drawn on this Mac")
             return
         }
         #expect(cue == WordFootball.opening)
         #expect(WordFootball.kickoffs.contains(word))
         let played = WordFootball.kickoffs.dropLast().map { Support.turn(cue: WordFootball.rematchCue, reply: $0) }
-        #expect(WordFootball.opener(after: played, dice: &dice) == .drawn(cue: WordFootball.rematchCue, move: try #require(WordFootball.kickoffs.last)))
+        #expect(WordFootball.opener(after: played, in: .english, dice: &dice) == .drawn(cue: WordFootball.rematchCue, move: try #require(WordFootball.kickoffs.last)))
 
         let turns = [Support.turn(cue: WordFootball.opening, reply: "banana")]
-        let answer = try #require(WordFootball.aside(for: Support.turn("apple"), after: turns, dice: &dice))
+        let answer = try #require(WordFootball.aside(for: Support.turn("apple"), after: turns, in: .english, dice: &dice))
         #expect(WordFootball.kinds.contains { answer == "For your own word, try \($0) if one fits." })
-        #expect(WordFootball.aside(for: Support.turn(cue: WordFootball.opening), after: [], dice: &dice) == nil)
+        #expect(WordFootball.aside(for: Support.turn(cue: WordFootball.opening), after: [], in: .english, dice: &dice)?.hasPrefix("Kick off with a common word, ") == true, "for a model that kicks off")
         #expect(WordFootball.open(with: "Apple!", after: []) == .open("apple", cue: WordFootball.yourKickoff))
         #expect(WordFootball.open(with: "pass", after: []) == .reject("Kick off with a word first."))
     }
@@ -220,8 +220,8 @@ struct GamePlayTests {
         let last = Support.turn("mine 6")
         #expect(Categories.review([kitchen] + five + [last]).named.count == Categories.limit)
         var dice = GameDice(seed: 1)
-        #expect(Categories.aside(for: last, after: [kitchen] + five, dice: &dice) == Categories.lastOne)
-        #expect(Categories.aside(for: five[0], after: [kitchen], dice: &dice) == nil)
+        #expect(Categories.aside(for: last, after: [kitchen] + five, in: .english, dice: &dice) == Categories.lastOne)
+        #expect(Categories.aside(for: five[0], after: [kitchen], in: .english, dice: &dice) == nil)
         #expect(Categories.judge("OK", in: [kitchen] + five + [ChatSession.Turn(question: "mine 6", images: [])]) == .accept("OK"))
         let full = [kitchen] + five + [Support.turn("mine 6", reply: "OK: one more anyway")]
         #expect(Categories.review(full).ending?.youWon == nil, "six each is a draw")
@@ -313,7 +313,7 @@ struct GamePlayTests {
 
         var dice = GameDice(seed: 1)
         let used = AddAWord.starters.dropLast().map { Support.turn(cue: AddAWord.nextSentence, reply: $0) }
-        #expect(AddAWord.opener(after: used, dice: &dice) == .drawn(cue: AddAWord.nextSentence, move: try #require(AddAWord.starters.last)), "a word no sentence has started with")
+        #expect(AddAWord.opener(after: used, in: .english, dice: &dice) == .drawn(cue: AddAWord.nextSentence, move: try #require(AddAWord.starters.last)), "a word no sentence has started with")
     }
 
     @Test func addAWordAsksAgainWhenTheScoreIsMissing() async {
@@ -402,7 +402,7 @@ struct GamePlayTests {
         }
         #expect(outcome == GameOutcome(text: "Game done: a draw, 3 all.", youWon: nil))
         var dice = GameDice(seed: 1)
-        #expect(OddOneOut.opener(after: turns, dice: &dice) == .ask(OddOneOut.newGame))
+        #expect(OddOneOut.opener(after: turns, in: .english, dice: &dice) == .ask(OddOneOut.newGame))
     }
 
     @Test func fixTheTypoJudgesYourFixOnThisMac() async {

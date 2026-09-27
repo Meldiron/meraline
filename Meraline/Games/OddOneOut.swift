@@ -132,7 +132,7 @@ nonisolated enum OddOneOut: GameRules {
 
     /// A puzzle of the model's gets a theme, one the chat hasn't had while others are left, and a way to link the
     /// two that belong.
-    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String? {
+    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> String? {
         guard turn.cue.map(puzzleCues.contains) == true else { return nil }
         let asides = turns.compactMap(\.aside)
         guard let theme = dice.pick(from: themes, preferring: { theme in !asides.contains { $0.hasPrefix(themed(theme)) } }) else { return nil }
@@ -171,7 +171,7 @@ nonisolated enum OddOneOut: GameRules {
     }
 
     /// Left to the model, it sets the game's first puzzle.
-    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+    static func opener(after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> GameOpener {
         .ask(turns.isEmpty ? opening : newGame)
     }
 

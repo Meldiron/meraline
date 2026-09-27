@@ -59,15 +59,17 @@ nonisolated protocol GameRules {
     /// the next one): usually `.open`, with the cue that tells the model you opened it.
     static func open(with input: String, after turns: [ChatSession.Turn]) -> GameMove
     /// How the other side opens a round when you leave it to them: the model, asked with a cue, or this Mac,
-    /// with a move it drew and keeps as the model's.
-    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener
+    /// with a move it drew and keeps as the model's. What this Mac draws is English, so in another `language` a
+    /// game asks the model instead.
+    static func opener(after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> GameOpener
     /// What to make of the model's complete reply to the last turn.
     static func judge(_ reply: String, in turns: [ChatSession.Turn]) -> GameReply
     /// What this Mac draws to go with a move before it goes to the model, such as a story's subject or the
     /// words a line may end on, since a model asked the same thing answers the same way (see `GameDice`).
-    /// `turn` is the move about to go, one of the game's cues or your line, and `turns` the chat before it.
+    /// `turn` is the move about to go, one of the game's cues or your line, and `turns` the chat before it. The
+    /// lists of words are English, so in another `language` a game draws only what the model can take in it.
     /// The turn keeps what was drawn, so the model reads it again with the rest of the game; nil adds nothing.
-    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String?
+    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> String?
     /// The transcript the panel shows. A reply still arriving is left out.
     static func lines(for turns: [ChatSession.Turn]) -> [GameLine]
     /// Plain text for Copy.
@@ -79,7 +81,7 @@ nonisolated protocol GameRules {
 nonisolated extension GameRules {
     static func headline(of turns: [ChatSession.Turn]) -> String? { nil }
     static func open(with input: String, after turns: [ChatSession.Turn]) -> GameMove { .reject("Press Return to start.") }
-    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String? { nil }
+    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> String? { nil }
 }
 
 nonisolated struct GameState: Equatable, Sendable {
@@ -282,6 +284,11 @@ nonisolated enum GameText {
         unwrapped(text).split(whereSeparator: \.isWhitespace)
             .map { String($0).trimmingCharacters(in: wordWrapping) }
             .filter { $0.contains { $0.isLetter || $0.isNumber } }
+    }
+
+    /// Without accents, for letters that count as their plain letter: “č” as “c”, “ů” as “u”.
+    static func folded(_ text: String) -> String {
+        text.folding(options: .diacriticInsensitive, locale: nil)
     }
 
     /// For comparing: lower case, letters and digits only.

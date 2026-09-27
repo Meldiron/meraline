@@ -33,14 +33,14 @@ struct SpeedDefinitionsTests {
         #expect(all.allSatisfy { SpeedDefinitions.word(from: $0)?.word == $0 }, "each reads back as one word")
         var dice = GameDice(seed: 11)
         for cue in [SpeedDefinitions.opening, SpeedDefinitions.nextWord, SpeedDefinitions.newGame] {
-            let aside = try #require(SpeedDefinitions.aside(for: Support.turn(cue: cue), after: [], dice: &dice))
+            let aside = try #require(SpeedDefinitions.aside(for: Support.turn(cue: cue), after: [], in: .english, dice: &dice))
             #expect(aside.hasPrefix("Pick one of these words, all of "))
             var turn = Support.turn(cue: cue)
             turn.aside = aside
             let difficulty = try #require(SpeedDefinitions.Difficulty(of: turn))
             #expect(difficulty.words.filter { aside.contains("“\($0)”") }.count == SpeedDefinitions.offeredCount)
         }
-        #expect(SpeedDefinitions.aside(for: Support.turn("a happy accident"), after: [], dice: &dice) == nil, "grading needs no draw")
+        #expect(SpeedDefinitions.aside(for: Support.turn("a happy accident"), after: [], in: .english, dice: &dice) == nil, "grading needs no draw")
 
         let hard = SpeedDefinitions.hardWords
         let played = hard.dropLast(SpeedDefinitions.offeredCount).enumerated().map { index, word in
@@ -154,7 +154,7 @@ struct SpeedDefinitionsTests {
             return
         }
         #expect(outcome.youWon == true)
-        #expect(SpeedDefinitions.opener(after: session.turns, dice: &session.dice) == .ask(SpeedDefinitions.newGame))
+        #expect(SpeedDefinitions.opener(after: session.turns, in: .english, dice: &session.dice) == .ask(SpeedDefinitions.newGame))
         #expect(session.conversationMarkdown?.hasPrefix("serendipity: finding something good without looking for it\nYou: a happy accident (8/10 · nails the luck part)") == true)
     }
 

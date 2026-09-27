@@ -36,7 +36,8 @@ nonisolated enum LetterAuction: GameRules {
     R A T E S L I N O P K Y U D E | slink, pure, tray, dote, ask. Deal a different pool every time. \
     Then the user and you take turns spending letters from the pool on English words, the user first. A letter \
     spent is gone for both of you, and a word may use only letters still in the pool, each no more often than \
-    it is left. Rare letters are worth more. Reply to each word the user plays with one line. If it is a real \
+    it is left, and a letter with an accent is spent as the same letter without it. Rare letters are worth \
+    more. Reply to each word the user plays with one line. If it is a real \
     English word, write “OK: ” followed by a word of your own made from the letters left after the user's word. \
     If it isn't a real English word, write “NO: ” followed by a short, friendly reason. If you can't make a \
     word, write “OK: PASS”. Your earlier replies end with the letters that were left after your word. \
@@ -78,7 +79,7 @@ nonisolated enum LetterAuction: GameRules {
         var (shown, hidden) = GameText.split(first)
         if hidden == nil, lines.count > 1 { hidden = lines[1] }
         if let colon = shown.lastIndex(of: ":") { shown = String(shown[shown.index(after: colon)...]) }
-        let tokens = shown.split { !$0.isLetter }.map { $0.lowercased() }
+        let tokens = shown.split { !$0.isLetter }.map { GameText.folded($0.lowercased()) }
         let letters: [Character]
         if tokens.count > 1, tokens.allSatisfy({ $0.count == 1 }) {
             letters = tokens.compactMap(\.first)
@@ -93,9 +94,9 @@ nonisolated enum LetterAuction: GameRules {
         return Deal(letters: letters, words: words)
     }
 
-    /// One word, lower case, only the letters the pool can hold.
+    /// One word, lower case, only the letters the pool can hold, those with accents as their plain letters.
     static func cleanWord(_ text: String) -> String {
-        String(text.lowercased().filter { prices[$0] != nil })
+        String(GameText.folded(text.lowercased()).filter { prices[$0] != nil })
     }
 
     static func worth(of word: String) -> Int {
@@ -172,7 +173,7 @@ nonisolated enum LetterAuction: GameRules {
     }
 
     /// The model opens every round, the first with `opening`.
-    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+    static func opener(after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> GameOpener {
         .ask(turns.isEmpty ? opening : newDeal)
     }
 

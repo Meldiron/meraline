@@ -141,9 +141,15 @@ nonisolated enum SpeedDefinitions: GameRules {
     }
 
     /// A new word gets three to pick from, all of one difficulty, none the chat has played while there are others.
-    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], dice: inout GameDice) -> String? {
+    /// The words are English, so in another language the model gets the difficulty and a topic to find one in.
+    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> String? {
         guard turn.cue.map(wordCues.contains) == true else { return nil }
-        return offer(Difficulty.draw(dice: &dice), after: turns, dice: &dice)
+        let difficulty = Difficulty.draw(dice: &dice)
+        guard language == .english else {
+            let topic = OddOneOut.themes.randomElement(using: &dice) ?? OddOneOut.themes[0]
+            return "Pick a word of \(difficulty.rawValue) difficulty, to do with \(topic)."
+        }
+        return offer(difficulty, after: turns, dice: &dice)
     }
 
     /// Three words of `difficulty` for the model to pick from.
@@ -172,7 +178,7 @@ nonisolated enum SpeedDefinitions: GameRules {
         /// The difficulty a turn's word was drawn at, from its aside.
         init?(of turn: ChatSession.Turn) {
             guard let aside = turn.aside,
-                  let found = Difficulty.allCases.first(where: { aside.contains("all of \($0.rawValue) difficulty") }) else { return nil }
+                  let found = Difficulty.allCases.first(where: { aside.contains("of \($0.rawValue) difficulty") }) else { return nil }
             self = found
         }
 
@@ -251,7 +257,7 @@ nonisolated enum SpeedDefinitions: GameRules {
     }
 
     /// Left to the model, it shows the game's words, from those drawn on this Mac.
-    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+    static func opener(after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> GameOpener {
         .ask(turns.isEmpty ? opening : newGame)
     }
 

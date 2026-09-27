@@ -362,7 +362,7 @@ final class ChatSession {
             return
         }
         var turn = move
-        turn.aside = game.rules.aside(for: turn, after: turns, dice: &dice)
+        turn.aside = game.rules.aside(for: turn, after: turns, in: preferences.language, dice: &dice)
         let request = makeRequest(asking: turn.message, images: [], of: provider)
         draft = ""
         failure = nil
@@ -376,7 +376,7 @@ final class ChatSession {
     /// Leaves the round's opening to the other side: the model, asked with a cue, or this Mac, with a move it
     /// drew and keeps as the model's. Anything typed stays in the input.
     private func open(_ game: Game) {
-        switch game.rules.opener(after: turns, dice: &dice) {
+        switch game.rules.opener(after: turns, in: preferences.language, dice: &dice) {
         case .ask(let cue):
             askModel(cue, in: game)
         case .drawn(let cue, let move):
@@ -411,7 +411,7 @@ final class ChatSession {
             return
         }
         var turn = Turn(question: "", images: [], cue: cue)
-        turn.aside = game.rules.aside(for: turn, after: turns, dice: &dice)
+        turn.aside = game.rules.aside(for: turn, after: turns, in: preferences.language, dice: &dice)
         let request = makeRequest(asking: turn.message, images: [], of: provider)
         failure = nil
         nudge = nil

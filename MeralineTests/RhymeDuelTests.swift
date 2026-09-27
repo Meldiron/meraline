@@ -58,7 +58,9 @@ struct RhymeDuelRulesTests {
 
     @Test func aWordOfTheEndingsFamilyCountsToo() {
         #expect(!RhymeDuel.rhymes("more", with: "door"), "spelling alone misses this one")
-        let opening = RhymeDuel.Verse(line: "A cat sat waiting by the door")
+        let bare = RhymeDuel.Verse(line: "A cat sat waiting by the door")
+        #expect(RhymeDuel.complaint(about: "She wanted nothing more", after: bare) != nil, "only words known to rhyme count")
+        let opening = RhymeDuel.Verse(line: bare.line, rhymes: RhymeDuel.rhymes(for: bare))
         #expect(RhymeDuel.complaint(about: "She wanted nothing more", after: opening) == nil)
         #expect(RhymeDuel.complaint(about: "Until the clouds began to pour", after: opening) == nil)
         #expect(RhymeDuel.complaint(about: "And then I saw the sun", after: opening)?.contains("“door”") == true)
@@ -90,7 +92,7 @@ struct RhymeDuelRulesTests {
         for seed: UInt64 in 0..<50 {
             var dice = GameDice(seed: seed)
             let cue = Support.turn(cue: seed.isMultiple(of: 2) ? RhymeDuel.opening : RhymeDuel.rematchCue)
-            let aside = try #require(RhymeDuel.aside(for: cue, after: [], dice: &dice))
+            let aside = try #require(RhymeDuel.aside(for: cue, after: [], in: .english, dice: &dice))
             #expect(aside.hasPrefix("This duel’s story: "))
             #expect(aside.contains(". Make it "))
             let words = try offered(in: aside)
@@ -106,7 +108,7 @@ struct RhymeDuelRulesTests {
         var stories: Set<String> = []
         var sounds: Set<String> = []
         for _ in 0..<20 {
-            let aside = try #require(RhymeDuel.aside(for: Support.turn(cue: RhymeDuel.opening), after: [], dice: &dice))
+            let aside = try #require(RhymeDuel.aside(for: Support.turn(cue: RhymeDuel.opening), after: [], in: .english, dice: &dice))
             stories.insert(String(aside.prefix { $0 != "." }))
             sounds.insert(try #require(RhymeDuel.family(of: try offered(in: aside)[0]))[0])
         }
@@ -121,7 +123,7 @@ struct RhymeDuelRulesTests {
         ]
         for seed: UInt64 in 0..<100 {
             var dice = GameDice(seed: seed)
-            let aside = try #require(RhymeDuel.aside(for: Support.turn("A tiny voice said let me out"), after: duel, dice: &dice))
+            let aside = try #require(RhymeDuel.aside(for: Support.turn("A tiny voice said let me out"), after: duel, in: .english, dice: &dice))
             #expect(aside.hasPrefix("End your line on one of these words: "), "no new story mid-duel")
             let family = try #require(RhymeDuel.family(of: try offered(in: aside)[0]))
             #expect(!family.contains("door") && !family.contains("shout"), "\(family[0])")
@@ -136,7 +138,7 @@ struct RhymeDuelRulesTests {
         let left = try #require(RhymeDuel.families.last)
         for seed: UInt64 in 0..<10 {
             var dice = GameDice(seed: seed)
-            let aside = try #require(RhymeDuel.aside(for: Support.turn(cue: RhymeDuel.rematchCue), after: turns, dice: &dice))
+            let aside = try #require(RhymeDuel.aside(for: Support.turn(cue: RhymeDuel.rematchCue), after: turns, in: .english, dice: &dice))
             #expect(try offered(in: aside).allSatisfy(left.contains), "the one sound the chat hasn't heard")
         }
     }
@@ -370,7 +372,8 @@ struct RhymeDuelSessionTests {
         #expect(session.isYourMove)
         #expect(session.gameState?.status == "Line 4 of 8")
         let state = try #require(session.gameState)
-        #expect(state.phase == .yourMove(placeholder: "Rhyme with “shout”…", hints: RhymeDuel.hints(for: .init(line: "and then a shout", rhymes: ["out", "about", "doubt", "sprout"]))))
+        let offered = RhymeDuel.rhymes(for: .init(line: "and then a shout", rhymes: ["out", "about", "doubt", "sprout"]))
+        #expect(state.phase == .yourMove(placeholder: "Rhyme with “shout”…", hints: RhymeDuel.hints(for: .init(line: "", rhymes: offered))), "the line ended on a word it was offered")
         #expect(state.hints.contains("Try ending your line on “scout”."), "the family of “shout” helps out")
         #expect(RhymeDuel.lines(for: session.turns).map(\.text) == [opening, exchanges[0].0, exchanges[0].1], "the rhymes stay hidden")
     }

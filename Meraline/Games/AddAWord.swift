@@ -1,7 +1,8 @@
 import Foundation
 
 /// Add-a-word: you type the first word of a sentence, or take one drawn on this Mac from `starters`, kept as the
-/// model's, and you and the model add one word each in turn until someone ends it with a period. Then the model
+/// model's (in another language than English, the model starts it), and you and the model add one word each in
+/// turn until someone ends it with a period. Then the model
 /// scores how much sense the sentence makes. The next sentence carries the same story on, so the model builds
 /// on what came before.
 nonisolated enum AddAWord: GameRules {
@@ -87,12 +88,20 @@ nonisolated enum AddAWord: GameRules {
     }
 
     /// Left to the other side, a sentence starts with a word drawn on this Mac, one no sentence of the chat has
-    /// started with while there are others.
-    static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
+    /// started with while there are others. The words are English, so in another language the model starts it.
+    static func opener(after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> GameOpener {
         let sentences = turns.rounds(cues)
+        guard language == .english else { return .ask(sentences.isEmpty ? opening : nextSentence) }
         let used = Set(sentences.compactMap { sentence(from: $0).words.first.map { GameText.key($0.text) } })
         let word = dice.pick(from: starters) { !used.contains(GameText.key($0)) } ?? starters[0]
         return .drawn(cue: sentences.isEmpty ? opening : nextSentence, move: word)
+    }
+
+    /// The model's first sentence gets a subject, so it doesn't start the same way every game. The next ones carry
+    /// the story on.
+    static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> String? {
+        guard turn.cue == opening else { return nil }
+        return "This sentence’s subject: \(OddOneOut.themes.randomElement(using: &dice) ?? OddOneOut.themes[0])."
     }
 
     /// Your first word starts the sentence.

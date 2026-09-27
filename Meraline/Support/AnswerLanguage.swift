@@ -59,8 +59,8 @@ nonisolated enum AnswerLanguage: String, CaseIterable, Identifiable, Sendable {
             "Write your answers in \(name), unless the user asks for another language, as for a translation."
         case .game:
             self == .english ? nil : """
-            Play the game in \(name): every word, line, name, and reason you write is in \(name). \
-            Keep the markers the rules ask for exactly as they are written, such as “OK: ”, “NO: ”, “PASS”, \
+            Play the game in \(name): every word, line, name, and reason you write is in \(name), and where \
+            the rules above say English, read \(name). Keep the markers the rules ask for exactly as they are written, such as “OK: ”, “NO: ”, “PASS”, \
             “Score: ”, “NONE”, “ | ”, and “ → ”.
             """
         case .toolReason:
