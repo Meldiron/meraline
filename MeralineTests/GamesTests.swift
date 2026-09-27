@@ -252,38 +252,59 @@ struct GamePlayTests {
         #expect(WordFootball.lines(for: session.turns).map(\.text).first == "banana → apple → elephant → tiger → salmon")
     }
 
-    @Test func addAWordBuildsAStoryAndScoresEachSentence() async {
-        let model = ScriptedModel(["Yesterday", "grandmother", "Score: 7/10 — lively, if unlikely", "Then"])
+    @Test func addAWordBuildsAStoryFromYourFirstWordAndScoresEachSentence() async {
+        let model = ScriptedModel(["my", "danced.\nScore: 7/10 — lively, if unlikely", "nobody"])
         let session = Support.session(model)
         session.startGame(.addAWord)
-        await Support.settle(session)
-        #expect(session.gameState?.status == "Sentence 1 · 1 word")
+        #expect(session.gameState?.isOpening == true)
+        #expect(session.gameState?.choices == [AddAWord.randomButton])
 
-        await Support.play("my grandmother", in: session)
-        #expect(session.nudge == "Just one word at a time. “my” first?")
-        #expect(model.requests.count == 1)
+        await Support.play("Yesterday grandma", in: session)
+        #expect(session.nudge == "Just one word at a time. “Yesterday” first?")
+        #expect(model.requests.isEmpty)
+        await Support.play("Yesterday", in: session)
+        #expect(session.turns.first?.cue == AddAWord.yourOpening)
+        #expect(model.lastMessages == ["\(AddAWord.yourOpening)\n\nYesterday"])
+        #expect(session.gameState?.status == "Sentence 1 · 2 words")
 
-        await Support.play("my", in: session)
-        await Support.play("danced.", in: session)
+        await Support.play("grandmother", in: session)
         #expect(session.gameState?.status == "Sentence 1 · 7/10")
         #expect(session.nudge?.hasPrefix("Sentence done: 7 out of 10") == true)
         #expect(AddAWord.lines(for: session.turns).map(\.text) == ["Yesterday my grandmother danced.", "7/10 · lively, if unlikely"])
 
-        session.send()
-        await Support.settle(session)
-        #expect(model.lastMessages.first == AddAWord.opening)
-        #expect(model.lastMessages.last == AddAWord.nextSentence, "the next sentence carries the story so far")
-        #expect(session.gameState?.status == "Sentence 2 · 1 word")
-        #expect(session.conversationMarkdown == "Yesterday my grandmother danced. (7/10)\nThen")
+        await Support.play("Then", in: session)
+        #expect(session.turns.last?.cue == AddAWord.yourNextSentence, "a word typed once a sentence is done starts the next")
+        #expect(model.lastMessages.last == "\(AddAWord.yourNextSentence)\n\nThen", "the next sentence carries the story so far")
+        #expect(session.gameState?.status == "Sentence 2 · 2 words")
+        #expect(session.conversationMarkdown == "Yesterday my grandmother danced. (7/10)\nThen nobody")
+    }
+
+    @Test func addAWordCanStartFromARandomWord() async throws {
+        let model = ScriptedModel(["grandmother"])
+        let session = Support.session(model)
+        session.dice = GameDice(seed: 6)
+        session.startGame(.addAWord)
+        session.choose(AddAWord.randomButton)
+        #expect(model.requests.isEmpty, "the word is drawn on this Mac")
+        let first = try #require(session.turns.first)
+        #expect(first.cue == AddAWord.opening)
+        #expect(AddAWord.starters.contains(first.answer))
+        #expect(session.isYourMove, "your word comes next")
+        #expect(AddAWord.lines(for: session.turns).first?.pieces.first?.voice == .model)
+        await Support.play("my", in: session)
+        #expect(model.lastMessages == [AddAWord.opening, first.answer, "my"], "the model reads the drawn word as its own")
+
+        var dice = GameDice(seed: 1)
+        let used = AddAWord.starters.dropLast().map { Support.turn(cue: AddAWord.nextSentence, reply: $0) }
+        #expect(AddAWord.opener(after: used, dice: &dice) == .drawn(cue: AddAWord.nextSentence, move: try #require(AddAWord.starters.last)), "a word no sentence has started with")
     }
 
     @Test func addAWordAsksAgainWhenTheScoreIsMissing() async {
-        let model = ScriptedModel(["Yesterday", "grandmother"])
+        let model = ScriptedModel(["grandmother", "What a sentence!"])
         let session = Support.session(model)
         session.startGame(.addAWord)
-        await Support.settle(session)
+        session.send()
         await Support.play("my", in: session)
-        model.replies = ["What a sentence!"]
         await Support.play("danced.", in: session)
         #expect(session.nudge == "The model forgot to score the sentence. Press Return to ask again.")
         #expect(session.draft == "danced.")

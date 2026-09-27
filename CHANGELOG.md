@@ -28,6 +28,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - **Restart a game with ⌘R.** Restart in a game's actions (⌘K) starts it over from the beginning while you're still playing; the game so far goes to Recent Chats. Once a round is over, ⌘R is still Play Again.
 - **Start a Rhyme Duel yourself.** Write the first line of a story, or press Return (or Model Starts) to let the model open. Whoever opens sets each rhyme and the other answers it, so when you start, you pick the sounds and the model rhymes with you. Once a duel is over, type a line to open the next one.
 - **Pick the category yourself.** Categories starts with your category, or press Return (or Random Category) for one drawn at random. Either way the model names the first thing in it, and a category it won't play comes back to you.
+- **Start an Add-a-Word sentence yourself.** Type its first word, or press Return (or Random Word) for one drawn at random, and add the next word yourself. Each new sentence of the story starts the same way.
 
 ## v1.6.0 - 2026-09-27
 

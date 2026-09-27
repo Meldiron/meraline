@@ -1,16 +1,23 @@
 import Foundation
 
-/// Add-a-word: the model writes the first word of a sentence, and you and the model add one word each in
-/// turn until someone ends it with a period. Then the model scores how much sense the sentence makes.
-/// Return starts the next sentence of the same story, so the model carries on from what came before.
+/// Add-a-word: you type the first word of a sentence, or take one drawn on this Mac from `starters`, kept as the
+/// model's, and you and the model add one word each in turn until someone ends it with a period. Then the model
+/// scores how much sense the sentence makes. The next sentence carries the same story on, so the model builds
+/// on what came before.
 nonisolated enum AddAWord: GameRules {
     static let title = "Add-a-Word"
     static let summary = "Build a sentence one word at a time"
     static let symbol = "text.badge.plus"
 
+    /// What a drawn first word answers, as if the model had been asked for it.
     static let opening = "Start a sentence with one word."
     static let nextSentence = "Start the next sentence of the same story with one word."
-    private static let cues: Set<String> = [opening, nextSentence]
+    /// What goes with a first word of yours.
+    static let yourOpening = "The user starts a sentence with the word below."
+    static let yourNextSentence = "The user starts the next sentence of the same story with the word below."
+    private static let cues: Set<String> = [opening, nextSentence, yourOpening, yourNextSentence]
+
+    static let randomButton = "Random Word"
 
     /// A sentence ends here even if nobody ends it: the word that reaches it gets a period.
     static let wordLimit = 30
@@ -28,7 +35,7 @@ nonisolated enum AddAWord: GameRules {
     When asked to start the next sentence, carry on the same story.
     """
 
-    static let invitation = "The model writes the first word. Add one word at a time, and end a word with a period to finish the sentence."
+    static let invitation = "Type the first word, or take a random one. Then add one word at a time, taking turns, and end a word with a period to finish the sentence."
 
     /// A reply as the model wrote it: the words of its first line, and a score when it gave one.
     struct Reply: Equatable {
@@ -79,15 +86,28 @@ nonisolated enum AddAWord: GameRules {
         return sentence
     }
 
-    /// The model opens every round, the first with `opening`.
+    /// Left to the other side, a sentence starts with a word drawn on this Mac, one no sentence of the chat has
+    /// started with while there are others.
     static func opener(after turns: [ChatSession.Turn], dice: inout GameDice) -> GameOpener {
-        .ask(turns.isEmpty ? opening : nextSentence)
+        let sentences = turns.rounds(cues)
+        let used = Set(sentences.compactMap { sentence(from: $0).words.first.map { GameText.key($0.text) } })
+        let word = dice.pick(from: starters) { !used.contains(GameText.key($0)) } ?? starters[0]
+        return .drawn(cue: sentences.isEmpty ? opening : nextSentence, move: word)
+    }
+
+    /// Your first word starts the sentence.
+    static func open(with input: String, after turns: [ChatSession.Turn]) -> GameMove {
+        let words = GameText.words(GameText.firstLine(input))
+        guard let word = words.first else { return .reject("One word, please.") }
+        guard words.count == 1 else { return .reject("Just one word at a time. “\(word)” first?") }
+        return .open(word, cue: turns.rounds(cues).isEmpty ? yourOpening : yourNextSentence)
     }
 
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         let sentences = turns.rounds(cues)
         guard let current = sentences.last else {
-            return GameState(phase: .modelMoves(cue: opening), status: "Sentence 1")
+            let opening = GameOpening(placeholder: "Type the first word, or press Return for a random one…", button: randomButton)
+            return GameState(phase: .opening(opening), status: "Sentence 1")
         }
         let number = sentences.count
         let sentence = sentence(from: current)
@@ -95,7 +115,7 @@ nonisolated enum AddAWord: GameRules {
         let status = "Sentence \(number) · \(count) \(count == 1 ? "word" : "words")"
         if current.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if sentence.isFinished {
-            let next = GameOpening(placeholder: "Press Return for the next sentence…", button: "Play Again", takesYourMove: false)
+            let next = GameOpening(placeholder: "Type the next sentence’s first word, or press Return for a random one…", button: randomButton)
             guard let score = sentence.score else {
                 return GameState(phase: .over(outcome: GameOutcome(text: "Sentence done. The story carries on in the next one.", youWon: nil), next: next), status: "Sentence \(number) done")
             }
@@ -176,4 +196,15 @@ nonisolated enum AddAWord: GameRules {
     static func headline(of turns: [ChatSession.Turn]) -> String? {
         turns.rounds(cues).first.map { sentence(from: $0).text }
     }
+
+    /// Words a sentence can start with, anywhere in a story.
+    static let starters = [
+        "Yesterday", "Suddenly", "Once", "My", "The", "Every", "Nobody", "Somewhere", "Tomorrow", "Grandma",
+        "Meanwhile", "After", "Before", "Although", "When", "If", "Today", "Last", "Under", "Behind", "Three", "Our",
+        "Their", "Most", "Never", "Always", "Honestly", "Luckily", "Sadly", "Later", "Despite", "Somehow", "Tonight",
+        "During", "Whenever", "Everyone", "Only", "Some", "This", "Two", "Seven", "Captain", "Doctor", "Penguins",
+        "Cats", "Pirates", "Robots", "Wizards", "Dragons", "Scientists", "Monday", "Winter", "Breakfast", "Nothing",
+        "Why", "How", "Maybe", "Clearly", "Apparently", "Unfortunately", "Beneath", "Inside", "Outside", "Above",
+        "Grandpa", "Aliens", "Ghosts", "Everybody", "Nine", "Midnight", "Sunday", "Spaghetti"
+    ]
 }
