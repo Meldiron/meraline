@@ -6,9 +6,15 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ## Unreleased
 
-### Ask
+### Settings
 
-- **Every prompt in Settings.** Settings › Prompt now has separate instructions for LLMs and for agents, and under them the rules of each of the eight games and the instructions Why? explains an agent's ask with, each with Restore Default. A prompt you changed before carries over to both LLMs and agents.
+- **Instructions for LLMs and for agents.** Settings › Prompt now keeps one set of instructions for LLMs and another for Claude Code, Codex, and OpenCode, so quick answers can stay short while an agent says what it did. Agents start from instructions of their own that lead with what they did and what came of it. If you had changed the prompt, your version carries over to both.
+
+![Settings › Prompt: one set of instructions for LLMs and another for agents](https://raw.githubusercontent.com/Meldiron/meraline/v1.7.0/docs/screenshots/prompt-light.png)
+
+- **Every prompt in one place.** Below them are the rules of each of the eight games and the instructions Why? uses to explain an agent's ask. Each is folded under its name, says Changed once you edit it, and has Restore Default to go back. A game still reads the model's moves in the format its rules ask for, such as “OK: ” or the “ | ” before a hidden answer, so keep those as they are. Copy Diagnostics names the prompts you changed, never what they say.
+
+![Settings › Prompt further down: the eight games, with Word Football's rules changed](https://raw.githubusercontent.com/Meldiron/meraline/v1.7.0/docs/screenshots/prompt-games-light.png)
 
 ## v1.6.0 - 2026-09-27
 
