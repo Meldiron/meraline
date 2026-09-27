@@ -20,6 +20,7 @@ nonisolated struct ChatWorkspace: Equatable, Sendable {
     /// A copied project can be thousands of files, so the folder is moved aside at once and deleted in the
     /// background. Whatever is left at quit goes with the rest of this process's workspaces.
     func remove() {
+        LiveAgents.shared.end(workspace: url)
         let leaving = url.deletingLastPathComponent().appending(path: ".removing-\(UUID().uuidString)")
         guard (try? FileManager.default.moveItem(at: url, to: leaving)) != nil else {
             try? FileManager.default.removeItem(at: url)

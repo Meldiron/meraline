@@ -264,6 +264,7 @@ struct PanelContext {
                 AnswerNotes.shared.open(answer: answer, question: question)
             })
         }
+        let files = fileActions
         var answer: [PanelAction] = []
         if session.canAskAgain {
             answer.append(PanelAction(id: "askAgain", title: "Ask Again", icon: .symbol("arrow.clockwise"), shortcut: .command("r")) {
@@ -312,6 +313,7 @@ struct PanelContext {
             sections: [
                 ActionSection(id: "primary", actions: primary),
                 ActionSection(id: "copy", actions: copy),
+                ActionSection(id: "files", actions: files),
                 ActionSection(id: "answer", actions: answer),
                 ActionSection(id: "chat", actions: chat),
                 ActionSection(id: "delete", actions: [delete]),
@@ -362,6 +364,32 @@ struct PanelContext {
                 focusInput()
             }
         }
+    }
+
+    /// What to do with the files an agent handed over last: open each in its app, the first with ⌘O, and show,
+    /// copy, or save them all, as the cards under the answer do.
+    private var fileActions: [PanelAction] {
+        let handed = session.lastPresentedFiles.filter(\.exists)
+        guard !handed.isEmpty else { return [] }
+        let files = PresentedFiles.shared
+        var actions: [PanelAction] = []
+        for file in handed where file.opening != .never {
+            actions.append(PanelAction(id: "openFile.\(file.id)", title: "Open \(file.name)", icon: .symbol("arrow.up.forward.app"), shortcut: actions.isEmpty ? .command("o") : nil, keywords: ["file"]) {
+                files.open(file)
+            })
+        }
+        let them = handed.count == 1 ? handed[0].name : "\(handed.count) Files"
+        return actions + [
+            PanelAction(id: "showFiles", title: "Show \(them) in Finder", icon: .symbol("folder"), keywords: ["file", "reveal"]) {
+                files.showInFinder(handed)
+            },
+            PanelAction(id: "copyFiles", title: "Copy \(them)", icon: .symbol("doc.on.doc"), keywords: ["file"]) {
+                files.copy(handed)
+            },
+            PanelAction(id: "saveFiles", title: "Save \(them) to Downloads", icon: .symbol("square.and.arrow.down"), shortcut: .command("s"), keywords: ["file", "download"]) {
+                files.saveToDownloads(handed)
+            },
+        ]
     }
 
     private func gameMenu(_ game: Game) -> ActionMenu {
@@ -449,7 +477,7 @@ struct PanelContext {
         var providers = ready.map { provider in
             PanelAction(id: "provider.\(provider.rawValue)", title: provider.name, subtitle: modelLine(for: provider), icon: .symbol(provider.symbol), isChecked: provider == active) {
                 preferences.provider = provider
-                if provider.isOnDevice { AppleIntelligenceClient.prewarm() }
+                session.prewarm()
                 focusInput()
             }
         }
@@ -463,7 +491,7 @@ struct PanelContext {
         let modes = [
             PanelAction(id: "switchMode", title: "Switch to \(other.title)", icon: .image(other.image), shortcut: .command(Character("\(number)"))) {
                 preferences.mode = other
-                if preferences.activeProvider?.isOnDevice == true { AppleIntelligenceClient.prewarm() }
+                session.prewarm()
                 focusInput()
             },
             PanelAction(id: "anonymous", title: "Anonymous Mode", subtitle: "Keep chats out of Recent Chats", icon: .symbol("sunglasses"), shortcut: .command("n", .shift), isChecked: session.isAnonymous) {

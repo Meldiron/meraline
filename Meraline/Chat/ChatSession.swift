@@ -24,6 +24,8 @@ final class ChatSession {
         var tools: [Activity] = []
         /// What the agent stopped to ask during this answer, each with how it was settled.
         var prompts: [AgentPrompt] = []
+        /// The files the agent handed over with this answer, found in the chat's workspace.
+        var presentedFiles: [PresentedFile] = []
         var isComplete = false
         var startsOverOnNextText = false
         /// In a game, what the model was asked when it moved on its own; nil for a move of yours.
@@ -152,6 +154,11 @@ final class ChatSession {
         turns.last(where: { !$0.answer.isEmpty })?.answer
     }
 
+    /// The files an agent handed over last in this chat, for the chat's actions.
+    var lastPresentedFiles: [PresentedFile] {
+        turns.last(where: { !$0.presentedFiles.isEmpty })?.presentedFiles ?? []
+    }
+
     /// Why the draft waits: it has files, which only an agent reads, and the panel is asking an LLM.
     /// Switching to Agent sends them as they are.
     var fileNotice: String? {
@@ -186,6 +193,17 @@ final class ChatSession {
         isStreaming = true
         Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))), turn \(turns.count), \(images.count) image(s), \(files.count) file(s), \(selections.count) text(s)")
         stream(request, for: turn.id)
+    }
+
+    /// Gets the provider in use ready for the next question, as the window opens or the mode or provider changes:
+    /// Apple's model loads, and Claude Code or Codex starts in the chat's workspace (see `LiveAgents`). Nothing
+    /// starts while an answer streams, or in the test host.
+    func prewarm() {
+        guard !MeralineApp.isHostingTests, let provider = preferences.activeProvider else { return }
+        if provider.isOnDevice { AppleIntelligenceClient.prewarm() }
+        guard LiveAgents.handles(provider), !isStreaming else { return }
+        // The last message stands for the question to come, so the agent can tell whether it follows on.
+        LiveAgents.shared.prewarm(makeRequest(asking: "…", images: [], of: provider))
     }
 
     /// Whether Ask Again can ask the last question once more: a chat, not a game, whose last answer is done.
@@ -227,6 +245,7 @@ final class ChatSession {
         var turn = Turn(question: last.question, images: last.images, files: last.files, selections: last.selections)
         turn.tools = last.tools
         turn.prompts = last.prompts
+        turn.presentedFiles = last.presentedFiles
         turns.append(turn)
         isStreaming = true
         Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))) to rewrite the last answer (\(rewrite.rawValue)), turn \(turns.count)")
@@ -347,18 +366,24 @@ final class ChatSession {
     /// side, which a game can leave, are joined into one.
     func makeRequest(asking question: String, images: [ImageAttachment], files: [FileAttachment] = [], of provider: Provider) -> ChatRequest {
         var messages: [ChatMessage] = []
-        func add(_ role: ChatMessage.Role, _ text: String, _ images: [ImageAttachment] = [], _ files: [FileAttachment] = []) {
+        func add(_ role: ChatMessage.Role, _ text: String, _ images: [ImageAttachment] = [], _ files: [FileAttachment] = [], presented: [String] = []) {
             guard !text.isEmpty || !images.isEmpty || !files.isEmpty else { return }
             if let previous = messages.last, previous.role == role {
                 let joined = [previous.text, text].filter { !$0.isEmpty }.joined(separator: "\n\n")
-                messages[messages.count - 1] = ChatMessage(role: role, text: joined, images: previous.images + images, files: previous.files + files)
+                messages[messages.count - 1] = ChatMessage(
+                    role: role,
+                    text: joined,
+                    images: previous.images + images,
+                    files: previous.files + files,
+                    presentedFiles: previous.presentedFiles + presented
+                )
             } else {
-                messages.append(ChatMessage(role: role, text: text, images: images, files: files))
+                messages.append(ChatMessage(role: role, text: text, images: images, files: files, presentedFiles: presented))
             }
         }
         for turn in turns where turn.isComplete {
             add(.user, turn.cue ?? SelectedText.message(turn.question, about: turn.selections), turn.images, turn.files)
-            add(.assistant, turn.answer)
+            add(.assistant, turn.answer, presented: turn.presentedFiles.map(\.path))
         }
         add(.user, question, images, files)
         return ChatRequest(
@@ -366,7 +391,8 @@ final class ChatSession {
             settings: preferences[provider],
             systemPrompt: game?.rules.systemPrompt ?? preferences.systemPrompt,
             messages: messages,
-            workspace: provider.isCommandLine ? workspaceForAgents()?.url : nil
+            workspace: provider.isCommandLine ? workspaceForAgents()?.url : nil,
+            presentsFiles: provider.isCommandLine && game == nil
         )
     }
 
@@ -734,7 +760,8 @@ final class ChatSession {
                 question += question.isEmpty ? "_\(note)_" : " _(\(note))_"
             }
             let asked = (turn.selections.map(\.markdownQuote) + [question]).filter { !$0.isEmpty }.joined(separator: "\n\n")
-            return "**You**\n\n\(asked)\n\n**Assistant**\n\n\(turn.answer.trimmed)"
+            let handed = turn.presentedFiles.isEmpty ? "" : "\n\n_\(turn.presentedFiles.map(\.name).joined(separator: ", ")) handed over_"
+            return "**You**\n\n\(asked)\n\n**Assistant**\n\n\(turn.answer.trimmed)\(handed)"
         }.joined(separator: "\n\n---\n\n")
     }
 
@@ -780,6 +807,14 @@ final class ChatSession {
             } else {
                 Log.chat.info("Agent turned down its own ask \(prompt.kind.logDescription)")
             }
+        case .presented(let paths):
+            // Read as Meraline's MCP server read it, so these are the files the agent was told it handed over.
+            guard let workspace else { return }
+            let handed = PresentedFile.handOver(paths, in: workspace.url).files
+                .filter { file in !turns[last].presentedFiles.contains { $0.id == file.id } }
+            guard !handed.isEmpty else { return }
+            turns[last].presentedFiles += handed
+            Log.chat.info("Agent handed over \(handed.count) file(s)")
         }
     }
 
@@ -787,7 +822,7 @@ final class ChatSession {
     /// twice, first by name and then with what it was asked, so a repeat of the last step fills it in
     /// rather than adding a second one; the same step with new details, like a second search, is added.
     nonisolated static func record(_ activity: Activity, in tools: inout [Activity]) {
-        guard activity != .thinking else { return }
+        guard activity != .thinking, activity != .presenting else { return }
         if case .copying = activity { return }
         if let last = tools.last, last.isSameStep(as: activity) {
             if last == activity || activity.isVague { return }

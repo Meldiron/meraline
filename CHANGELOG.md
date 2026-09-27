@@ -6,12 +6,14 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ## Unreleased
 
+- **Agents hand you files.** When Claude Code, Codex, or OpenCode makes a file for you, a report, a chart, a spreadsheet, it hands it over with Meraline's own `present_files` tool, and the file shows under the answer with its icon, kind, and size. A picture shows itself instead of its icon; click it to see it larger. Open it in its app, show it in Finder, copy it, save it to Downloads, or drag it anywhere; Actions (⌘K) offers the same, with ⌘O to open and ⌘S to save. Files stay in the chat's folder until you save or copy them, and Open never runs an app or a script.
 - **Permissions in one place.** Settings › Permissions lists the two accesses Meraline can ask macOS for, Accessibility and Screen Recording, with the features each one turns on and whether macOS allows it, checked again every second while the pane is open. Allow… asks macOS for it, and Open System Settings goes straight to the list with Meraline's switch.
 - **A chat stays until you start a new one.** However long you're away from the window, hidden or pinned, the chat waits for you, and it moves to Recent Chats when you start a new one. Settings › General › Start a new chat and the pin's countdown are gone.
 - **No more "on this Mac" label.** The badge beside the mode toggle and the note in the sparkle's panel are gone. Apple Intelligence and local Ollama models still answer without your question leaving the Mac.
 - **Answers read like documents.** Headings, lists, quotes, and tables show as they should, and code sits in a box with its language and a Copy button. Actions (⌘K) adds Copy Code Block for each block of code in the last answer.
 - **Tear off an answer.** Tear Off Answer (⌘T) in Actions keeps an answer on screen in a small glass note beside the window, so a recipe or a list of steps stays in view while you work in another app. Drag it by its header or any empty space, resize it from its sides and bottom, and fold its question away with the chevron. It floats above other apps on every Space until its cross or Esc puts it away, and nothing of it is saved.
 - **Ask Again with another provider.** Actions (⌘K) offers Ask Again with each of your other ready providers, and the one you pick answers your follow-ups too.
+- **Agents answer sooner.** Claude Code and Codex stay running for the chat, so a follow-up doesn't start them again, and they start as soon as the shortcut opens the window in Agent mode. Codex writes its answer word by word instead of all at once.
 - Dragging an empty part of the window moves it again.
 
 ## v1.5.0 - 2026-09-26

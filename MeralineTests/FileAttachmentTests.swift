@@ -260,7 +260,7 @@ struct FileAttachmentTests {
             messages: [ChatMessage(role: .user, text: "Summarize", files: [report, project])]
         )
         request.workspace = workspace
-        // echo prints nothing codex would say, so the run ends empty; the copy is made before it starts.
+        // echo is no app server, so Codex never starts; the copy is made before it would.
         var activities: [Activity] = []
         do {
             for try await output in CommandLineClient.stream(request) {
@@ -268,7 +268,7 @@ struct FileAttachmentTests {
             }
             Issue.record("echo gave an answer")
         } catch {
-            #expect(error as? LLMError == .emptyResponse)
+            #expect(error as? LLMError == .provider("Codex stopped unexpectedly."))
         }
         #expect(activities == [.copying("Finder"), .thinking])
         #expect(try String(contentsOf: workspace.appending(path: "report.pdf"), encoding: .utf8) == "The secret word is periwinkle.")

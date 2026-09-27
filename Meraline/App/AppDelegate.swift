@@ -7,6 +7,11 @@ enum MeralineApp {
     static func main() {
         // An agent that has already exited must not take Meraline down when an answer is written to it.
         signal(SIGPIPE, SIG_IGN)
+        // An agent runs Meraline's own MCP server as this executable; that process serves it and nothing else.
+        if let workspace = PresentFilesServer.workspace(in: CommandLine.arguments) {
+            PresentFilesServer.serve(in: workspace)
+            return
+        }
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
         // Hosting the tests, Meraline runs without starting: no Keychain, shortcut, menu bar item, or updater.
@@ -129,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func switchMode(to mode: ProviderKind) {
         guard mode != preferences.mode else { return }
         preferences.mode = mode
-        if preferences.activeProvider?.isOnDevice == true { AppleIntelligenceClient.prewarm() }
+        session.prewarm()
     }
 
     /// Services › Ask Meraline, in the app where text or files are selected: they come into the window as with
@@ -173,6 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationWillTerminate(_ notification: Notification) {
+        LiveAgents.shared.endAll()
         ChatWorkspace.removeAll()
     }
 

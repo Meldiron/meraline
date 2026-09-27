@@ -240,7 +240,7 @@ final class PanelController: NSObject {
             layout.focusRequest += 1
             return
         }
-        if preferences.activeProvider?.isOnDevice == true { AppleIntelligenceClient.prewarm() }
+        session.prewarm()
         SelectionAccess.shared.refresh()
         let screen = Self.screenUnderPointer
         layout.maximumConversationHeight = max(220, screen.visibleFrame.height * 0.6)

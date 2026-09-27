@@ -99,7 +99,7 @@ struct MCPServerTests {
         #expect(try StreamDecoder.decode(claude, from: .claudeCode) == .activity(activity))
         let start = #"{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"t","name":"mcp__claude_ai_Claude_Docs__guide","input":{}}}}"#
         #expect(try StreamDecoder.decode(start, from: .claudeCode, knownServers: known) == .activity(.mcp(server: "claude.ai Claude Docs", tool: "guide")))
-        let codex = #"{"type":"item.started","item":{"id":"item_3","type":"mcp_tool_call","server":"knowledge-rag","tool":"search_knowledge","arguments":{},"status":"in_progress"}}"#
+        let codex = #"{"method":"item/started","params":{"item":{"type":"mcpToolCall","id":"c","server":"knowledge-rag","tool":"search_knowledge","status":"inProgress","arguments":{}},"threadId":"t","turnId":"u"}}"#
         #expect(try StreamDecoder.decode(codex, from: .codex) == .activity(activity))
         let opencode = #"{"type":"tool_use","part":{"type":"tool","tool":"knowledge-rag_search_knowledge","state":{"status":"running","input":{}}}}"#
         #expect(try StreamDecoder.decode(opencode, from: .opencode, knownServers: ["knowledge-rag"]) == .activity(activity))

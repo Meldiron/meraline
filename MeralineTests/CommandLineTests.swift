@@ -94,27 +94,24 @@ struct CommandLineTests {
         #expect(try StreamDecoder.decode(toolStart, from: .claudeCode) == .activity(.searching(nil)))
         let toolInput = #"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t","name":"WebFetch","input":{"url":"https://www.prague.eu/events","prompt":"x"}}]}}"#
         #expect(try StreamDecoder.decode(toolInput, from: .claudeCode) == .activity(.reading("www.prague.eu")))
-        let command = #"{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"ls","status":"in_progress"}}"#
+        let command = #"{"method":"item/started","params":{"item":{"id":"i2","type":"commandExecution","command":"ls","status":"inProgress"},"threadId":"t","turnId":"u"}}"#
         #expect(try StreamDecoder.decode(command, from: .codex) == .activity(.running))
         let tool = #"{"type":"tool_use","part":{"type":"tool","tool":"websearch","state":{"status":"completed","input":{"query":"Prague events"}}}}"#
         #expect(try StreamDecoder.decode(tool, from: .opencode) == .activity(.searching("Prague events")))
         #expect(Activity.searching("Prague events").title == "Searching for “Prague events”")
     }
 
-    @Test func codexRunsEphemerallyInAWorkspaceWriteSandbox() throws {
+    /// Codex runs as an app server; the model, sandbox, and instructions go with its thread (see `LiveAgents`).
+    @Test func codexRunsAsAnAppServer() throws {
         let invocation = try CommandLineClient.invocation(for: request(
             .codex,
+            model: "gpt-5.6-terra",
             messages: [ChatMessage(role: .user, text: "Hi", images: [image])]
         ))
-        #expect(invocation.arguments == [
-            "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--sandbox", "workspace-write",
-            "--config", "web_search=\"live\"",
-            "--image", "image-1.png", "-"
-        ])
+        #expect(invocation.arguments == ["app-server", "--config", "web_search=\"live\""])
         #expect(invocation.files["image-1.png"] == image.data)
-        let prompt = String(decoding: try #require(invocation.input), as: UTF8.self)
-        #expect(prompt.contains("Be brief."))
-        #expect(prompt.hasSuffix("Hi"))
+        #expect(invocation.input == nil)
+        #expect(CommandLineClient.systemPrompt(for: request(.codex, messages: [ChatMessage(role: .user, text: "Hi")])) == "Be brief.")
     }
 
     @Test func codexWebSearchFollowsTheToggle() throws {
@@ -171,12 +168,23 @@ struct CommandLineTests {
         #expect(try StreamDecoder.decode(result, from: .claudeCode) == .finished)
     }
 
-    @Test func decodesCodexLines() throws {
-        let message = #"{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"ready"}}"#
-        #expect(try StreamDecoder.decode(message, from: .codex) == .text("ready"))
-        let warning = #"{"type":"item.completed","item":{"id":"item_0","type":"error","message":"deprecated"}}"#
-        #expect(try StreamDecoder.decode(warning, from: .codex) == .ignored)
-        let failure = #"{"type":"turn.failed","error":{"message":"{\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Model not supported.\"}}"}}"#
+    @Test func decodesCodexNotifications() throws {
+        let delta = #"{"method":"item/agentMessage/delta","params":{"threadId":"t","turnId":"u","itemId":"m","delta":"rea"}}"#
+        #expect(try StreamDecoder.decode(delta, from: .codex) == .text("rea"))
+        // The whole message comes again when it is done; its words came already.
+        let message = #"{"method":"item/completed","params":{"item":{"type":"agentMessage","id":"m","text":"ready","phase":"final_answer"},"threadId":"t","turnId":"u"}}"#
+        #expect(try StreamDecoder.decode(message, from: .codex) == .ignored)
+        let search = #"{"method":"item/started","params":{"item":{"type":"webSearch","id":"w","query":"","action":null},"threadId":"t","turnId":"u"}}"#
+        #expect(try StreamDecoder.decode(search, from: .codex) == .activity(.searching(nil)))
+        let searched = #"{"method":"item/completed","params":{"item":{"type":"webSearch","id":"w","query":"Prague events","action":{"type":"search","query":"Prague events","queries":null}},"threadId":"t","turnId":"u"}}"#
+        #expect(try StreamDecoder.decode(searched, from: .codex) == .activity(.searching("Prague events")))
+        let tool = #"{"method":"item/started","params":{"item":{"type":"mcpToolCall","id":"c","server":"github","tool":"search_issues","status":"inProgress","arguments":{"q":"x"}},"threadId":"t","turnId":"u"}}"#
+        #expect(try StreamDecoder.decode(tool, from: .codex) == .activity(.mcp(server: "github", tool: "search_issues")))
+        let retrying = #"{"method":"error","params":{"error":{"message":"Reconnecting 1/5"},"willRetry":true,"threadId":"t","turnId":"u"}}"#
+        #expect(try StreamDecoder.decode(retrying, from: .codex) == .ignored)
+        let done = #"{"method":"turn/completed","params":{"threadId":"t","turn":{"id":"u","items":[],"status":"completed","error":null}}}"#
+        #expect(try StreamDecoder.decode(done, from: .codex) == .finished)
+        let failure = #"{"method":"turn/completed","params":{"threadId":"t","turn":{"id":"u","items":[],"status":"failed","error":{"message":"{\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Model not supported.\"}}"}}}}"#
         #expect(throws: LLMError.provider("Model not supported.")) { try StreamDecoder.decode(failure, from: .codex) }
     }
 

@@ -5,6 +5,8 @@ nonisolated enum StreamChunk: Equatable, Sendable {
     case activity(Activity)
     /// The agent stopped to ask, or reports that it turned an ask of its own down.
     case prompt(AgentPrompt)
+    /// The agent handed files to the person with `present_files` (see `PresentFilesServer`), by the paths it gave.
+    case presented([String])
     case finished
     case ignored
 }
@@ -14,6 +16,8 @@ nonisolated enum StreamOutput: Equatable, Sendable {
     case activity(Activity)
     /// The responder carries the answer back; a prompt the agent settled itself has none.
     case prompt(AgentPrompt, AgentPromptResponder?)
+    /// The agent handed files to the person, by the paths it gave; the chat finds them in its workspace.
+    case presented([String])
 }
 
 nonisolated enum Activity: Equatable, Sendable {
@@ -26,11 +30,15 @@ nonisolated enum Activity: Equatable, Sendable {
     case mcp(server: String, tool: String)
     /// Meraline copying an attached folder into the workspace before the agent starts. Not a tool.
     case copying(String)
+    /// The agent handing files to the person with Meraline's own `present_files`. Not in the trail of tools, since
+    /// the files show under the answer.
+    case presenting
 
     /// `knownServers` are the MCP servers the agent listed, so a tool can be shown under its server's
     /// name: Claude Code spells servers into tool names as `mcp__<server>__<tool>` and OpenCode as
     /// `<server>_<tool>`.
     static func named(_ name: String, query: String? = nil, url: String? = nil, knownServers: [String] = []) -> Activity {
+        if PresentFilesServer.isTool(name) { return .presenting }
         if let mcp = mcpTool(named: name, knownServers: knownServers) { return mcp }
         switch name.lowercased() {
         case "websearch", "web_search": return .searching(query)
@@ -65,6 +73,7 @@ nonisolated enum Activity: Equatable, Sendable {
         case .tool(let name): "Using \(name)"
         case .mcp(let server, let tool): tool.isEmpty ? "Asking \(server)" : "Asking \(server) to \(MCPServer.humanized(tool))"
         case .copying(let folder): "Copying “\(folder)”"
+        case .presenting: "Handing over files"
         }
     }
 
@@ -80,6 +89,7 @@ nonisolated enum Activity: Equatable, Sendable {
         case .tool(let name): "use \(name)"
         case .mcp(let server, let tool): tool.isEmpty ? "ask \(server)" : "ask \(server) to \(MCPServer.humanized(tool))"
         case .copying(let folder): "copy \(folder)"
+        case .presenting: "hand over files"
         }
     }
 
@@ -94,6 +104,7 @@ nonisolated enum Activity: Equatable, Sendable {
         case .tool(let name): name
         case .mcp(let server, let tool): tool.isEmpty ? server : "\(server): \(MCPServer.humanized(tool))"
         case .copying(let folder): folder
+        case .presenting: "Files"
         }
     }
 
@@ -106,6 +117,7 @@ nonisolated enum Activity: Equatable, Sendable {
         case .tool: "wrench.and.screwdriver"
         case .mcp: "puzzlepiece.extension"
         case .copying: "folder"
+        case .presenting: "arrow.down.doc"
         }
     }
 
@@ -255,7 +267,10 @@ nonisolated enum StreamDecoder {
             let chunk = try anthropic(event, knownServers: knownServers)
             return chunk == .finished ? .ignored : chunk
         case "assistant":
-            guard let tool = line.message?.content?.last(where: { $0.type == "tool_use" }), let name = tool.name else {
+            let tools = line.message?.content?.filter { $0.type == "tool_use" } ?? []
+            let handedOver = tools.filter { $0.name == PresentFilesServer.claudeCodeTool }.flatMap { $0.input?.filepaths ?? [] }
+            if !handedOver.isEmpty { return .presented(handedOver) }
+            guard let tool = tools.last, let name = tool.name else {
                 return .ignored
             }
             return .activity(.named(name, query: tool.input?.query, url: tool.input?.url, knownServers: knownServers))
@@ -311,27 +326,51 @@ nonisolated enum StreamDecoder {
         return nil
     }
 
+    /// A notification from Codex's app server (see `LiveAgents`): the answer's words as they come, what Codex is
+    /// doing, the files it handed over, and the end of the turn. Responses to Meraline's own requests never get
+    /// here.
     private static func codex(_ payload: String) throws -> StreamChunk {
-        guard let line = try? decoder.decode(CodexLine.self, from: Data(payload.utf8)) else { return .ignored }
-        switch line.type {
-        case "item.started":
-            switch line.item?.type {
+        guard let line = try? decoder.decode(CodexNotification.self, from: Data(payload.utf8)) else { return .ignored }
+        let params = line.params
+        switch line.method {
+        case "item/agentMessage/delta":
+            guard let delta = params?.delta, !delta.isEmpty else { return .ignored }
+            return .text(delta)
+        case "item/started":
+            guard let item = params?.item else { return .ignored }
+            switch item.type {
             case "reasoning": return .activity(.thinking)
-            case "command_execution": return .activity(.running)
-            case "web_search": return .activity(.searching(line.item?.query))
-            case "mcp_tool_call": return .activity(.mcp(server: line.item?.server ?? "an MCP server", tool: line.item?.tool ?? ""))
+            case "commandExecution": return .activity(.running)
+            case "webSearch": return .activity(.searching(item.query?.isEmpty == false ? item.query : nil))
+            case "fileChange": return .activity(.tool("Edit"))
+            case "mcpToolCall" where isPresentFiles(item): return .activity(.presenting)
+            case "mcpToolCall": return .activity(.mcp(server: item.server ?? "an MCP server", tool: item.tool ?? ""))
             default: return .ignored
             }
-        case "item.completed":
-            guard line.item?.type == "agent_message", let text = line.item?.text, !text.isEmpty else { return .ignored }
-            return .text(text)
-        case "turn.completed":
-            return .finished
-        case "turn.failed":
-            throw LLMError.provider(unwrappedErrorMessage(line.error?.message) ?? "Codex couldn’t answer.")
+        case "item/completed":
+            guard let item = params?.item else { return .ignored }
+            if isPresentFiles(item) {
+                let paths = item.status == "completed" ? item.arguments?.filepaths ?? [] : []
+                return paths.isEmpty ? .ignored : .presented(paths)
+            }
+            // A search says what it looked for once it is done, if it didn't when it began.
+            if item.type == "webSearch", let query = item.query, !query.isEmpty { return .activity(.searching(query)) }
+            return .ignored
+        case "turn/completed":
+            guard params?.turn?.status == "failed" else { return .finished }
+            throw LLMError.provider(unwrappedErrorMessage(params?.turn?.error?.message) ?? "Codex couldn’t answer.")
+        case "error":
+            // Codex retries some failures on its own and says so first.
+            guard params?.willRetry != true else { return .ignored }
+            throw LLMError.provider(unwrappedErrorMessage(params?.error?.message) ?? "Codex couldn’t answer.")
         default:
             return .ignored
         }
+    }
+
+    /// Codex's call of `present_files`, which it names by server and tool.
+    private static func isPresentFiles(_ item: CodexNotification.Item) -> Bool {
+        item.type == "mcpToolCall" && item.server == PresentFilesServer.name && item.tool == PresentFilesServer.tool
     }
 
     private static func opencode(_ payload: String, knownServers: [String]) throws -> StreamChunk {
@@ -345,6 +384,9 @@ nonisolated enum StreamDecoder {
         case "tool_use":
             guard let part = line.part, let tool = part.tool else { return .ignored }
             let input = part.state?.input
+            if tool == PresentFilesServer.openCodeTool, part.state?.status == "completed", let paths = input?.filepaths, !paths.isEmpty {
+                return .presented(paths)
+            }
             let activity = Activity.named(tool, query: input?.query, url: input?.url, knownServers: knownServers)
             // OpenCode's run mode cannot ask, so it turns down any tool its permissions would ask about
             // and says so in the tool's result. That shows up as an ask it settled itself.
@@ -435,6 +477,23 @@ private nonisolated struct ToolInput: Decodable {
     let url: String?
     let command: String?
     let filePath: String?
+    /// What `present_files` hands over.
+    let filepaths: [String]?
+
+    private enum CodingKeys: String, CodingKey {
+        case query, url, command, filePath, filepaths
+    }
+
+    /// Each field on its own, so an input that is odd in one way, or no object at all, still says what it can and
+    /// never costs the whole line.
+    init(from decoder: Decoder) throws {
+        let container = try? decoder.container(keyedBy: CodingKeys.self)
+        query = try? container?.decodeIfPresent(String.self, forKey: .query)
+        url = try? container?.decodeIfPresent(String.self, forKey: .url)
+        command = try? container?.decodeIfPresent(String.self, forKey: .command)
+        filePath = try? container?.decodeIfPresent(String.self, forKey: .filePath)
+        filepaths = try? container?.decodeIfPresent([String].self, forKey: .filepaths)
+    }
 }
 
 private nonisolated struct ResponsesItemAdded: Decodable {
@@ -523,17 +582,60 @@ private nonisolated struct ClaudeCodeLine: Decodable {
     }
 }
 
-private nonisolated struct CodexLine: Decodable {
-    let type: String
-    let item: Item?
-    let error: ErrorDetail?
+private nonisolated struct CodexNotification: Decodable {
+    let method: String
+    let params: Params?
 
+    /// Each field on its own, so one of an unexpected shape never costs the line, a turn's end least of all.
+    struct Params: Decodable {
+        let delta: String?
+        let item: Item?
+        let turn: Turn?
+        let error: ErrorDetail?
+        let willRetry: Bool?
+
+        private enum CodingKeys: String, CodingKey {
+            case delta, item, turn, error, willRetry
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            delta = try? container.decodeIfPresent(String.self, forKey: .delta)
+            item = try? container.decodeIfPresent(Item.self, forKey: .item)
+            turn = try? container.decodeIfPresent(Turn.self, forKey: .turn)
+            error = try? container.decodeIfPresent(ErrorDetail.self, forKey: .error)
+            willRetry = try? container.decodeIfPresent(Bool.self, forKey: .willRetry)
+        }
+    }
+
+    /// Only what Meraline shows of an item, each field on its own, since items of other kinds use these names
+    /// for other things.
     struct Item: Decodable {
         let type: String
-        let text: String?
         let query: String?
         let server: String?
         let tool: String?
+        let arguments: ToolInput?
+        let status: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case type, query, server, tool, arguments, status
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            type = try container.decode(String.self, forKey: .type)
+            query = try? container.decodeIfPresent(String.self, forKey: .query)
+            server = try? container.decodeIfPresent(String.self, forKey: .server)
+            tool = try? container.decodeIfPresent(String.self, forKey: .tool)
+            arguments = try? container.decodeIfPresent(ToolInput.self, forKey: .arguments)
+            status = try? container.decodeIfPresent(String.self, forKey: .status)
+        }
+    }
+
+    struct Turn: Decodable {
+        let status: String?
+        let error: ErrorDetail?
     }
 }
 

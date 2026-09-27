@@ -11,6 +11,9 @@ nonisolated struct ChatMessage: Equatable, Sendable {
     var images: [ImageAttachment] = []
     /// Files for an agent, which finds them in its folder. The LLM bodies leave them out.
     var files: [FileAttachment] = []
+    /// In an agent's answer, the paths of the files it handed to the person, so a follow-up knows which they are.
+    /// The LLM bodies leave them out.
+    var presentedFiles: [String] = []
 }
 
 nonisolated struct ChatRequest: Sendable {
@@ -20,6 +23,9 @@ nonisolated struct ChatRequest: Sendable {
     let messages: [ChatMessage]
     /// The chat's folder for an agent to work in. Without one, an agent gets a folder for this run alone.
     var workspace: URL?
+    /// Whether an agent may hand files from its workspace to the person (see `PresentFilesServer`). A game's
+    /// moves don't.
+    var presentsFiles = false
 
     static let maximumOutputTokens = 16_000
 

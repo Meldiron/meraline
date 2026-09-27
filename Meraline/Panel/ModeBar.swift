@@ -53,7 +53,7 @@ struct ModeBar: View {
     private func switchMode(to mode: ProviderKind) {
         guard mode != preferences.mode else { return }
         preferences.mode = mode
-        if preferences.activeProvider?.isOnDevice == true { AppleIntelligenceClient.prewarm() }
+        session.prewarm()
         focusInput()
     }
 }

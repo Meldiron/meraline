@@ -445,6 +445,11 @@ private struct TurnView: View {
             if !turn.answer.isEmpty {
                 MarkdownView(markdown: turn.answer)
             }
+            if !turn.presentedFiles.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(turn.presentedFiles) { PresentedFileCard(file: $0) }
+                }
+            }
             if let prompt = turn.pendingPrompt {
                 PromptCard(prompt: prompt, agent: agent, answer: { answer(prompt.id, $0) }, explain: explain)
                     .id(prompt.id)

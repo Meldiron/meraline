@@ -48,6 +48,9 @@ nonisolated enum CommandLineClient {
         let settings = request.settings
         let model = settings.model.trimmed
         let images = request.messages.flatMap(\.images)
+        // Meraline's own MCP server, for handing files over from the chat's workspace, and a word on when to.
+        let fileServer = fileServer(for: request)
+        let systemPrompt = Self.systemPrompt(for: request)
 
         switch request.provider {
         case .claudeCode:
@@ -58,7 +61,7 @@ nonisolated enum CommandLineClient {
                 "--verbose",
                 "--include-partial-messages",
                 "--no-session-persistence",
-                "--system-prompt", request.systemPrompt
+                "--system-prompt", systemPrompt
             ]
             if !model.isEmpty { arguments += ["--model", model] }
             if settings.effort != .automatic { arguments += ["--effort", settings.effort.rawValue] }
@@ -68,7 +71,7 @@ nonisolated enum CommandLineClient {
             // claude's own reaches the panel. MCP servers come from claude's own configuration; an allow
             // rule must name its server (`mcp__*` is ignored), so the servers listed last time are named
             // one by one. A server turned off in Settings is denied by name, which also hides its tools.
-            // With no server to name, `--strict-mcp-config` keeps claude from starting any.
+            // With no server to name, `--strict-mcp-config` keeps claude from starting any but Meraline's own.
             var tools = Self.claudeCodeWorkspaceTools
             var allowed: [String] = []
             if settings.allowsWebSearch {
@@ -82,25 +85,22 @@ nonisolated enum CommandLineClient {
             } else {
                 allowed += servers.map { "mcp__\(MCPServer.toolPrefix(for: $0))" }
             }
+            if let fileServer {
+                arguments += ["--mcp-config", try claudeCodeMCPConfig(fileServer)]
+                allowed.append(PresentFilesServer.claudeCodeTool)
+            }
             if !allowed.isEmpty { arguments += ["--allowedTools"] + allowed }
             let denied = servers.isEmpty ? [] : settings.knownMCPServers.filter { settings.disabledMCPServers.contains($0) }
             if !denied.isEmpty { arguments += ["--disallowedTools"] + denied.map { "mcp__\(MCPServer.toolPrefix(for: $0))" } }
-            var content: [[String: Any]] = images.map { image in
-                ["type": "image", "source": ["type": "base64", "media_type": image.mediaType, "data": image.base64]]
-            }
-            content.append(["type": "text", "text": transcript(of: request.messages)])
-            let line: [String: Any] = ["type": "user", "message": ["role": "user", "content": content]]
-            var input = try JSONSerialization.data(withJSONObject: line)
-            input.append(0x0A)
+            let input = try claudeCodeInput(text: transcript(of: request.messages), images: images)
             return CommandInvocation(executable: executable, arguments: arguments, input: input)
 
         case .codex:
-            let files = attachmentFiles(for: images)
-            // Commands may write inside the chat's workspace (and the temporary folder) and nowhere
-            // else; the sandbox keeps them off the network. Codex's exec mode cannot ask for approval,
-            // so anything beyond that fails on its own.
-            var arguments = ["exec", "--json", "--ephemeral", "--skip-git-repo-check", "--sandbox", "workspace-write"]
-            if !model.isEmpty { arguments += ["--model", model] }
+            // Codex runs as an app server for the whole chat (see `LiveAgents`). The model, the instructions, and
+            // the sandbox, which lets commands write in the chat's workspace and the temporary folder and keeps
+            // them off the network, go with each thread, and each question with its turn; these overrides go with
+            // the process. With approvals off, anything beyond the sandbox fails on its own.
+            var arguments = ["app-server"]
             if settings.effort != .automatic {
                 arguments += ["--config", "model_reasoning_effort=\"\(settings.effort.rawValue)\""]
             }
@@ -116,10 +116,15 @@ nonisolated enum CommandLineClient {
                     arguments += ["--config", "mcp_servers.\(tomlKey(name)).enabled=false"]
                 }
             }
-            for name in files.keys.sorted() { arguments += ["--image", name] }
-            arguments.append("-")
-            let prompt = prompt(for: request)
-            return CommandInvocation(executable: executable, arguments: arguments, input: Data(prompt.utf8), files: files)
+            // Meraline's own server comes after, so turning the others off leaves it on.
+            if let fileServer {
+                let server = "mcp_servers.\(PresentFilesServer.name)"
+                arguments += [
+                    "--config", "\(server).command=\(tomlString(fileServer.executable.path))",
+                    "--config", "\(server).args=[\(fileServer.arguments.map(tomlString).joined(separator: ", "))]"
+                ]
+            }
+            return CommandInvocation(executable: executable, arguments: arguments, files: attachmentFiles(for: images))
 
         case .opencode:
             let files = attachmentFiles(for: images)
@@ -127,13 +132,15 @@ nonisolated enum CommandLineClient {
             if !model.isEmpty { arguments += ["--model", model] }
             if settings.effort != .automatic { arguments += ["--variant", settings.effort.rawValue] }
             for name in files.keys.sorted() { arguments += ["--file", name] }
-            arguments += ["--", prompt(for: request)]
+            arguments += ["--", prompt(for: request, systemPrompt: systemPrompt)]
             // OpenCode merges OPENCODE_CONFIG_CONTENT over its configuration files, so a server can be
             // turned off for this run alone while its definition stays where it is.
             var off = settings.disabledMCPServers
             if !settings.allowsMCP { off.formUnion(settings.knownMCPServers) }
             var environment: [String: String] = [:]
-            if !off.isEmpty { environment["OPENCODE_CONFIG_CONTENT"] = try openCodeOverrides(disabling: off.sorted()) }
+            if !off.isEmpty || fileServer != nil {
+                environment["OPENCODE_CONFIG_CONTENT"] = try openCodeOverrides(disabling: off.sorted(), adding: fileServer)
+            }
             return CommandInvocation(executable: executable, arguments: arguments, files: files, environment: environment)
 
         default:
@@ -149,15 +156,45 @@ nonisolated enum CommandLineClient {
     /// A TOML key for a server name: bare when it can be, quoted otherwise.
     static func tomlKey(_ name: String) -> String {
         let bare = !name.isEmpty && name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
-        if bare { return name }
-        let escaped = name.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        return bare ? name : tomlString(name)
+    }
+
+    /// A TOML string, quoted, with backslashes, quotes, and control characters escaped.
+    static func tomlString(_ value: String) -> String {
+        var escaped = ""
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\\": escaped += "\\\\"
+            case "\"": escaped += "\\\""
+            case "\n": escaped += "\\n"
+            case "\t": escaped += "\\t"
+            case "\r": escaped += "\\r"
+            case _ where scalar.value < 0x20 || scalar.value == 0x7F: escaped += String(format: "\\u%04X", scalar.value)
+            default: escaped.unicodeScalars.append(scalar)
+            }
+        }
         return "\"\(escaped)\""
     }
 
-    /// The inline OpenCode configuration that turns the named servers off: `{"mcp":{"name":{"enabled":false}}}`.
-    static func openCodeOverrides(disabling servers: [String]) throws -> String {
-        let mcp = Dictionary(uniqueKeysWithValues: servers.map { ($0, ["enabled": false]) })
-        let data = try JSONSerialization.data(withJSONObject: ["mcp": mcp], options: [.sortedKeys])
+    /// The inline OpenCode configuration that turns the named servers off, `{"mcp":{"name":{"enabled":false}}}`, and
+    /// adds Meraline's own when there is one.
+    static func openCodeOverrides(disabling servers: [String], adding fileServer: PresentFilesServer.Command? = nil) throws -> String {
+        var mcp: [String: Any] = Dictionary(uniqueKeysWithValues: servers.map { ($0, ["enabled": false]) })
+        if let fileServer {
+            mcp[PresentFilesServer.name] = ["type": "local", "command": [fileServer.executable.path] + fileServer.arguments, "enabled": true]
+        }
+        let data = try JSONSerialization.data(withJSONObject: ["mcp": mcp], options: [.sortedKeys, .withoutEscapingSlashes])
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// The `--mcp-config` that has Claude Code start Meraline's own server.
+    static func claudeCodeMCPConfig(_ server: PresentFilesServer.Command) throws -> String {
+        let config = [
+            "mcpServers": [
+                PresentFilesServer.name: ["type": "stdio", "command": server.executable.path, "args": server.arguments]
+            ]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: config, options: [.sortedKeys, .withoutEscapingSlashes])
         return String(decoding: data, as: UTF8.self)
     }
 
@@ -177,25 +214,57 @@ nonisolated enum CommandLineClient {
     }
 
     /// A message's text, followed by the names of the files and folders attached to it, which the agent finds
-    /// copied into its working directory. A folder's name ends in a slash.
+    /// copied into its working directory, and in an answer, the files the agent handed over. A folder's name ends
+    /// in a slash.
     private static func text(of message: ChatMessage) -> String {
-        guard !message.files.isEmpty else { return message.text }
-        let names = message.files.map { "- \($0.name)\($0.isFolder ? "/" : "")" }
-        let note = (["Attached, copied into the working directory:"] + names).joined(separator: "\n")
-        return message.text.isEmpty ? note : "\(message.text)\n\n\(note)"
+        var notes: [String] = []
+        if !message.files.isEmpty {
+            let names = message.files.map { "- \($0.name)\($0.isFolder ? "/" : "")" }
+            notes.append((["Attached, copied into the working directory:"] + names).joined(separator: "\n"))
+        }
+        if !message.presentedFiles.isEmpty {
+            let paths = message.presentedFiles.map { "- \($0)" }
+            notes.append((["Handed to the person with \(PresentFilesServer.tool):"] + paths).joined(separator: "\n"))
+        }
+        return ([message.text] + notes).filter { !$0.isEmpty }.joined(separator: "\n\n")
     }
 
-    private static func prompt(for request: ChatRequest) -> String {
+    private static func prompt(for request: ChatRequest, systemPrompt: String) -> String {
         """
         <instructions>
-        \(request.systemPrompt)
+        \(systemPrompt)
         </instructions>
 
         \(transcript(of: request.messages))
         """
     }
 
-    private static func attachmentFiles(for images: [ImageAttachment]) -> [String: Data] {
+    /// Meraline's own MCP server for the request's agent, when it may hand files over from the chat's workspace.
+    private static func fileServer(for request: ChatRequest) -> PresentFilesServer.Command? {
+        request.presentsFiles ? request.workspace.flatMap { PresentFilesServer.command(for: $0) } : nil
+    }
+
+    /// An agent's instructions: the prompt from Settings, or a game's, and a word on handing files over when it may.
+    static func systemPrompt(for request: ChatRequest) -> String {
+        ([request.systemPrompt] + (fileServer(for: request) == nil ? [] : [PresentFilesServer.instructions]))
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+    }
+
+    /// One question as the line Claude Code reads on stdin: the pictures, then the text.
+    static func claudeCodeInput(text: String, images: [ImageAttachment]) throws -> Data {
+        var content: [[String: Any]] = images.map { image in
+            ["type": "image", "source": ["type": "base64", "media_type": image.mediaType, "data": image.base64]]
+        }
+        content.append(["type": "text", "text": text])
+        let line: [String: Any] = ["type": "user", "message": ["role": "user", "content": content]]
+        var input = try JSONSerialization.data(withJSONObject: line)
+        input.append(0x0A)
+        return input
+    }
+
+    /// Pictures as files for an agent that reads them from its folder: `image-1.png` and on.
+    static func attachmentFiles(for images: [ImageAttachment]) -> [String: Data] {
         Dictionary(uniqueKeysWithValues: images.enumerated().map { index, image in
             ("image-\(index + 1).\(image.mediaType == "image/png" ? "png" : "jpg")", image.data)
         })
@@ -210,11 +279,13 @@ nonisolated enum CommandLineClient {
     }
 
     /// Runs the agent in the chat's workspace, or in a folder for this run alone when the request has
-    /// none. Attached images are written there for the run and removed afterwards; the workspace itself
-    /// stays, since it is the chat's. The files and folders attached to the question are copied in and stay
-    /// with it, so a follow-up can come back to them.
+    /// none. Claude Code and Codex stay running for the chat's follow-ups (see `LiveAgents`); OpenCode runs
+    /// once per question. Attached images are written there for the run and removed afterwards; the workspace
+    /// itself stays, since it is the chat's. The files and folders attached to the question are copied in and
+    /// stay with it, so a follow-up can come back to them.
     static func stream(_ request: ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> {
-        AsyncThrowingStream { continuation in
+        if LiveAgents.handles(request.provider) { return LiveAgents.shared.stream(request) }
+        return AsyncThrowingStream { continuation in
             let process = Process()
             let task = Task {
                 let directory = request.workspace ?? FileManager.default.temporaryDirectory.appending(path: "Meraline-\(UUID().uuidString)")
@@ -260,13 +331,9 @@ nonisolated enum CommandLineClient {
                         process.terminationHandler = { stream.yield($0.terminationStatus); stream.finish() }
                     }
                     try process.run()
-                    // Claude Code takes answers to its prompts on stdin, so its stdin stays open until
-                    // the result; the others read their prompt to the end of stdin first.
-                    let writer = input.fileHandleForWriting
-                    let answersOnInput = request.provider == .claudeCode
                     if let data = invocation.input {
-                        try writer.write(contentsOf: data)
-                        if !answersOnInput { try writer.close() }
+                        try input.fileHandleForWriting.write(contentsOf: data)
+                        try input.fileHandleForWriting.close()
                     }
 
                     async let diagnostics = tail(of: errors.fileHandleForReading)
@@ -278,31 +345,20 @@ nonisolated enum CommandLineClient {
                             if needsSeparator { continuation.yield(.text("\n\n")) }
                             continuation.yield(.text(text))
                             receivedText = true
-                            needsSeparator = request.provider != .claudeCode
+                            needsSeparator = true
                         case .activity(let activity):
                             needsSeparator = false
                             continuation.yield(.activity(activity))
                         case .prompt(let prompt):
+                            // OpenCode's run mode settles its asks itself.
                             needsSeparator = false
-                            var responder: AgentPromptResponder?
-                            if prompt.isPending && answersOnInput {
-                                responder = AgentPromptResponder { answer in
-                                    do {
-                                        try writer.write(contentsOf: try prompt.claudeCodeResponse(answer))
-                                        Log.commandLine.info("Answer sent to \(request.provider.name)")
-                                    } catch {
-                                        Log.commandLine.error("Couldn’t answer \(request.provider.name): \(error.localizedDescription)")
-                                    }
-                                }
-                            }
-                            continuation.yield(.prompt(prompt, responder))
-                        case .finished:
-                            if answersOnInput { try? writer.close() }
-                        case .ignored:
+                            continuation.yield(.prompt(prompt, nil))
+                        case .presented(let paths):
+                            continuation.yield(.presented(paths))
+                        case .finished, .ignored:
                             break
                         }
                     }
-                    if answersOnInput { try? writer.close() }
 
                     var status: Int32 = 0
                     for await code in exit { status = code }
