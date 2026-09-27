@@ -441,11 +441,7 @@ private struct TurnView: View {
                 AttachmentStrip(images: turn.images, files: turn.files, size: 40)
             }
             if !turn.answer.isEmpty {
-                Text(MarkdownText.render(turn.answer))
-                    .font(.system(size: 15))
-                    .lineSpacing(3)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                MarkdownView(markdown: turn.answer)
             }
             if let prompt = turn.pendingPrompt {
                 PromptCard(prompt: prompt, agent: agent, answer: { answer(prompt.id, $0) }, explain: explain)

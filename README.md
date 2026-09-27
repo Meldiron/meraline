@@ -40,7 +40,7 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
 
 ✨ **Opens anywhere.** A global shortcut brings up the window over whatever you're doing, on any Space or full-screen app. It doesn't steal focus from the app you're in.
 
-💬 **Answers quickly.** Replies stream in as they're written, with bold, italics, code, and links rendered. While a model searches the web or runs a tool, you see what it's doing. While it thinks, Meraline murmurs ("sharpening pencils…", "asking the void…", "consulting the sparkle council…").
+💬 **Answers quickly.** Replies stream in as they're written, with headings, lists, tables, and links rendered, and code in a box with a Copy button. While a model searches the web or runs a tool, you see what it's doing. While it thinks, Meraline murmurs ("sharpening pencils…", "asking the void…", "consulting the sparkle council…").
 
 ✂️ **Knows what you selected.** Select text in any app and press <kbd>⌥</kbd> <kbd>Space</kbd>, then click the text cursor above the window: the text comes along as context, so "summarize this" or "what does this mean?" is all you type. It never joins a question until you add it, and texts from several apps can go together. Select files or folders in Finder instead and they're attached: photos for any model, anything for an agent. It needs Accessibility access, which Meraline asks for. **Services › Ask Meraline** works without it.
 

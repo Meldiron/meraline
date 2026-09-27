@@ -62,6 +62,16 @@ struct PanelActionsTests {
         #expect(menu?.actions.last?.isDestructive == true)
     }
 
+    @Test func codeInTheAnswerCanBeCopiedBlockByBlock() async throws {
+        let session = Support.session(ScriptedModel(["Try:\n\n```sh\nls -la\n```\n\nor\n\n```\npwd\n```"]))
+        await Support.play("List files", in: session)
+        let menu = context(session).chatMenu
+        let rows = menu?.actions.filter { $0.id.hasPrefix("copyCode.") } ?? []
+        #expect(rows.map(\.title) == ["Copy Code Block 1", "Copy Code Block 2"])
+        #expect(rows.map(\.subtitle) == ["sh · ls -la", "pwd"])
+        #expect(menu?.filtered(by: "snippet").flatMap(\.actions).map(\.id) == ["copyCode.0", "copyCode.1"])
+    }
+
     @Test func whileAnsweringStopComesFirst() {
         let session = streamingSession()
         session.draft = "Tell me a story"

@@ -249,6 +249,9 @@ struct PanelContext {
                 insertion.insert(answer)
             })
         }
+        if !session.isStreaming, let answer = session.lastAnswer {
+            copy += codeBlockActions(in: answer)
+        }
         if session.conversationMarkdown != nil {
             copy.append(PanelAction(id: "copyConversation", title: "Copy Conversation", icon: .symbol("doc.on.clipboard"), shortcut: .command("c", [.shift, .option])) {
                 session.copyConversation()
@@ -309,6 +312,27 @@ struct PanelContext {
             searchPrompt: "Search for actions…",
             marksPrimary: true
         )
+    }
+
+    /// Copy Code Block for each block of code in the last answer, up to nine, with its language and first line.
+    private func codeBlockActions(in answer: String) -> [PanelAction] {
+        let blocks = Array(MarkdownBlock.codeBlocks(in: answer).filter { !$0.code.trimmed.isEmpty }.prefix(9))
+        return blocks.enumerated().map { index, block in
+            let firstLine = block.code.split(separator: "\n").first.map { String($0).trimmed } ?? ""
+            let subtitle = [block.language ?? "", firstLine].filter { !$0.isEmpty }.joined(separator: " · ")
+            return PanelAction(
+                id: "copyCode.\(index)",
+                title: blocks.count == 1 ? "Copy Code Block" : "Copy Code Block \(index + 1)",
+                subtitle: subtitle.isEmpty ? nil : subtitle,
+                icon: .symbol("chevron.left.forwardslash.chevron.right"),
+                keywords: ["code", "snippet"]
+            ) { [layout] in
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(block.code, forType: .string)
+                Log.panel.info("Code block copied")
+                layout.copyNotice += 1
+            }
+        }
     }
 
     private func gameMenu(_ game: Game) -> ActionMenu {
