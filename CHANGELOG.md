@@ -11,6 +11,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - **No more "on this Mac" label.** The badge beside the mode toggle and the note in the sparkle's panel are gone. Apple Intelligence and local Ollama models still answer without your question leaving the Mac.
 - **Answers read like documents.** Headings, lists, quotes, and tables show as they should, and code sits in a box with its language and a Copy button. Actions (⌘K) adds Copy Code Block for each block of code in the last answer.
 - **Tear off an answer.** Tear Off Answer (⌘T) in Actions keeps an answer on screen in a small glass note beside the window, so a recipe or a list of steps stays in view while you work in another app. Drag it by its header or any empty space, resize it from its sides and bottom, and fold its question away with the chevron. It floats above other apps on every Space until its cross or Esc puts it away, and nothing of it is saved.
+- **Ask Again with another provider.** Actions (⌘K) offers Ask Again with each of your other ready providers, and the one you pick answers your follow-ups too.
 - Dragging an empty part of the window moves it again.
 
 ## v1.5.0 - 2026-09-26

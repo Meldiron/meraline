@@ -79,6 +79,24 @@ struct PanelActionsTests {
         #expect(tearOff.id == "tearOff")
     }
 
+    @Test func askAgainWithAnotherProviderMakesItTheOneInUse() async throws {
+        let preferences = Support.preferences()
+        preferences[.ollama] = ProviderSettings(model: "qwen3", baseURL: "http://127.0.0.1:11434", apiKey: "", isEnabled: true)
+        preferences.provider = .custom
+        let model = ScriptedModel(["Paris.", "Paris, on the Seine."])
+        let session = ChatSession(preferences: preferences) { model.stream($0) }
+        await Support.play("Capital of France?", in: session)
+        let context = context(session, preferences: preferences)
+        let again = try #require(context.chatMenu?.actions.first { $0.id == "askAgainWith.ollama" })
+        #expect(again.title == "Ask Again with Ollama")
+        #expect(context.chatMenu?.actions.contains { $0.id == "askAgainWith.custom" } == false, "not the provider in use")
+        context.run(again, in: .chat)
+        await Support.settle(session)
+        #expect(preferences.activeProvider == .ollama)
+        #expect(model.requests.last?.provider == .ollama)
+        #expect(session.turns.map(\.answer) == ["Paris, on the Seine."])
+    }
+
     @Test func whileAnsweringStopComesFirst() {
         let session = streamingSession()
         session.draft = "Tell me a story"

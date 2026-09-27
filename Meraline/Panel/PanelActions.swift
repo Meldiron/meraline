@@ -270,6 +270,7 @@ struct PanelContext {
                 session.askAgain()
                 focusInput()
             })
+            answer += askAgainElsewhere
         }
         if session.canRewrite {
             answer += Rewrite.allCases.map { rewrite in
@@ -337,6 +338,28 @@ struct PanelContext {
                 NSPasteboard.general.setString(block.code, forType: .string)
                 Log.panel.info("Code block copied")
                 layout.copyNotice += 1
+            }
+        }
+    }
+
+    /// Ask Again with each other ready provider, this mode's first. The one picked becomes the provider in use,
+    /// switching modes when it is of the other kind, so a follow-up goes to it too.
+    private var askAgainElsewhere: [PanelAction] {
+        let preferences = preferences
+        let session = session
+        let active = preferences.activeProvider
+        let kinds = [preferences.mode] + ProviderKind.allCases.filter { $0 != preferences.mode }
+        return kinds.flatMap { preferences.readyProviders(for: $0) }.filter { $0 != active }.map { provider in
+            PanelAction(
+                id: "askAgainWith.\(provider.rawValue)",
+                title: "Ask Again with \(provider.name)",
+                subtitle: modelLine(for: provider),
+                icon: .symbol(provider.symbol),
+                keywords: ["retry", "provider", "model"]
+            ) {
+                preferences.provider = provider
+                session.askAgain()
+                focusInput()
             }
         }
     }
