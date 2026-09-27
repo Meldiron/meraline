@@ -142,6 +142,16 @@ struct ChatLifetimeTests {
         #expect(ChatTimer.remaining(until: now.addingTimeInterval(-5), now: now) == "1 s left")
     }
 
+    @Test func theTimerTurnsPinkAsItReadsFiveMinutes() {
+        let now = Date.now
+        #expect(!ChatTimer.isRunningOut(until: now.addingTimeInterval(30 * 60), now: now))
+        #expect(!ChatTimer.isRunningOut(until: now.addingTimeInterval(6 * 60), now: now))
+        #expect(ChatTimer.remaining(until: now.addingTimeInterval(5 * 60 + 59), now: now) == "5 min left")
+        #expect(ChatTimer.isRunningOut(until: now.addingTimeInterval(5 * 60 + 59), now: now))
+        #expect(ChatTimer.isRunningOut(until: now.addingTimeInterval(59), now: now))
+        #expect(ChatTimer.isRunningOut(until: now.addingTimeInterval(-5), now: now))
+    }
+
     // MARK: Limits
 
     @Test func recentChatsLeaveRoomForTheOpenOneUnderTheLimit() {
