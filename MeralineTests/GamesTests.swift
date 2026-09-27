@@ -81,6 +81,22 @@ struct GameRulesTests {
         #expect(Categories.categoryName("“Things at the beach”") == "Things at the beach")
     }
 
+    @Test func categoriesDealsThreeTheChatHasntPlayed() throws {
+        #expect(Set(Categories.categories.map(GameText.key)).count == Categories.categories.count, "no category twice")
+        var dice = GameDice(seed: 5)
+        let first = try #require(Categories.aside(for: Support.turn(cue: Categories.opening), after: [], dice: &dice))
+        let offered = Categories.categories.filter { first.contains("“\($0)”") }
+        #expect(first.hasPrefix("Pick one of these categories: “"))
+        #expect(offered.count == Categories.offeredCount)
+        #expect(Categories.aside(for: Support.turn("spoon"), after: [], dice: &dice) == nil, "only a new round draws")
+
+        let played = Categories.categories.dropLast(Categories.offeredCount).map { category in
+            [Support.turn(cue: Categories.nextCategory, reply: category), Support.turn("pass", outcome: GameOutcome(text: "Passed", youWon: false))]
+        }.joined()
+        let next = try #require(Categories.aside(for: Support.turn(cue: Categories.nextCategory), after: Array(played), dice: &dice))
+        #expect(Categories.categories.suffix(Categories.offeredCount).allSatisfy { next.contains("“\($0)”") }, "the three left unplayed")
+    }
+
     @Test func wordFootballDrawsTheKickoffsLetterAndAKindOfWord() throws {
         var letters: Set<String> = []
         for seed: UInt64 in 0..<40 {
@@ -115,7 +131,7 @@ struct GameRulesTests {
 struct GamePlayTests {
     private typealias Support = GameTestSupport
 
-    @Test func categoriesJudgesYourWordsAndPlaysItsOwn() async {
+    @Test func categoriesJudgesYourWordsAndPlaysItsOwn() async throws {
         let model = ScriptedModel(["Kitchen", "OK: spatula", "NO: tigers don’t live in kitchens", "Category: Animals"])
         let session = Support.session(model)
         session.startGame(.categories)
@@ -126,7 +142,9 @@ struct GamePlayTests {
         await Support.play("spoon", in: session)
         #expect(session.gameState?.status == "Kitchen · 2 of 12")
         #expect(Categories.lines(for: session.turns).map(\.text) == ["Kitchen", "spoon · spatula"])
-        #expect(model.lastMessages == [Categories.opening, "Kitchen", "spoon"])
+        let pick = try #require(session.turns.first?.message)
+        #expect(pick.hasPrefix("\(Categories.opening)\n\nPick one of these categories: "))
+        #expect(model.lastMessages == [pick, "Kitchen", "spoon"], "the model names things without a draw")
 
         await Support.play("Spatulas", in: session)
         #expect(model.requests.count == 2, "a repeat is caught before asking")

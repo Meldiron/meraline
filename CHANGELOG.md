@@ -23,7 +23,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ### Games
 
-- **Games play out differently every time.** Asked the same thing, a model answers the same way, so Meraline now rolls the dice itself. Each Rhyme Duel gets a story drawn on your Mac, such as a retired pirate in a laundromat who loses a bet, and each of the model's lines ends on one of three words of a sound no line has used yet. Hint knows the other words of that sound, so it always has a rhyme to offer. Word Football kicks off from a letter drawn on your Mac, and each word the model plays leans toward a kind drawn for it, an animal, a tool, a feeling, so no two matches run alike.
+- **Games play out differently every time.** Asked the same thing, a model answers the same way, so Meraline now rolls the dice itself. Each Rhyme Duel gets a story drawn on your Mac, such as a retired pirate in a laundromat who loses a bet, and each of the model's lines ends on one of three words of a sound no line has used yet. Hint knows the other words of that sound, so it always has a rhyme to offer. Word Football kicks off from a letter drawn on your Mac, and each word the model plays leans toward a kind drawn for it, an animal, a tool, a feeling, so no two matches run alike. Categories deals the model three of more than a hundred categories to pick from, never one you've played in that chat until they run out.
 
 ## v1.6.0 - 2026-09-27
 
