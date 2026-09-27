@@ -446,7 +446,6 @@ struct PanelContext {
     private func modelLine(for provider: Provider) -> String {
         let settings = preferences[provider]
         let model = settings.model.isEmpty ? "Default model" : settings.model
-        if settings.answersOnThisMac(for: provider) { return "\(model) · on this Mac" }
         let servers = settings.allowedMCPServers.count
         return servers > 0 ? "\(model) · \(servers) MCP server\(servers == 1 ? "" : "s")" : model
     }

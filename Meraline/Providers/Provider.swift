@@ -241,27 +241,6 @@ nonisolated struct ProviderSettings: Equatable, Sendable {
         case .optional, .none: return hasModel && isEnabled
         }
     }
-
-    /// Whether the answers come from this Mac, so nothing asked leaves it: Apple Intelligence, or Ollama at a
-    /// loopback address with a model that runs here. Ollama's cloud models (`gpt-oss:120b-cloud`, `glm-4.6:cloud`)
-    /// go through the local server to Ollama's own, and any other address is another machine. A Custom server on
-    /// this Mac may relay to one elsewhere, so it never counts.
-    func answersOnThisMac(for provider: Provider) -> Bool {
-        switch provider {
-        case .apple: true
-        case .ollama: Self.isLoopback(baseURL) && !model.trimmed.lowercased().hasSuffix("cloud")
-        default: false
-        }
-    }
-
-    /// `localhost`, `::1`, or an address in 127.0.0.0/8. A name that merely starts with 127 is not one.
-    static func isLoopback(_ address: String) -> Bool {
-        guard let host = URL(string: address.trimmed)?.host(percentEncoded: false)?.lowercased() else { return false }
-        let bare = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        if bare == "localhost" || bare == "::1" { return true }
-        let parts = bare.split(separator: ".", omittingEmptySubsequences: false)
-        return parts.count == 4 && parts.first == "127" && parts.allSatisfy { UInt8($0) != nil }
-    }
 }
 
 nonisolated enum ReasoningEffort: String, CaseIterable, Identifiable, Sendable {

@@ -272,11 +272,7 @@ struct ChatPanelView: View {
                 .onSubmit(session.send)
                 .disabled(session.isStreaming)
 
-            PinButton(
-                preferences: preferences,
-                forgetsAt: hasConversation && !session.isStreaming ? layout.forgetsAt : nil,
-                isAnonymous: session.isAnonymous
-            )
+            PinButton(preferences: preferences)
 
             Button { openSettings(nil) } label: {
                 Image(systemName: "gearshape")

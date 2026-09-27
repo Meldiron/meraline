@@ -53,14 +53,12 @@ struct PreferencesTests {
         preferences[.ollama] = ollama
         preferences.placement = .pointer
         preferences.systemPrompt = "Custom"
-        preferences.idleReset = .oneHour
 
         let reloaded = Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: false)
         #expect(reloaded[.ollama].model == "qwen3")
         #expect(reloaded.activeProvider == .ollama)
         #expect(reloaded.placement == .pointer)
         #expect(reloaded.systemPrompt == "Custom")
-        #expect(reloaded.idleReset == .oneHour)
     }
 
     @Test func mcpChoicesPersist() {
@@ -81,16 +79,6 @@ struct PreferencesTests {
         #expect(reloaded[.claudeCode].disabledMCPServers == ["vencord"])
         #expect(reloaded[.claudeCode].allowedMCPServers == ["knowledge-rag"])
         #expect(!reloaded[.codex].allowsMCP)
-    }
-
-    @Test func idleResetDefaultsToHalfAnHourAndExpiresHiddenChats() {
-        let preferences = Preferences(defaults: makeDefaults(), secrets: noSecrets, onDeviceModelAvailable: false)
-        #expect(preferences.idleReset == .thirtyMinutes)
-        let hiddenAt = Date(timeIntervalSinceReferenceDate: 1_000)
-        #expect(IdleReset.thirtyMinutes.hasExpired(since: hiddenAt, now: hiddenAt.addingTimeInterval(30 * 60)))
-        #expect(!IdleReset.thirtyMinutes.hasExpired(since: hiddenAt, now: hiddenAt.addingTimeInterval(29 * 60)))
-        #expect(!IdleReset.never.hasExpired(since: hiddenAt, now: hiddenAt.addingTimeInterval(24 * 60 * 60)))
-        #expect(!IdleReset.fiveMinutes.hasExpired(since: nil, now: hiddenAt))
     }
 
     @Test func onDeviceModelStartsOnOnlyWhereItIsAvailable() {

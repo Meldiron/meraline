@@ -500,19 +500,6 @@ final class ChatSession {
         if case .over(let outcome, _)? = gameState?.phase { nudge = outcome.text }
     }
 
-    /// The window came back after being hidden for a long time: the chat moves to Recent Chats and the
-    /// next question starts fresh. Anything typed but not yet sent stays in the input. A game ends.
-    func expire() {
-        guard !isStreaming, !turns.isEmpty || isPlaying else { return }
-        archiveCurrentChat()
-        turns = []
-        mode = .chat
-        failure = nil
-        failureNeedsSettings = false
-        nudge = nil
-        insistedInput = nil
-    }
-
     /// Moves the chat to Recent Chats with its workspace, unless the chat is anonymous or not `keeping`. A
     /// workspace whose chat is not kept, and those of the chats that drop off the end, are removed.
     private func archiveCurrentChat(keeping: Bool = true) {

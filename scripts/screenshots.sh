@@ -6,9 +6,6 @@
 #   actions   the chat's panel of actions (⌘K) over that answer: Insert Answer into TextEdit and the rewrites
 #   game      Odd One Out after the model's first move, with its choice buttons and the games unfolded
 #   menu      the panel of recent chats behind the clock, with the chat asked for the panel shot in it
-#   privacy   Apple Intelligence's answer in a pinned window left in the background: "on this Mac" and the
-#             pin counting down. Not Hide from Screen Sharing: screencapture honors it, and the picture comes
-#             out empty.
 #   agent     Agent mode: an answer, its trail of MCP tools, and a request to write a file with its Why?
 #   question  Agent mode: a question from the agent with its choices
 #   settings  Settings on the Claude Code page, with its MCP servers
@@ -25,8 +22,8 @@
 # key from the Keychain and MERALINE_SHOT_MODEL (default: the model you set for it). The agent shots run
 # scripts/lib/screenshots/demo-agent.sh as the Claude Code command, a stand-in that speaks Claude Code's
 # protocol with scripted demo MCP servers and answers, so no picture shows your own servers or files. The
-# privacy shot asks Apple Intelligence, so it needs a Mac where it is on. The actions and privacy shots put a
-# blank TextEdit document in front, behind the backdrop, and close TextEdit after if it wasn't open.
+# actions shot puts a blank TextEdit document in front, behind the backdrop, and closes TextEdit after if it
+# wasn't open.
 #
 #   scripts/screenshots.sh [--wait-idle] [dark|light|both] [output directory]
 #
@@ -84,7 +81,7 @@ frame_key="NSWindow Frame MeralineSettings"
 saved_frame=$(defaults read com.meldiron.meraline "$frame_key" 2>/dev/null || true)
 read -r screen_w screen_h <<< "$(window screen)"
 
-suites=(com.meldiron.meraline.screenshots.llm com.meldiron.meraline.screenshots.agent com.meldiron.meraline.screenshots.private)
+suites=(com.meldiron.meraline.screenshots.llm com.meldiron.meraline.screenshots.agent)
 pid="" backdrop="" logger=""
 textedit_was_open=0
 pgrep -xq TextEdit && textedit_was_open=1
@@ -249,21 +246,6 @@ for appearance in $appearances; do
   park
   sleep 0.8
   shoot_panel menu
-  quit
-  fi
-
-  # Apple Intelligence in a pinned window, left for TextEdit so its pin counts down.
-  if wants privacy; then
-  backdrop_up $appearance above
-  prepare ${suites[3]} mode string llm provider string apple claudeCode.enabled bool false
-  launch ${suites[3]} $appearance
-  ask_about "cant make the review thursday, my doctor moved my appointment. friday ok?" "Rewrite this as a short, polite message to my manager, without a greeting or sign-off."
-  wait_for 'Answer (complete|failed)' 120
-  since_mark | grep -q 'Answer complete' || { echo "Apple Intelligence did not answer." >&2; return 1; }
-  textedit_front
-  park
-  sleep 1.5
-  shoot_panel privacy
   quit
   fi
 

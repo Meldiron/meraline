@@ -42,8 +42,6 @@ final class PanelLayout {
     var copyNotice = 0
     /// The last time the recent chats were forgotten, for the clock under the input to react to.
     var lastForgetting: Forgetting?
-    /// When the idle clock moves the chat on, while you are away from the window (see `IdleClock`).
-    var forgetsAt: Date?
     /// How far the window's top may rise before it leaves the screen, for a panel of actions to choose
     /// between opening upward and downward.
     var roomOnScreenAbove: CGFloat = .greatestFiniteMagnitude
@@ -95,7 +93,6 @@ final class PanelController: NSObject {
     private let openSettings: (SettingsPane?) -> Void
     private var keyMonitor: Any?
     private var isApplyingFrame = false
-    private lazy var idleClock = IdleClock(session: session, preferences: preferences, layout: layout)
     private var shake = ShakeDetector()
     /// How much of the window's height is room above the card, made for a panel of actions.
     private var roomAbove: CGFloat = 0
@@ -233,7 +230,6 @@ final class PanelController: NSObject {
             layout.focusRequest += 1
             return
         }
-        idleClock.comeBack()
         if preferences.activeProvider?.isOnDevice == true { AppleIntelligenceClient.prewarm() }
         SelectionAccess.shared.refresh()
         let screen = Self.screenUnderPointer
@@ -249,7 +245,6 @@ final class PanelController: NSObject {
     func close() {
         guard panel.isVisible else { return }
         shortcutSetup.dismiss()
-        idleClock.leave()
         whatsNew.isExpanded = false
         session.withdrawOfferedSelection()
         sources.windowClosed()
@@ -455,11 +450,7 @@ final class PanelController: NSObject {
 extension PanelController: NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
         layout.actionPanel = nil
-        if preferences.isPinned { idleClock.leave() } else { close() }
-    }
-
-    func windowDidBecomeKey(_ notification: Notification) {
-        idleClock.comeBack()
+        if !preferences.isPinned { close() }
     }
 
     func windowDidChangeScreen(_ notification: Notification) {

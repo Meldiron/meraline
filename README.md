@@ -103,22 +103,15 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
     <td align="center"><sub>The clock keeps your recent chats, to reopen or clear</sub></td>
   </tr>
   <tr>
-    <td align="center">
+    <td align="center" colspan="2">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/actions.png">
         <img src="docs/screenshots/actions-light.png" width="440" alt="The chat's actions over an answer: Insert Answer into TextEdit, Copy Conversation, Ask Again, and the rewrites Make Shorter, Make Longer, Make Simpler, Make More Concrete, and Turn into Bullet List">
       </picture>
     </td>
-    <td align="center">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/privacy.png">
-        <img src="docs/screenshots/privacy-light.png" width="440" alt="An answer from Apple Intelligence with on this Mac beside the mode toggle, and the pin counting down: forgets in 30m">
-      </picture>
-    </td>
   </tr>
   <tr>
-    <td align="center"><sub>Rewrite an answer in place, or paste it where you were</sub></td>
-    <td align="center"><sub>Says when nothing leaves your Mac, and counts down to a fresh start</sub></td>
+    <td align="center" colspan="2"><sub>Rewrite an answer in place, or paste it where you were</sub></td>
   </tr>
   <tr>
     <td align="center" colspan="2">
@@ -181,14 +174,14 @@ Meraline is built so you don't have to take its word for any of this.
 
 - **No account and no server in between.** Questions go straight from your Mac to the provider you chose. Meraline has no backend, no analytics, and no crash reporting. The only other connections are a once-a-day update check against `github.com`, which you can turn off in Settings, and the pictures in a release's notes, fetched from GitHub when you open What's New. Watch the traffic with any network monitor and you'll see nothing else.
 - **Nothing on disk.** Conversations and games live in memory and are gone when you quit. The preferences file (`defaults read com.meldiron.meraline`) holds settings only: shortcut, window placement, and which providers are on.
-- **Chats move on.** After 30 minutes away from the window, the chat moves to Recent Chats and your next question starts fresh. An anonymous chat is forgotten instead. A window pinned on the screen counts down on its pin ("forgets in 28m"). Change the time, or turn it off, in **Settings › General**.
+- **Chats stay until you move on.** A chat stays in the window however long you're away, until you start a new one (<kbd>⌘</kbd> <kbd>N</kbd> or <kbd>Esc</kbd>). It then waits in Recent Chats, or is forgotten if it was anonymous.
 - **Keys in the Keychain.** API keys are stored as Keychain items under the service `com.meldiron.meraline.api-keys`, where Keychain Access can show and delete them. They never appear in preferences, logs, or diagnostics.
 - **Command-line agents stay in charge of their own sign-in.** Meraline runs the unmodified `claude`, `codex`, and `opencode` commands with session persistence off. It never reads or copies their tokens. The MCP servers set up in an agent are available to it here too, as the agent reports them; **Settings › Agents** lists them and lets you turn any of them off for Meraline alone, without touching the agent's own configuration. Each chat gives its agent a scratch folder in the temporary directory, holding only copies of the files and folders you attach, never your originals, and what the agent writes there. It is removed when the chat is forgotten or Meraline quits. When Claude Code wants to write there, or has a question of its own, Meraline shows it and waits for you; **Why?** has it say in one line why it wants to.
 - **The selection is read only when you ask.** With Accessibility access, Meraline reads the selected text of the app in front, or which files are selected in Finder, when you press the shortcut, and at no other time. The text stays in memory, out of your question, unless you click the text cursor to add it. It skips password fields and secure input. When an app doesn't share its selection directly, Meraline presses that app's Copy command (or ⌘C, in an app like Zed that describes nothing but its window) and puts back what was on your clipboard straight away. Turn it off in **Settings › General**.
 - **Screenshots only when you click.** The screen button takes a single picture of the display the window is on, with Meraline's own windows left out, and attaches it to your next question. It needs Screen Recording access, which macOS asks you for, but Meraline never records: nothing is captured until you click, and the picture lives in memory with the chat. The clipboard button reads your clipboard only when you click it; while the window is open, Meraline only checks what kind of thing is on it, to show whether there's something to add. Passwords that password managers mark as concealed are never read.
 - **Every access in one list.** **Settings › Permissions** shows Accessibility and Screen Recording, the features each one turns on, and whether macOS allows it right now, with a button to ask for it and one that opens its page in System Settings.
 - **Off screen shares, if you want.** **Hide from Screen Sharing**, in the sparkle's panel or **Settings › General**, asks macOS to leave the window out of screen sharing, recordings, and screenshots. It's off unless you turn it on. Apps that capture the whole display, such as QuickTime, can still show the window, so try it with yours first.
-- **On-device means on-device.** Apple Intelligence answers come from the model inside macOS, and Ollama's from a model on your Mac. Nothing is sent anywhere, and while one of them answers, the window says "on this Mac" beside the mode toggle. Ollama's cloud models and servers on other machines don't get the label.
+- **On-device means on-device.** Apple Intelligence answers come from the model inside macOS, and Ollama's from a model on your Mac. Nothing is sent anywhere, unless you pick one of Ollama's cloud models or point it at another machine.
 - **It's all open source.** Search the code for `URLSession`, `Process`, and `Keychain` to see every place Meraline talks to anything.
 
 ## Automate it

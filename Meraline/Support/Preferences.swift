@@ -22,35 +22,6 @@ enum PanelPlacement: String, CaseIterable, Identifiable {
     }
 }
 
-/// How long you may be away from the window, hidden or pinned without the keyboard, before the chat moves to
-/// Recent Chats and the next question starts fresh (see `IdleClock`).
-enum IdleReset: Int, CaseIterable, Identifiable {
-    case never = 0
-    case fiveMinutes = 5
-    case fifteenMinutes = 15
-    case thirtyMinutes = 30
-    case oneHour = 60
-
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .never: "Never"
-        case .fiveMinutes: "After 5 minutes"
-        case .fifteenMinutes: "After 15 minutes"
-        case .thirtyMinutes: "After 30 minutes"
-        case .oneHour: "After 1 hour"
-        }
-    }
-
-    var interval: TimeInterval? { self == .never ? nil : TimeInterval(rawValue * 60) }
-
-    func hasExpired(since hiddenAt: Date?, now: Date = .now) -> Bool {
-        guard let interval, let hiddenAt else { return false }
-        return now.timeIntervalSince(hiddenAt) >= interval
-    }
-}
-
 enum UpdateChannel: String, CaseIterable, Identifiable {
     case stable
     case beta
@@ -149,9 +120,6 @@ final class Preferences {
     var updateChannel: UpdateChannel {
         didSet { defaults.set(updateChannel.rawValue, forKey: "updateChannel") }
     }
-    var idleReset: IdleReset {
-        didSet { defaults.set(idleReset.rawValue, forKey: "idleReset") }
-    }
     /// Asks macOS to leave the window out of screen sharing, recordings, and screenshots. Captures that take the
     /// whole display, as ScreenCaptureKit's do, may show it anyway. Off unless you turn it on.
     var hidesFromScreenSharing: Bool {
@@ -189,7 +157,6 @@ final class Preferences {
         bringsSelection = defaults.object(forKey: "bringsSelection") as? Bool ?? true
         systemPrompt = defaults.string(forKey: "systemPrompt") ?? Self.defaultSystemPrompt
         updateChannel = defaults.string(forKey: "updateChannel").flatMap(UpdateChannel.init(rawValue:)) ?? .stable
-        idleReset = (defaults.object(forKey: "idleReset") as? Int).flatMap(IdleReset.init(rawValue:)) ?? .thirtyMinutes
         hidesFromScreenSharing = defaults.bool(forKey: "hidesFromScreenSharing")
         providerSettings = Dictionary(uniqueKeysWithValues: Provider.allCases.map { provider in
             (provider, ProviderSettings(
@@ -243,11 +210,6 @@ final class Preferences {
 
     /// The provider that answers in the current mode, or nil when none of its kind is ready.
     var activeProvider: Provider? { defaultProvider(for: mode) }
-
-    /// Whether the provider that answers now runs on this Mac (see `ProviderSettings.answersOnThisMac(for:)`).
-    var answersOnThisMac: Bool {
-        activeProvider.map { providerSettings[$0]!.answersOnThisMac(for: $0) } ?? false
-    }
 
     /// The provider a mode answers with: its pick when ready, otherwise its first ready provider.
     func defaultProvider(for kind: ProviderKind) -> Provider? {

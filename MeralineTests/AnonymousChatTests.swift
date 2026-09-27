@@ -56,17 +56,6 @@ struct AnonymousChatTests {
         #expect(session.history.isEmpty)
     }
 
-    @Test func anExpiredAnonymousChatIsForgottenButTheDraftStays() async {
-        let session = GameTestSupport.session(ScriptedModel(["One"]))
-        session.isAnonymous = true
-        await GameTestSupport.play("Secret?", in: session)
-        session.draft = "Half a thought"
-        session.expire()
-        #expect(session.turns.isEmpty)
-        #expect(session.history.isEmpty)
-        #expect(session.draft == "Half a thought")
-    }
-
     @Test func anAnonymousAgentChatTakesItsWorkspaceAlong() async throws {
         let model = ScriptedModel(["Kept", "Secret"])
         let preferences = GameTestSupport.preferences(withProvider: false)

@@ -274,14 +274,4 @@ struct RhymeDuelSessionTests {
         #expect(session.game == .rhymeDuel)
         #expect(session.history.isEmpty)
     }
-
-    @Test func expiringEndsTheDuel() {
-        let session = Support.session(ScriptedModel())
-        session.reopen(duel())
-        session.expire()
-        #expect(session.game == nil)
-        #expect(session.turns.isEmpty)
-        #expect(session.nudge == nil)
-        #expect(session.history.first?.mode == .game(.rhymeDuel))
-    }
 }

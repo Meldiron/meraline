@@ -7,6 +7,8 @@ When a version has an entry here, the Release workflow uses it as the release no
 ## Unreleased
 
 - **Permissions in one place.** Settings › Permissions lists the two accesses Meraline can ask macOS for, Accessibility and Screen Recording, with the features each one turns on and whether macOS allows it, checked again every second while the pane is open. Allow… asks macOS for it, and Open System Settings goes straight to the list with Meraline's switch.
+- **A chat stays until you start a new one.** However long you're away from the window, hidden or pinned, the chat waits for you, and it moves to Recent Chats when you start a new one. Settings › General › Start a new chat and the pin's countdown are gone.
+- **No more "on this Mac" label.** The badge beside the mode toggle and the note in the sparkle's panel are gone. Apple Intelligence and local Ollama models still answer without your question leaving the Mac.
 
 ## v1.5.0 - 2026-09-26
 
