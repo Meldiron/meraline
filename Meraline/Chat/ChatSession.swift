@@ -556,6 +556,14 @@ final class ChatSession {
         nudge = game.rules.invitation
     }
 
+    /// Starts the game being played over from its beginning. The game so far moves to Recent Chats, as when any
+    /// game starts, and its finished rounds stay counted against the model.
+    func restartGame() {
+        guard let game else { return }
+        Log.chat.info("\(game.title) restarted")
+        startGame(game)
+    }
+
     /// Plays one of a game's buttons, such as a word to pick.
     func choose(_ choice: String) {
         guard isYourMove else { return }

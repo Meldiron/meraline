@@ -419,6 +419,11 @@ struct PanelContext {
                 session.playAgain()
                 focusInput()
             })
+        } else if !session.turns.isEmpty {
+            round.append(PanelAction(id: "restartGame", title: "Restart \(game.title)", icon: .symbol("arrow.counterclockwise"), shortcut: .command("r"), keywords: ["start over", "new game"]) {
+                session.restartGame()
+                focusInput()
+            })
         }
         if session.conversationMarkdown != nil {
             round.append(PanelAction(id: "copyGame", title: "Copy Game", icon: .symbol("doc.on.clipboard"), shortcut: .command("c", .shift)) {
