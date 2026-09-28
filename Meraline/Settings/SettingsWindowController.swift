@@ -4,7 +4,8 @@ import Observation
 import SwiftUI
 
 final class SettingsWindowController: NSWindowController {
-    private let navigation = SettingsNavigation()
+    /// The pane on show. Tests set it to open a pane without `show(_:)`, which activates the app.
+    let navigation = SettingsNavigation()
 
     init(preferences: Preferences, updater: Updater, session: ChatSession) {
         let hostingController = NSHostingController(

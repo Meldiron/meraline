@@ -1,0 +1,173 @@
+import AppKit
+import SwiftUI
+import Testing
+@testable import Meraline
+
+/// The pictures `scripts/showcase.sh` takes (see `Showcase`), one test a scene, each in every appearance asked for.
+/// Skipped in every other test run.
+///
+///   opening       Rhyme Duel waiting for its first move: the invitation card with Random Rhyme
+///   longest-word  Longest Word once the model has picked its word: the nine letters in glass bubbles
+///   usage         Settings › Usage over the last 30 days, from `DemoUsage`
+///   usage-games   further down the same page: the games played, and a section for each
+///   prompt        Settings › Prompt: the language, and the LLMs' and the agents' instructions
+///   prompt-games  further down the same page: the games, one of them changed, and Why?
+@MainActor
+@Suite(.serialized, .enabled(if: Showcase.output != nil, "scripts/showcase.sh takes these pictures"))
+struct ShowcaseTests {
+    @Test func opening() async throws {
+        guard Showcase.wants("opening") else { return }
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage)
+            scene.session.startGame(.rhymeDuel)
+            await Showcase.settle(1.5)
+            try await stage.capturePanel(scene.panel, as: "opening")
+            stage.close(scene.panel)
+        }
+    }
+
+    @Test func longestWord() async throws {
+        guard Showcase.wants("longest-word") else { return }
+        // Letters with a good long word in them, drawn as the game draws them, and a word of the model's to hide.
+        let seed: UInt64 = 2026
+        var preview = GameDice(seed: seed)
+        let letters = LongestWord.draw(dice: &preview, in: .english)
+        let words = WordCheck.longestWords(from: letters)
+        let modelWord = words.dropFirst().first ?? words.first ?? LongestWord.noWord
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage, replies: [modelWord.uppercased()])
+            scene.session.dice = GameDice(seed: seed)
+            scene.session.startGame(.longestWord)
+            await GameTestSupport.settle(scene.session)
+            await Showcase.settle(1.5)
+            try await stage.capturePanel(scene.panel, as: "longest-word")
+            stage.close(scene.panel)
+        }
+    }
+
+    @Test func usage() async throws {
+        guard Showcase.wants("usage") || Showcase.wants("usage-games") else { return }
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            try await Self.settings(on: stage, pane: .usage, fill: { DemoUsage.fill($0.usage) }) { window in
+                // The last 30 days, past the pane's header: the tiles and the chart. Then on to the games.
+                Self.select("Month", in: window)
+                await Showcase.settle(1)
+                Self.scroll(window, to: 170)
+                if Showcase.wants("usage") { try await stage.captureWindow(window, as: "usage") }
+                Self.scroll(window, to: 2_010)
+                if Showcase.wants("usage-games") { try await stage.captureWindow(window, as: "usage-games") }
+            }
+            stage.close()
+        }
+    }
+
+    @Test func prompt() async throws {
+        guard Showcase.wants("prompt") || Showcase.wants("prompt-games") else { return }
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let changed = ["systemPrompt.wordFootball": "You are playing Word Football in Czech. Every word must be a real Czech word."]
+            try await Self.settings(on: stage, pane: .prompt, defaults: changed) { window in
+                Self.scroll(window, to: 170)
+                if Showcase.wants("prompt") { try await stage.captureWindow(window, as: "prompt") }
+                Self.scroll(window, to: 820)
+                if Showcase.wants("prompt-games") { try await stage.captureWindow(window, as: "prompt-games") }
+            }
+            stage.close()
+        }
+    }
+
+    // MARK: Scenes
+
+    private struct PanelScene {
+        let session: ChatSession
+        let panel: NSWindow
+        let controller: PanelController
+        let model: ScriptedModel
+    }
+
+    /// Preferences as the screenshots have them: Anthropic ready, the window pinned, in a throwaway suite with
+    /// `values` in it and no Keychain.
+    private static func preferences(_ values: [String: Any] = [:]) -> (Preferences, UserDefaults) {
+        let suite = "MeralineShowcase.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(true, forKey: ShortcutSetup.chosenKey)
+        for (key, value) in values { defaults.set(value, forKey: key) }
+        let preferences = Preferences(defaults: defaults, secrets: SecretStore(read: { _ in "demo" }, write: { _, _ in }), onDeviceModelAvailable: false)
+        var anthropic = preferences[.anthropic]
+        anthropic.model = "claude-sonnet-5"
+        anthropic.apiKey = "demo"
+        anthropic.isEnabled = true
+        preferences[.anthropic] = anthropic
+        preferences.setDefaultProvider(.anthropic, for: .llm)
+        preferences.isPinned = true
+        return (preferences, defaults)
+    }
+
+    /// The real panel on the stage, answering from `replies`.
+    private static func panel(on stage: ShowcaseStage, replies: [String] = []) throws -> PanelScene {
+        let (preferences, defaults) = preferences()
+        let model = ScriptedModel(replies)
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { model.stream($0) }
+        let before = Set(NSApp.windows.map(ObjectIdentifier.init))
+        let controller = PanelController(
+            session: session, preferences: preferences,
+            whatsNew: WhatsNew(defaults: defaults, currentVersion: "1.0.0"),
+            updater: Updater(preferences: preferences, defaults: defaults), updateNotice: UpdateNotice(defaults: defaults),
+            shortcutSetup: ShortcutSetup(defaults: defaults), openSettings: { _ in }
+        )
+        let panel = try #require(NSApp.windows.first { $0 is FloatingPanel && !before.contains(ObjectIdentifier($0)) })
+        stage.place(panel)
+        return PanelScene(session: session, panel: panel, controller: controller, model: model)
+    }
+
+    /// The real Settings window on the stage, open on `pane`, for `body` to set up and capture. The window saves
+    /// its frame under the app's own name, and the test host is the app, so the frame saved there is put back.
+    private static func settings(
+        on stage: ShowcaseStage, pane: SettingsPane, defaults values: [String: Any] = [:],
+        fill: (ChatSession) -> Void = { _ in }, _ body: (NSWindow) async throws -> Void
+    ) async throws {
+        let frameKey = "NSWindow Frame MeralineSettings"
+        let savedFrame = UserDefaults.standard.object(forKey: frameKey)
+        defer { UserDefaults.standard.set(savedFrame, forKey: frameKey) }
+        let (preferences, defaults) = preferences(values)
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { _ in AsyncThrowingStream { $0.finish() } }
+        fill(session)
+        let controller = SettingsWindowController(preferences: preferences, updater: Updater(preferences: preferences, defaults: defaults), session: session)
+        let window = try #require(controller.window)
+        window.setFrameAutosaveName("")
+        controller.navigation.selection = pane
+        stage.place(window)
+        await Showcase.settle(1.5)
+        try await body(window)
+        window.orderOut(nil)
+    }
+
+    // MARK: Moving around a pane
+
+    /// Scrolls the pane, the widest scroll view in the window, so `y` points of its content are above its top.
+    private static func scroll(_ window: NSWindow, to y: CGFloat) {
+        let scrollViews = window.contentView?.showcaseDescendants(of: NSScrollView.self) ?? []
+        guard let scrollView = scrollViews.max(by: { $0.frame.width < $1.frame.width }), let document = scrollView.documentView else { return }
+        let clip = scrollView.contentView
+        let top = -scrollView.contentInsets.top
+        let bottom = document.frame.height - clip.bounds.height + scrollView.contentInsets.bottom
+        let offset = min(max(top, top + y), max(top, bottom))
+        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: document.isFlipped ? offset : document.frame.height - clip.bounds.height - offset))
+        scrollView.reflectScrolledClipView(clip)
+    }
+
+    /// Picks the segment called `label` of the first segmented control that has one, as a click would.
+    private static func select(_ label: String, in window: NSWindow) {
+        let controls = window.contentView?.showcaseDescendants(of: NSSegmentedControl.self) ?? []
+        for control in controls {
+            guard let segment = (0..<control.segmentCount).first(where: { control.label(forSegment: $0) == label }) else { continue }
+            control.selectedSegment = segment
+            control.sendAction(control.action, to: control.target)
+            return
+        }
+    }
+}
