@@ -189,9 +189,9 @@ struct PromptPane: View {
             Section {
                 disclosure(for: .toolReason, symbol: "questionmark.bubble")
             } header: {
-                Text("Agent Asks")
+                Text("Agent Tools")
             } footer: {
-                Text("When Claude Code asks before it writes a file, runs a command, or uses a skill, Why? has it say in one line why it wants to.")
+                Text("When Claude Code asks before it writes a file, runs a command, or uses a skill, Why? has it say in one line why it wants to. A click on a tool under a finished answer has the agent that used it say why it did.")
             }
         }
         .formStyle(.grouped)

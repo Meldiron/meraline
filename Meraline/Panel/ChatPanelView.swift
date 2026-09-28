@@ -346,7 +346,8 @@ struct ChatPanelView: View {
                             isAnswering: session.isStreaming && turn.id == session.turns.last?.id,
                             agent: agentName,
                             answer: { session.answer($0, with: $1) },
-                            explain: explain
+                            explain: explain,
+                            explainTool: explainTool(for: turn)
                         )
                     }
                 }
@@ -365,6 +366,18 @@ struct ChatPanelView: View {
     /// The Why? button on an agent's ask: the agent says in one line why it wants the tool (see `ToolReason`).
     private func explain(_ prompt: AgentPrompt) async throws -> String {
         try await ToolReason.explain(prompt, in: session.turns, settings: preferences[.claudeCode], instructions: preferences.instructions(for: .toolReason))
+    }
+
+    /// A click on a tool under a finished answer: the provider that answered says in one line why it used the tool
+    /// (see `ToolReason`). None once that provider isn't ready, since the chat would go somewhere new.
+    private func explainTool(for turn: ChatSession.Turn) -> ((Int) async throws -> String)? {
+        guard let provider = turn.provider, preferences[provider].isReady(for: provider) else { return nil }
+        return { index in
+            try await ToolReason.explain(
+                toolAt: index, of: turn, in: session.turns, provider: provider,
+                settings: preferences[provider], instructions: preferences.instructions(for: .toolReason)
+            )
+        }
     }
 
     private var footer: some View {
@@ -462,6 +475,8 @@ private struct TurnView: View {
     let agent: String
     let answer: (AgentPrompt.ID, AgentAnswer) -> Void
     var explain: ((AgentPrompt) async throws -> String)?
+    /// Asks the provider that answered why it used one of the answer's tools.
+    var explainTool: ((Int) async throws -> String)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -509,7 +524,7 @@ private struct TurnView: View {
                 }
             }
             if !turn.tools.isEmpty && !turn.answer.isEmpty {
-                ToolTrail(tools: turn.tools)
+                ToolTrail(tools: turn.tools, agent: turn.provider?.name ?? agent, explain: isAnswering ? nil : explainTool)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -521,13 +536,6 @@ private struct TurnView: View {
 /// single choices is answered by the first tap; several, or several choices, wait for Done. Neutral glass,
 /// with the panel's faint pink on the default choice.
 private struct PromptCard: View {
-    /// Where Why? stands: asking, the reason, or why there is none.
-    private enum Why: Equatable {
-        case asking
-        case reason(String)
-        case failed(String)
-    }
-
     let prompt: AgentPrompt
     let agent: String
     let answer: (AgentAnswer) -> Void
@@ -538,7 +546,7 @@ private struct PromptCard: View {
     /// Answers typed instead of picked, by question.
     @State private var typed: [String: String] = [:]
     /// Nil until Why? is clicked. Kept by the card alone, so the reason goes when the ask is settled.
-    @State private var why: Why?
+    @State private var why: WhyAnswer?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -585,7 +593,7 @@ private struct PromptCard: View {
                     }
                 }
                 Spacer(minLength: 8)
-                if explain != nil, why == nil || isWhyFailed {
+                if explain != nil, why == nil || why?.isFailed == true {
                     Button("Why?") { why = .asking }
                         .buttonStyle(.glass)
                         .help("Ask \(agent) why it wants this")
@@ -597,7 +605,7 @@ private struct PromptCard: View {
                     .keyboardShortcut(.defaultAction)
             }
             if let why {
-                whyRow(why)
+                WhyLine(why: why, agent: agent)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -615,27 +623,6 @@ private struct PromptCard: View {
                 Log.chat.error("Couldn’t get the agent's reason: \(error.localizedDescription)")
                 why = .failed(error.localizedDescription)
             }
-        }
-    }
-
-    private var isWhyFailed: Bool {
-        if case .failed = why { true } else { false }
-    }
-
-    @ViewBuilder
-    private func whyRow(_ why: Why) -> some View {
-        switch why {
-        case .asking:
-            HStack(spacing: 6) {
-                ProgressView()
-                    .controlSize(.mini)
-                Text("Asking \(agent) why…")
-            }
-        case .reason(let reason):
-            Text(reason)
-                .textSelection(.enabled)
-        case .failed(let message):
-            Text("Couldn’t find out why. \(message)")
         }
     }
 
@@ -752,33 +739,9 @@ private struct PromptOutcomeRow: View {
     }
 }
 
-/// The tools an answer used, as small capsules under it: a web search, a page, a command, or an MCP tool
-/// under its server's name. Hovering shows the full line. Neutral glass, like everything else here.
-private struct ToolTrail: View {
-    let tools: [Activity]
-
-    var body: some View {
-        FlowLayout(spacing: 6, maximumItemWidth: 260) {
-            ForEach(Array(tools.enumerated()), id: \.offset) { _, tool in
-                Label(tool.label, systemImage: tool.symbol)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .glassEffect(.regular, in: .capsule)
-                    .help(tool.title)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Used \(tools.map(\.label).formatted(.list(type: .and)))")
-    }
-}
-
 /// Lays children out left to right and wraps to the next line when the row is full. Each child is
 /// offered at most `maximumItemWidth`, so a long label truncates instead of taking a whole row.
-private nonisolated struct FlowLayout: Layout {
+nonisolated struct FlowLayout: Layout {
     var spacing: CGFloat = 6
     var maximumItemWidth: CGFloat?
 
