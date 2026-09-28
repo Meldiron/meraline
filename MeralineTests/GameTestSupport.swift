@@ -47,8 +47,9 @@ enum GameTestSupport {
         return preferences
     }
 
-    static func session(_ model: ScriptedModel, withProvider: Bool = true) -> ChatSession {
-        ChatSession(preferences: preferences(withProvider: withProvider)) { model.stream($0) }
+    /// A session with a usage ledger of its own, in memory, so no test touches the app's.
+    static func session(_ model: ScriptedModel, withProvider: Bool = true, usage: UsageLedger = UsageLedger(file: nil)) -> ChatSession {
+        ChatSession(preferences: preferences(withProvider: withProvider), usage: usage) { model.stream($0) }
     }
 
     /// Waits until the model's move has arrived and been judged.

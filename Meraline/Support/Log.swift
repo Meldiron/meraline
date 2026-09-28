@@ -18,6 +18,7 @@ nonisolated enum Log {
     static let commandLine = Category("cli")
     static let updates = Category("updates")
     static let settings = Category("settings")
+    static let usage = Category("usage")
 
     struct Category: Sendable {
         let name: String

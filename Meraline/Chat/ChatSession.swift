@@ -38,6 +38,14 @@ final class ChatSession {
         var outcome: GameOutcome?
         /// A warning that goes with this question, such as the chat's folder having been cleared.
         var notice: String?
+        /// The provider the question went to, for the count of usage.
+        var provider: Provider?
+        /// When the question was sent, for how long its answer took.
+        var sentAt = Date.now
+        /// Roughly how many tokens the request was, for when the provider reports none.
+        var estimatedInput = 0
+        /// What the provider said the answer took, as it came; nil when it said nothing.
+        var usage: TokenUsage?
 
         /// The ask the agent is waiting on, if any.
         var pendingPrompt: AgentPrompt? { prompts.last(where: \.isPending) }
@@ -150,16 +158,20 @@ final class ChatSession {
     @ObservationIgnored private let preferences: Preferences
     @ObservationIgnored private let workspaceRoot: URL
     @ObservationIgnored private let streamReplies: @MainActor (ChatRequest) -> AsyncThrowingStream<StreamOutput, Error>
+    /// The count of how Meraline is used: questions, answers, tokens, games, never their words (see `UsageLedger`).
+    @ObservationIgnored let usage: UsageLedger
 
     /// `stream` talks to the provider; tests pass one that replies on its own, and their own
     /// `workspaceRoot` so they never touch the app's workspaces.
     init(
         preferences: Preferences,
         workspaceRoot: URL = ChatWorkspace.defaultRoot,
+        usage: UsageLedger = .shared,
         stream: @escaping @MainActor (ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> = LLMClient.stream
     ) {
         self.preferences = preferences
         self.workspaceRoot = workspaceRoot
+        self.usage = usage
         streamReplies = stream
     }
 
@@ -236,9 +248,24 @@ final class ChatSession {
         draftFiles = []
         draftSelections = []
         failure = nil
-        let turn = Turn(question: question, images: images, files: files, selections: selections)
+        var turn = Turn(question: question, images: images, files: files, selections: selections)
+        turn.provider = provider
+        turn.estimatedInput = Self.estimatedTokens(in: request)
         turns.append(turn)
         isStreaming = true
+        let isFirst = turns.count == 1
+        usage.record { tally in
+            tally.questions += 1
+            if isFirst { tally.chats += 1 }
+            tally.wordsAsked += UsageTally.words(in: question)
+            tally.providers[provider.rawValue, default: 0] += 1
+            if provider.isCommandLine { tally.agentRuns += 1 }
+            tally.images += images.count
+            tally.files += files.filter { !$0.isFolder }.count
+            tally.folders += files.filter(\.isFolder).count
+            tally.selections += selections.filter { !$0.isFromClipboard }.count
+            tally.clipboards += selections.filter(\.isFromClipboard).count
+        }
         Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))), turn \(turns.count), \(images.count) image(s), \(files.count) file(s), \(selections.count) text(s)")
         stream(request, for: turn.id)
     }
@@ -267,9 +294,16 @@ final class ChatSession {
         isRewriting = false
         let request = makeRequest(asking: SelectedText.message(last.question, about: last.selections), images: last.images, files: last.files, of: provider)
         failure = nil
-        let turn = Turn(question: last.question, images: last.images, files: last.files, selections: last.selections)
+        var turn = Turn(question: last.question, images: last.images, files: last.files, selections: last.selections)
+        turn.provider = provider
+        turn.estimatedInput = Self.estimatedTokens(in: request)
         turns.append(turn)
         isStreaming = true
+        usage.record { tally in
+            tally.askAgains += 1
+            tally.providers[provider.rawValue, default: 0] += 1
+            if provider.isCommandLine { tally.agentRuns += 1 }
+        }
         Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))) again, turn \(turns.count)")
         stream(request, for: turn.id)
     }
@@ -294,8 +328,15 @@ final class ChatSession {
         turn.tools = last.tools
         turn.prompts = last.prompts
         turn.presentedFiles = last.presentedFiles
+        turn.provider = provider
+        turn.estimatedInput = Self.estimatedTokens(in: request)
         turns.append(turn)
         isStreaming = true
+        usage.record { tally in
+            tally.rewrites[rewrite.rawValue, default: 0] += 1
+            tally.providers[provider.rawValue, default: 0] += 1
+            if provider.isCommandLine { tally.agentRuns += 1 }
+        }
         Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))) to rewrite the last answer (\(rewrite.rawValue)), turn \(turns.count)")
         stream(request, for: turn.id)
     }
@@ -326,6 +367,11 @@ final class ChatSession {
 
     /// Carries out a move you typed as `input`.
     private func make(_ move: GameMove, from input: String, in game: Game) {
+        if case .reject = move {
+            usage.record { $0.games[game.rawValue, default: .init()].rejectedMoves += 1 }
+        } else {
+            usage.record { $0.games[game.rawValue, default: .init()].moves += 1 }
+        }
         switch move {
         case .reject(let message):
             Log.chat.info("\(game.title): your move came back")
@@ -364,6 +410,8 @@ final class ChatSession {
         var turn = move
         turn.aside = game.rules.aside(for: turn, after: turns, in: preferences.language, dice: &dice)
         let request = makeRequest(asking: turn.message, images: [], of: provider)
+        turn.provider = provider
+        turn.estimatedInput = Self.estimatedTokens(in: request)
         draft = ""
         failure = nil
         nudge = nil
@@ -397,6 +445,15 @@ final class ChatSession {
         case .over(let outcome, _):
             Log.chat.info("\(game.title): round over")
             versus[game, default: Versus()].record(outcome)
+            usage.record { tally in
+                var scores = tally.games[game.rawValue] ?? .init()
+                switch outcome.youWon {
+                case true?: scores.roundsWon += 1
+                case false?: scores.roundsLost += 1
+                case nil: scores.roundsDrawn += 1
+                }
+                tally.games[game.rawValue] = scores
+            }
             nudge = outcome.text
         default:
             break
@@ -413,6 +470,8 @@ final class ChatSession {
         var turn = Turn(question: "", images: [], cue: cue)
         turn.aside = game.rules.aside(for: turn, after: turns, in: preferences.language, dice: &dice)
         let request = makeRequest(asking: turn.message, images: [], of: provider)
+        turn.provider = provider
+        turn.estimatedInput = Self.estimatedTokens(in: request)
         failure = nil
         nudge = nil
         turns.append(turn)
@@ -432,6 +491,62 @@ final class ChatSession {
     private func modelName(for provider: Provider) -> String {
         let model = preferences[provider].model.trimmed
         return model.isEmpty ? "default model" : model
+    }
+
+    /// How an answer ended, for the count of usage.
+    private enum AnswerEnd {
+        case complete, stopped, failed
+    }
+
+    /// Counts an answer that ended: how, what it took, and, in a chat, what it brought. A rewrite's turn keeps
+    /// the old answer's tools and asks, so `tools` is false for it; a game's move counts only what it took.
+    private func count(_ end: AnswerEnd, of turn: Turn, tools: Bool = true, inGame: Bool = false, now: Date = .now) {
+        let provider = turn.provider ?? preferences.activeProvider ?? .custom
+        let key = UsageTally.ModelTally.key(provider: provider, model: turn.usage?.model ?? preferences[provider].model)
+        let turnCount = turns.count
+        usage.record(at: now) { tally in
+            switch end {
+            case .failed:
+                tally.failures += 1
+                return
+            case .stopped:
+                tally.stops += 1
+            case .complete:
+                if !inGame { tally.answers += 1 }
+            }
+            tally.secondsWaited += max(0, now.timeIntervalSince(turn.sentAt))
+            let reported = turn.usage?.hasTokens == true
+            var took = turn.usage ?? TokenUsage()
+            if !reported {
+                took.input = turn.estimatedInput
+                took.output = UsageTally.estimatedTokens(in: turn.answer)
+            }
+            tally.count(answer: took, reported: reported, for: key)
+            guard !inGame else { return }
+            let words = UsageTally.words(in: turn.answer)
+            tally.wordsRead += words
+            tally.longestAnswer = max(tally.longestAnswer, words)
+            tally.longestChat = max(tally.longestChat, turnCount)
+            tally.filesHandedOver += turn.presentedFiles.count
+            guard tools else { return }
+            tally.toolUses += turn.tools.count
+            tally.mcpUses += turn.tools.filter { if case .mcp = $0 { true } else { false } }.count
+            for prompt in turn.prompts {
+                switch prompt.resolution {
+                case .allowed?: tally.asksAllowed += 1
+                case .denied?, .declinedByAgent?: tally.asksDenied += 1
+                case .answered?: tally.questionsAnswered += 1
+                case nil: break
+                }
+            }
+        }
+    }
+
+    /// Roughly how many tokens a request is, for a provider that reports none: its text at about four
+    /// characters a token, and a thousand for each picture.
+    nonisolated static func estimatedTokens(in request: ChatRequest) -> Int {
+        UsageTally.estimatedTokens(in: request.systemPrompt)
+            + request.messages.reduce(0) { $0 + UsageTally.estimatedTokens(in: $1.text) + $1.images.count * 1_000 }
     }
 
     private func stream(_ request: ChatRequest, for id: Turn.ID) {
@@ -587,6 +702,7 @@ final class ChatSession {
         mode = .game(game)
         lastGame = game
         Log.chat.info("\(game.title) started")
+        usage.record { $0.games[game.rawValue, default: .init()].started += 1 }
         advance(game, asksModel: true)
         nudge = game.rules.invitation
     }
@@ -617,6 +733,7 @@ final class ChatSession {
         guard let hint = (others.isEmpty ? hints : others).randomElement() else { return }
         nudge = hint
         Log.chat.info("\(game.title): hint shown")
+        usage.record { $0.games[game.rawValue, default: .init()].hints += 1 }
     }
 
     /// What the rematch tray offers: the game's next round once one is over, or the last game again on an
@@ -932,6 +1049,7 @@ final class ChatSession {
         guard let lastAnswer else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lastAnswer, forType: .string)
+        usage.record { $0.answersCopied += 1 }
     }
 
     /// The chat as Markdown, or a game's own transcript.
@@ -1051,6 +1169,8 @@ final class ChatSession {
             finishMove(in: game, error: error)
             return
         }
+        let wasStopped = error is CancellationError || (error as? URLError)?.code == .cancelled
+        count(error == nil ? .complete : wasStopped ? .stopped : .failed, of: turns[last], tools: !wasRewriting)
 
         // A rewrite stopped or failed partway gives the old answer back rather than keep half of the new one.
         if wasRewriting, let error, let replaced {
@@ -1102,15 +1222,18 @@ final class ChatSession {
         let wasStopped = error is CancellationError || (error as? URLError)?.code == .cancelled
         if let error, !wasStopped {
             Log.chat.error("\(game.title): the model's move failed: \(error.localizedDescription)")
+            count(.failed, of: turns[last], inGame: true)
             takeBackLastTurn()
             fail(with: error.localizedDescription, needsSettings: Self.needsSettings(error))
             return
         }
         guard !wasStopped, !turns[last].answer.trimmed.isEmpty else {
             Log.chat.info("\(game.title): the model's move stopped")
+            count(.stopped, of: turns[last], inGame: true)
             takeBackLastTurn()
             return
         }
+        count(.complete, of: turns[last], inGame: true)
         switch game.rules.judge(turns[last].answer, in: turns) {
         case .accept(let reply):
             turns[last].answer = reply

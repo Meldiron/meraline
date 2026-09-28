@@ -248,6 +248,7 @@ struct PanelContext {
             ) {
                 guard let answer = session.lastAnswer else { return }
                 insertion.insert(answer)
+                session.usage.record { $0.answersInserted += 1 }
             })
         }
         if !session.isStreaming, let answer = session.lastAnswer {
@@ -263,6 +264,7 @@ struct PanelContext {
             let question = session.turns.last { !$0.answer.isEmpty }?.question ?? ""
             copy.append(PanelAction(id: "tearOff", title: "Tear Off Answer", icon: .symbol("macwindow.on.rectangle"), shortcut: .command("t"), keywords: ["note", "float", "keep", "pin"]) {
                 AnswerNotes.shared.open(answer: answer, question: question)
+                session.usage.record { $0.answersTornOff += 1 }
             })
         }
         let files = fileActions
