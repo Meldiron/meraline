@@ -63,31 +63,24 @@ struct Announcements: View {
         .animation(.smooth(duration: 0.2), value: crash.isCopied)
     }
 
+    /// One capsule for the update found and for it staged, whose label changes, never one capsule for each.
+    /// Two of them cross-fading, when Sparkle staged the update it had found while the window was hidden, hung
+    /// Meraline for good on macOS 27: two focusable buttons lay on the same spot, and SwiftUI never finished
+    /// rebuilding its key view loop (see `AnnouncementsTests`).
     @ViewBuilder
     private func updateCapsule(_ state: Updater.State) -> some View {
-        switch state {
-        case .staged(let update):
+        if let update = state.update {
             AnnouncementCapsule(
-                title: "Restart to Update",
-                symbol: "arrow.down.circle.fill",
-                help: "Meraline \(update.version) is ready. Restart now to install it, or it installs when you quit."
+                title: state.isStaged ? "Restart to Update" : "Update Available",
+                symbol: state.isStaged ? "arrow.down.circle.fill" : "arrow.down.circle",
+                help: state.isStaged
+                    ? "Meraline \(update.version) is ready. Restart now to install it, or it installs when you quit."
+                    : "Update to Meraline \(update.version)"
             ) {
                 openUpdate()
             } dismiss: {
                 hideUpdate(update)
             }
-        case .available(let update):
-            AnnouncementCapsule(
-                title: "Update Available",
-                symbol: "arrow.down.circle",
-                help: "Update to Meraline \(update.version)"
-            ) {
-                openUpdate()
-            } dismiss: {
-                hideUpdate(update)
-            }
-        case .idle:
-            EmptyView()
         }
     }
 }

@@ -44,6 +44,18 @@ final class Updater: NSObject {
             case .staged(let update): "\(update.version) staged"
             }
         }
+
+        /// The update found or staged, if any.
+        var update: Update? {
+            switch self {
+            case .idle: nil
+            case .available(let update), .staged(let update): update
+            }
+        }
+
+        var isStaged: Bool {
+            if case .staged = self { true } else { false }
+        }
     }
 
     private static let pendingVersionKey = "whatsNew.version"
@@ -60,6 +72,13 @@ final class Updater: NSObject {
     @ObservationIgnored private let defaults: UserDefaults
 
     var isAvailable: Bool { controller != nil }
+
+    #if DEBUG
+    /// For tests: what Sparkle's delegate calls would have reported.
+    func pretend(_ state: State) {
+        self.state = state
+    }
+    #endif
 
     var availableUpdate: Update? {
         if case .available(let update) = state { update } else { nil }
@@ -128,6 +147,8 @@ final class Updater: NSObject {
         self.defaults = defaults
         super.init()
 
+        // The test host never checks for updates, as it never starts the app: a test's updater only pretends.
+        guard !MeralineApp.isHostingTests else { return }
         let info = Bundle.main.infoDictionary ?? [:]
         let feed = (info["SUFeedURL"] as? String)?.trimmed ?? ""
         let key = (info["SUPublicEDKey"] as? String)?.trimmed ?? ""

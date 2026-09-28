@@ -52,6 +52,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 - ⌘C copies again in the window, a torn-off answer, and Settings, and ⌘X, ⌘A, and ⌘Z work there too. The window takes the keyboard without making Meraline the app in front, and the shortcuts never reached the text.
 - A game's name in the footer stays gray, as the provider's does, instead of turning pink on your move. The clock's Forgotten capsule now reads like the mode toggle's chosen segment, a pink clock with the word in black.
+- Meraline no longer freezes when an update it found finishes downloading while the window is hidden. The shortcut then did nothing, and neither did opening the app, until it was force quit. The capsule under the window changes its label from Update Available to Restart to Update in place now, instead of fading one capsule into another, which macOS 27 never finished laying out.
 
 ## v1.6.0 - 2026-09-27
 
