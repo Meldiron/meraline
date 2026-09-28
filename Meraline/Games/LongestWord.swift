@@ -12,7 +12,7 @@ import Foundation
 nonisolated enum LongestWord: GameRules {
     static let title = "Longest Word"
     static let summary = "Make the longest word from nine letters, against the model"
-    static let symbol = "textformat.abc"
+    static let symbol = "a.square"
 
     /// How many letters a round draws.
     static let letterCount = 9
