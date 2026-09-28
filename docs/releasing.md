@@ -38,7 +38,7 @@ Two optional things before tagging:
 
 ## The beta channel
 
-Installed copies follow one of two Sparkle feeds, chosen in Settings › Software Update › Update channel:
+Installed copies follow one of two Sparkle feeds, chosen with the Get beta updates switch in Settings › Software Update:
 
 | Channel | Feed | Sees |
 | --- | --- | --- |
@@ -46,6 +46,8 @@ Installed copies follow one of two Sparkle feeds, chosen in Settings › Softwar
 | Beta | `releases/download/beta/appcast.xml` | The newest build of either kind |
 
 A pre-release tag produces an appcast item tagged `<sparkle:channel>beta</sparkle:channel>`, which only clients on the beta channel accept. After every release, stable or beta, the workflow copies the new `appcast.xml` onto a rolling `beta` pre-release, so the beta feed always advertises the newest build and testers get stable releases too. The downloadable files stay in their own versioned release; the beta release holds only the feed.
+
+The chip at the top of Settings › Software Update reads the running version as `release.sh` reads a tag, so a version with a suffix shows as Beta, and it opens the GitHub release of `v` and the version. Keep betas' tags in that form and the chip names their pre-release.
 
 Version numbers must keep increasing for this to work, and they do: the build number is the commit count, and a beta tagged on a branch is superseded by the next stable tagged on `main`.
 

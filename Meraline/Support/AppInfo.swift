@@ -15,8 +15,14 @@ extension Bundle {
         repositoryURL.map { $0.absoluteString + "/releases/download/beta/appcast.xml" }
     }
 
+    /// The tag `version` was released from, which names its GitHub release: 1.8.0-beta.1 is v1.8.0-beta.1.
+    static func releaseTag(for version: String) -> String {
+        "v\(version)"
+    }
+
+    /// The GitHub release of `version`, a pre-release for a beta.
     func releaseNotesURL(for version: String) -> URL? {
-        repositoryURL?.appending(path: "releases/tag/v\(version)")
+        repositoryURL?.appending(path: "releases/tag/\(Self.releaseTag(for: version))")
     }
 
     var newIssueURL: URL? {

@@ -523,9 +523,10 @@ struct SoftwareUpdatePane: View {
 
     var body: some View {
         Form {
-            PaneHeader(pane: .softwareUpdate, summary: "Meraline \(Bundle.main.shortVersion)")
-
             if updater.isAvailable {
+                PaneHeader(pane: .softwareUpdate) {
+                    ChannelChip(version: updater.currentVersion)
+                }
                 if let staged = updater.stagedUpdate {
                     Section {
                         LabeledContent {
@@ -552,11 +553,15 @@ struct SoftwareUpdatePane: View {
                         .disabled(!updater.checksAutomatically)
                 }
                 Section {
-                    Picker("Update channel", selection: $updater.channel) {
-                        ForEach(UpdateChannel.allCases) { Text($0.title).tag($0) }
+                    Toggle(isOn: getsBetas) {
+                        Text("Get beta updates")
+                        Text(updater.channel.summary)
                     }
+                    .tint(.meralinePink)
                 } footer: {
-                    Text(updater.channel.summary)
+                    if updater.isLeavingBeta {
+                        Text("This beta stays until a stable release newer than \(updater.currentVersion) comes out.")
+                    }
                 }
                 Section {
                     LabeledContent("Last checked") {
@@ -572,6 +577,7 @@ struct SoftwareUpdatePane: View {
                     }
                 }
             } else {
+                PaneHeader(pane: .softwareUpdate, summary: "Meraline \(updater.currentVersion)")
                 Section {
                     Label("This build of Meraline isn’t set up to receive updates.", systemImage: "exclamationmark.circle")
                         .foregroundStyle(.secondary)
@@ -579,6 +585,11 @@ struct SoftwareUpdatePane: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// Stable or Beta as one switch: on follows the beta feed, off the stable one.
+    private var getsBetas: Binding<Bool> {
+        Binding { updater.channel == .beta } set: { updater.channel = $0 ? .beta : .stable }
     }
 }
 

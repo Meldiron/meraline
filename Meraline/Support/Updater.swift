@@ -71,13 +71,36 @@ final class Updater: NSObject {
     @ObservationIgnored private let preferences: Preferences
     @ObservationIgnored private let defaults: UserDefaults
 
-    var isAvailable: Bool { controller != nil }
+    /// The version running, as its GitHub release is tagged without the `v`: 1.7.0, or 1.8.0-beta.1.
+    let currentVersion: String
+
+    var isAvailable: Bool { controller != nil || isStandIn }
+
+    /// The channel the running build was released on, whichever the updater follows now.
+    var currentChannel: UpdateChannel { UpdateChannel(version: currentVersion) }
+
+    /// A beta is running on the stable channel. Sparkle never goes back a version, so the beta stays until a
+    /// stable release newer than it comes out.
+    var isLeavingBeta: Bool { channel == .stable && currentChannel == .beta }
 
     #if DEBUG
     /// For tests: what Sparkle's delegate calls would have reported.
     func pretend(_ state: State) {
         self.state = state
     }
+
+    /// For pictures of Settings › Software Update: an updater set up as a release build's is, checking and
+    /// installing by itself, though the test host never starts Sparkle.
+    func pretendAvailable(lastCheck: Date) {
+        pretendsAvailable = true
+        canCheckForUpdates = true
+        self.lastCheck = lastCheck
+    }
+
+    @ObservationIgnored private var pretendsAvailable = false
+    private var isStandIn: Bool { pretendsAvailable }
+    #else
+    private var isStandIn: Bool { false }
     #endif
 
     var availableUpdate: Update? {
@@ -91,7 +114,7 @@ final class Updater: NSObject {
     var checksAutomatically: Bool {
         get {
             access(keyPath: \.checksAutomatically)
-            return controller?.updater.automaticallyChecksForUpdates ?? false
+            return controller?.updater.automaticallyChecksForUpdates ?? isStandIn
         }
         set {
             withMutation(keyPath: \.checksAutomatically) {
@@ -104,7 +127,7 @@ final class Updater: NSObject {
     var downloadsAutomatically: Bool {
         get {
             access(keyPath: \.downloadsAutomatically)
-            return controller?.updater.automaticallyDownloadsUpdates ?? false
+            return controller?.updater.automaticallyDownloadsUpdates ?? isStandIn
         }
         set {
             withMutation(keyPath: \.downloadsAutomatically) {
@@ -142,9 +165,10 @@ final class Updater: NSObject {
         )
     }
 
-    init(preferences: Preferences, defaults: UserDefaults = .meraline) {
+    init(preferences: Preferences, defaults: UserDefaults = .meraline, currentVersion: String = Bundle.main.shortVersion) {
         self.preferences = preferences
         self.defaults = defaults
+        self.currentVersion = currentVersion
         super.init()
 
         // The test host never checks for updates, as it never starts the app: a test's updater only pretends.
@@ -208,6 +232,21 @@ final class Updater: NSObject {
     private func remember(_ update: Update) {
         defaults.set(update.version, forKey: Self.pendingVersionKey)
         defaults.set(update.notes, forKey: Self.pendingNotesKey)
+    }
+}
+
+extension UpdateChannel {
+    /// The channel `version` went out on, read as the release pipeline reads its tag: a version with a
+    /// pre-release suffix (1.8.0-beta.1, 1.8.0-rc.1) is a beta, and its GitHub release is a pre-release.
+    init(version: String) {
+        self = version.contains("-") ? .beta : .stable
+    }
+
+    var symbol: String {
+        switch self {
+        case .stable: "checkmark.seal"
+        case .beta: "flask"
+        }
     }
 }
 

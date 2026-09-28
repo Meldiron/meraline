@@ -13,6 +13,7 @@
 #   usage-games   further down the same page: the games played, and a section for each
 #   prompt        Settings › Prompt: the language, and the LLMs' and the agents' instructions
 #   prompt-games  further down the same page: the games, one of them changed, and Why?
+#   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
 #
 # Pictures go to docs/screenshots, as name.png (dark) and name-light.png, the names the README uses. Pictures
 # that need a real provider, an agent, or clicks come from scripts/screenshots.sh. Needs Screen Recording
@@ -33,7 +34,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         dark|light|both) APPEARANCE="$1"; shift ;;
         --out) OUT="$(mkdir -p "$2" && cd "$2" && pwd)"; shift 2 ;;
-        -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) echo "error: unknown option $1" >&2; exit 2 ;;
         *) ONLY+=("$1"); shift ;;
     esac

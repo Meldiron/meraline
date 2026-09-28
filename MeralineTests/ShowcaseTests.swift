@@ -12,6 +12,7 @@ import Testing
 ///   usage-games   further down the same page: the games played, and a section for each
 ///   prompt        Settings › Prompt: the language, and the LLMs' and the agents' instructions
 ///   prompt-games  further down the same page: the games, one of them changed, and Why?
+///   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
 @MainActor
 @Suite(.serialized, .enabled(if: Showcase.output != nil, "scripts/showcase.sh takes these pictures"))
 struct ShowcaseTests {
@@ -79,6 +80,22 @@ struct ShowcaseTests {
         }
     }
 
+    @Test func softwareUpdate() async throws {
+        guard Showcase.wants("software-update") else { return }
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let updater = { (preferences: Preferences, defaults: UserDefaults) in
+                let updater = Updater(preferences: preferences, defaults: defaults, currentVersion: "1.8.0-beta.1")
+                updater.pretendAvailable(lastCheck: .now.addingTimeInterval(-2 * 3_600))
+                return updater
+            }
+            try await Self.settings(on: stage, pane: .softwareUpdate, defaults: ["updateChannel": "beta"], updater: updater) { window in
+                try await stage.captureWindow(window, as: "software-update")
+            }
+            stage.close()
+        }
+    }
+
     // MARK: Scenes
 
     private struct PanelScene {
@@ -128,7 +145,9 @@ struct ShowcaseTests {
     /// its frame under the app's own name, and the test host is the app, so the frame saved there is put back.
     private static func settings(
         on stage: ShowcaseStage, pane: SettingsPane, defaults values: [String: Any] = [:],
-        fill: (ChatSession) -> Void = { _ in }, _ body: (NSWindow) async throws -> Void
+        fill: (ChatSession) -> Void = { _ in },
+        updater makeUpdater: (Preferences, UserDefaults) -> Updater = { Updater(preferences: $0, defaults: $1) },
+        _ body: (NSWindow) async throws -> Void
     ) async throws {
         let frameKey = "NSWindow Frame MeralineSettings"
         let savedFrame = UserDefaults.standard.object(forKey: frameKey)
@@ -136,7 +155,7 @@ struct ShowcaseTests {
         let (preferences, defaults) = preferences(values)
         let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { _ in AsyncThrowingStream { $0.finish() } }
         fill(session)
-        let controller = SettingsWindowController(preferences: preferences, updater: Updater(preferences: preferences, defaults: defaults), session: session)
+        let controller = SettingsWindowController(preferences: preferences, updater: makeUpdater(preferences, defaults), session: session)
         let window = try #require(controller.window)
         window.setFrameAutosaveName("")
         controller.navigation.selection = pane

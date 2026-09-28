@@ -149,9 +149,17 @@ struct SettingsIcon: View {
     }
 }
 
-struct PaneHeader: View {
+struct PaneHeader<Accessory: View>: View {
     let pane: SettingsPane
-    let summary: String
+    let summary: String?
+    /// What goes under the title instead of a summary, or after it, such as Software Update's `ChannelChip`.
+    @ViewBuilder let accessory: Accessory
+
+    init(pane: SettingsPane, summary: String? = nil, @ViewBuilder accessory: () -> Accessory) {
+        self.pane = pane
+        self.summary = summary
+        self.accessory = accessory()
+    }
 
     var body: some View {
         Section {
@@ -159,14 +167,23 @@ struct PaneHeader: View {
                 SettingsIcon(symbol: pane.symbol, tint: pane.tint, size: 56)
                 Text(pane.title)
                     .font(.title2.weight(.semibold))
-                Text(summary)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let summary {
+                    Text(summary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                accessory
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
         }
+    }
+}
+
+extension PaneHeader where Accessory == EmptyView {
+    init(pane: SettingsPane, summary: String) {
+        self.init(pane: pane, summary: summary) { EmptyView() }
     }
 }

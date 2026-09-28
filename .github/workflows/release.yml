@@ -233,7 +233,7 @@ jobs:
           set -euo pipefail
           if ! gh release view beta >/dev/null 2>&1; then
             gh release create beta --prerelease --latest=false --title "Beta channel" \
-              --notes "The Sparkle feed for the beta update channel. Turn it on in Settings › Software Update › Update channel. Downloads live in the versioned releases."
+              --notes "The Sparkle feed for the beta update channel. Turn it on with Settings › Software Update › Get beta updates. Downloads live in the versioned releases."
           fi
           gh release upload beta build/release/appcast.xml --clobber
           echo "Beta feed now advertises $VERSION"
