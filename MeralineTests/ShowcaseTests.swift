@@ -20,6 +20,7 @@ import WebKit
 ///   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
 ///   cost-nudge    the empty panel with what LLMs and agents have cost today, each past its daily nudge
 ///   preview       Agent mode: a page and a Markdown file an agent handed over, each with its preview strip
+///   note-stack    three answers torn off into one note: the last in front, the edges of the other two under it
 @MainActor
 @Suite(.serialized, .enabled(if: Showcase.output != nil, "scripts/showcase.sh takes these pictures"))
 struct ShowcaseTests {
@@ -241,6 +242,40 @@ struct ShowcaseTests {
             stage.close(scene.panel)
         }
     }
+
+    @Test func noteStack() async throws {
+        guard Showcase.wants("note-stack") else { return }
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let notes = AnswerNotes()
+            let before = Set(NSApp.windows.map(ObjectIdentifier.init))
+            for (question, answer) in Self.tornOff {
+                notes.open(answer: answer, question: question, level: ShowcaseStage.desktop, at: stage.topLeft)
+                await Showcase.settle(0.5)
+            }
+            let window = try #require(NSApp.windows.first { !before.contains(ObjectIdentifier($0)) })
+            stage.place(window)
+            await Showcase.settle(1)
+            try await stage.capturePanel(window, as: "note-stack")
+            notes.closeAll()
+            stage.close()
+        }
+    }
+
+    /// Three answers torn off into a note, the last on top.
+    private static let tornOff = [
+        ("180 °C in Fahrenheit?", "**356 °F.** Multiply by 9, divide by 5, and add 32."),
+        ("Which folders take the most space here?", "```sh\ndu -sh * | sort -rh | head -10\n```\nThe ten largest, biggest first."),
+        ("How long do I boil an egg?", """
+            Lower the eggs into water that is already boiling, then:
+
+            - **Runny yolk:** 6 minutes
+            - **Jammy:** 7 minutes
+            - **Firm:** 10 minutes
+
+            Cool them in ice water for a minute, and they peel easily.
+            """),
+    ]
 
     // MARK: Scenes
 

@@ -19,6 +19,7 @@
 #   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
 #   cost-nudge    the empty panel with what LLMs and agents have cost today, each past its daily nudge
 #   preview       Agent mode: a page and a Markdown file an agent handed over, each with its preview strip
+#   note-stack    three answers torn off into one note: the last in front, the edges of the other two under it
 #
 # Pictures go to docs/screenshots, as name.png (dark) and name-light.png, the names the README uses. Pictures
 # that need a real provider, an agent, or clicks come from scripts/screenshots.sh. Needs Screen Recording
