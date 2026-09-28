@@ -63,6 +63,8 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
 
 🔒 **Stays private.** API keys live in your Keychain. Conversations exist only in memory. OpenAI requests ask not to be stored, and command-line agents run in an empty temporary folder without saving a session. For a question you'd rather not see again, anonymous mode (<kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>N</kbd>) turns the sparkle graphite, in sunglasses, and keeps chats out of Recent Chats. When you do want to keep something, copy the answer or the whole conversation as Markdown.
 
+📊 **Shows what you've used.** **Settings › Usage** counts how Meraline is used, by the hour, day, week, month, and year: questions and answers, tokens in and out with a chart, what they cost at OpenRouter's public prices or as Claude Code, OpenCode, and OpenRouter report it, which models and games, what the agents did, what went with your questions, and habits like your busiest hour and longest streak. Numbers only, kept on your Mac, never a word of what was said.
+
 ⚙️ **Feels at home on a Mac.** Settings look like System Settings, the icon follows light and dark mode, and updates install themselves. **Settings › Prompt** holds every instruction Meraline sends: pick the language answers and games are in (English, Czech, Slovak, and 22 more), give LLMs and agents instructions of their own, or rewrite a game's rules.
 
 <table align="center">
@@ -233,7 +235,7 @@ Other apps and scripts can open Meraline through the `meraline://` URL scheme, w
 | `meraline://play?game=oddOneOut` | Starts a game: `rhymeDuel`, `addAWord`, `categories`, `wordFootball`, `oddOneOut`, `fixTheTypo`, `speedDefinitions`, or `longestWord`. Its title works too, as in `odd-one-out` |
 | `meraline://mode?agent=1` | Switches to Agent and opens the window; `agent=0` switches to LLM, and `meraline://mode` alone to the other mode |
 | `meraline://settings` | Opens Settings |
-| `meraline://settings?pane=claudeCode` | Opens Settings on a page: `general`, `prompt`, `updates`, `about`, or a provider such as `anthropic`, `apple`, or `codex` |
+| `meraline://settings?pane=claudeCode` | Opens Settings on a page: `general`, `prompt`, `permissions`, `usage`, `updates`, `about`, or a provider such as `anthropic`, `apple`, or `codex` |
 
 ```sh
 open "meraline://ask?text=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' 'Explain CRDTs in one paragraph')&send=1"

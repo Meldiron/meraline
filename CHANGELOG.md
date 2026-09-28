@@ -21,6 +21,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ![Settings › Prompt further down: the eight games, with Word Football's rules changed](https://raw.githubusercontent.com/Meldiron/meraline/v1.7.0/docs/screenshots/prompt-games-light.png)
 
+- **Settings › Usage.** A new pane counts how Meraline is used, by the hour, day, week, month, or year: questions and chats, answers and the words in them, tokens in and out with a chart along the span, and what they cost. Claude Code, OpenCode, and OpenRouter say what each answer cost; the rest is worked out from tokens at OpenRouter's public prices, and Apple Intelligence's answers are estimated from their length. Below, the models and what each cost, the agents' runs, tools, asks, and files handed over, every game's rounds, hints, and your record against the model, what went with your questions, and habits: your busiest hour and weekday, days with Meraline and the longest streak, time spent waiting and reading, and answers copied, inserted, and torn off. The counts live in one file on your Mac, numbers only, never a word of what was asked or answered, and Clear Usage Data deletes it. `meraline://settings?pane=usage` opens the pane.
 - **Answers in your language.** Settings › Prompt starts with Language: English, Czech, Slovak, and 22 more. LLMs and agents answer in it unless you ask for another, as for a translation, and the games are played in it. It's added after your instructions, so ones you changed keep it too.
 
 ### Privacy

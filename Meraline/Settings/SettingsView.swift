@@ -5,17 +5,19 @@ enum SettingsPane: Hashable {
     case general
     case permissions
     case prompt
+    case usage
     case provider(Provider)
     case softwareUpdate
     case about
 
-    /// A pane by the name `meraline://settings?pane=` uses: general, prompt, permissions, updates, about,
-    /// or a provider's id such as claudeCode. Case doesn't matter.
+    /// A pane by the name `meraline://settings?pane=` uses: general, prompt, permissions, usage, updates,
+    /// about, or a provider's id such as claudeCode. Case doesn't matter.
     init?(named name: String) {
         switch name.lowercased() {
         case "general": self = .general
         case "prompt": self = .prompt
         case "permissions": self = .permissions
+        case "usage", "statistics", "stats": self = .usage
         case "updates", "softwareupdate": self = .softwareUpdate
         case "about": self = .about
         default:
@@ -29,6 +31,7 @@ enum SettingsPane: Hashable {
         case .general: "General"
         case .prompt: "Prompt"
         case .permissions: "Permissions"
+        case .usage: "Usage"
         case .provider(let provider): provider.name
         case .softwareUpdate: "Software Update"
         case .about: "About"
@@ -40,6 +43,7 @@ enum SettingsPane: Hashable {
         case .general: "gearshape.fill"
         case .prompt: "text.bubble.fill"
         case .permissions: "hand.raised.fill"
+        case .usage: "chart.bar.fill"
         case .provider(let provider): provider.symbol
         case .softwareUpdate: "arrow.triangle.2.circlepath"
         case .about: "sparkle"
@@ -51,6 +55,7 @@ enum SettingsPane: Hashable {
         case .general: .gray
         case .prompt: .gray
         case .permissions: .gray
+        case .usage: .gray
         case .provider(let provider): provider.tint
         case .softwareUpdate: .gray
         case .about: .gray
@@ -74,7 +79,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $navigation.selection) {
-                sidebarSection([.general, .permissions, .prompt, .softwareUpdate, .about])
+                sidebarSection([.general, .permissions, .prompt, .usage, .softwareUpdate, .about])
                 sidebarSection(Provider.services.map(SettingsPane.provider), title: "LLMs")
                 sidebarSection(Provider.commandLineTools.map(SettingsPane.provider), title: "Agents")
             }
@@ -118,6 +123,7 @@ struct SettingsView: View {
         case .general: GeneralPane(preferences: preferences) { navigation.selection = .permissions }
         case .prompt: PromptPane(preferences: preferences)
         case .permissions: PermissionsPane(preferences: preferences)
+        case .usage: UsagePane(ledger: session.usage)
         case .provider(let provider): ProviderPane(provider: provider, preferences: preferences).id(provider)
         case .softwareUpdate: SoftwareUpdatePane(updater: updater)
         case .about: AboutPane(preferences: preferences, updater: updater, session: session)
