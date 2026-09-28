@@ -265,6 +265,17 @@ final class PanelController: NSObject {
         removeKeyMonitor()
     }
 
+    /// The Mac slept or locked, and Settings › General › Privacy says to forget (see `AwayWatcher`): every chat goes,
+    /// with the answers torn off it, any panel of actions open over one, and the agents that remember it. The window
+    /// stays as it was, empty. Says how many chats went.
+    func forgetChats() -> Int {
+        layout.actionPanel = nil
+        AnswerNotes.shared.closeAll()
+        let forgot = session.forgetAll()
+        LiveAgents.shared.endAll()
+        return forgot
+    }
+
     /// Hide from Screen Sharing, in Settings › General and the sparkle's panel. macOS leaves the window out of the
     /// captures that respect it; those that take the whole display, as ScreenCaptureKit's do, may show it anyway.
     private func observeScreenSharingPreference() {

@@ -107,6 +107,23 @@ final class Preferences {
     var bringsSelection: Bool {
         didSet { defaults.set(bringsSelection, forKey: "bringsSelection") }
     }
+    /// Forget every chat when the Mac or its display goes to sleep (see `AwayWatcher`). Off unless you turn it on.
+    var forgetsChatsOnSleep: Bool {
+        didSet {
+            guard forgetsChatsOnSleep != oldValue else { return }
+            defaults.set(forgetsChatsOnSleep, forKey: "forgetsChatsOnSleep")
+            Log.settings.info("Forget chats on sleep \(forgetsChatsOnSleep ? "on" : "off")")
+        }
+    }
+    /// Forget every chat when the screen locks, or another user takes the screen (see `AwayWatcher`). Off unless
+    /// you turn it on.
+    var forgetsChatsOnLock: Bool {
+        didSet {
+            guard forgetsChatsOnLock != oldValue else { return }
+            defaults.set(forgetsChatsOnLock, forKey: "forgetsChatsOnLock")
+            Log.settings.info("Forget chats on lock \(forgetsChatsOnLock ? "on" : "off")")
+        }
+    }
     /// The prompts changed in Settings › Prompt. One left out says what it says by default.
     private var changedPrompts: [SystemPrompt: String]
     /// The language answers, agents, and games are in (see `AnswerLanguage`).
@@ -155,6 +172,8 @@ final class Preferences {
         isPinned = defaults.bool(forKey: "isPinned")
         showsMenuBarIcon = defaults.object(forKey: "showsMenuBarIcon") as? Bool ?? true
         bringsSelection = defaults.object(forKey: "bringsSelection") as? Bool ?? true
+        forgetsChatsOnSleep = defaults.bool(forKey: "forgetsChatsOnSleep")
+        forgetsChatsOnLock = defaults.bool(forKey: "forgetsChatsOnLock")
         // Before each mode had a prompt of its own, one prompt went to both, so a change to it carries over to each.
         if let legacy = defaults.string(forKey: SystemPrompt.legacyKey) {
             if legacy != SystemPrompt.llm {

@@ -824,6 +824,17 @@ final class ChatSession {
         return count
     }
 
+    /// Forgets every chat at once, as quitting does: the open one, with what is typed in it and the text on offer,
+    /// and Recent Chats, workspaces and all. An answer still coming stops. The games' tally stays, since it holds
+    /// no word of any chat. Says how many chats went.
+    @discardableResult
+    func forgetAll() -> Int {
+        let open = turns.isEmpty ? 0 : 1
+        reset(keepingChat: false)
+        offeredSelection = nil
+        return open + forgetHistory()
+    }
+
     /// The timer under the card: the open chat gets its 30 minutes again.
     func keepChat() {
         guard expiresAt != nil else { return }

@@ -54,10 +54,20 @@ struct GeneralPane: View {
                     Text("Asks macOS to leave the window out of screen sharing, recordings, and screenshots. Apps that capture the whole display, such as QuickTime, may still show it, so try yours before a call that matters.")
                 }
                 .tint(.meralinePink)
+                Toggle(isOn: $preferences.forgetsChatsOnSleep) {
+                    Text("Forget chats when the Mac sleeps")
+                    Text("Also when its display turns off.")
+                }
+                .tint(.meralinePink)
+                Toggle(isOn: $preferences.forgetsChatsOnLock) {
+                    Text("Forget chats when the screen locks")
+                    Text("Also when you switch to another user.")
+                }
+                .tint(.meralinePink)
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Chats live only in memory and are never written to disk. Quitting Meraline forgets them.")
+                Text("Chats live only in memory and are never written to disk, so quitting Meraline, restarting, shutting down, or logging out forgets them. Forgetting takes the open chat and what’s typed in it, Recent Chats, torn-off answers, and the files agents worked on.")
             }
 
             Section {

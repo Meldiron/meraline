@@ -43,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self?.settings.show(pane)
     }
     private lazy var settings = SettingsWindowController(preferences: preferences, updater: updater, session: session)
+    /// Forgets every chat when the Mac sleeps or locks, if Settings › General › Privacy says so.
+    private var awayWatcher: AwayWatcher?
     private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -54,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
         observeMenuBarPreference()
+        awayWatcher = AwayWatcher(preferences: preferences) { [weak self] in self?.panel.forgetChats() ?? 0 }
         MCPServerRegistry.shared.refreshAll(preferences)
         shortcutSetup.onChangeShortcut = { [weak self] in
             self?.panel.close()

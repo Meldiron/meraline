@@ -87,6 +87,7 @@ enum Diagnostics {
         lines.append("- Mode: \(preferences.mode.title), default LLM: \(preferences.defaultProvider(for: .llm)?.name ?? "none"), default agent: \(preferences.defaultProvider(for: .agent)?.name ?? "none")")
         lines.append("- Shortcut: \(KeyboardShortcuts.getShortcut(for: .togglePanel)?.description ?? "none")\(KeyboardShortcuts.isEnabled(for: .togglePanel) ? "" : ", not registered")")
         lines.append("- Window: \(preferences.placement.title), \(preferences.isPinned ? "stays open" : "closes when clicking elsewhere"), menu bar icon \(preferences.showsMenuBarIcon ? "on" : "off"), hidden from screen sharing \(preferences.hidesFromScreenSharing ? "on" : "off")")
+        lines.append("- Forget chats: on sleep \(preferences.forgetsChatsOnSleep ? "on" : "off"), on lock \(preferences.forgetsChatsOnLock ? "on" : "off")")
         lines.append("- Selected text: \(preferences.bringsSelection ? "on" : "off"), Accessibility access \(SelectionAccess.shared.isGranted ? "allowed" : "not allowed")")
         lines.append("- Screenshots: Screen Recording access \(ScreenCapture.hasAccess ? "allowed" : "not allowed")")
         let changedPrompts = SystemPrompt.allCases.filter(preferences.isChanged).map(\.title)

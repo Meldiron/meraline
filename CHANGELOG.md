@@ -6,6 +6,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ## Unreleased
 
+- **Forget chats when you step away.** Settings › General › Privacy can forget every chat when the Mac sleeps or its display turns off, when the screen locks or you switch to another user, or both. The chat in the window and what's typed in it, Recent Chats, torn-off answers, and the folders agents worked in all go at that moment. Both are off unless you turn them on, and quitting, restarting, shutting down, or logging out forgets chats as always.
 - **Services › Ask Meraline takes pictures.** Select part of an image in Preview, or a photo in Photos, and choose Ask Meraline from the app's Services menu: the picture is attached to your next question, for any model, as text already was. The same picture comes only once, and a selection with both words and a picture still comes as words.
 
 ## v1.7.0 - 2026-09-28
