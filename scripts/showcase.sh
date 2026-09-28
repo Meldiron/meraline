@@ -17,6 +17,7 @@
 #   presets       the presets above an empty chat, Fix Grammar put in the input for a text selected in Mail
 #   prompt-presets  Settings › Prompt › Presets: the four defaults and one of your own
 #   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
+#   cost-nudge    the empty panel with what LLMs and agents have cost today, each past its daily nudge
 #   preview       Agent mode: a page and a Markdown file an agent handed over, each with its preview strip
 #
 # Pictures go to docs/screenshots, as name.png (dark) and name-light.png, the names the README uses. Pictures
@@ -38,7 +39,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         dark|light|both) APPEARANCE="$1"; shift ;;
         --out) OUT="$(mkdir -p "$2" && cd "$2" && pwd)"; shift 2 ;;
-        -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) echo "error: unknown option $1" >&2; exit 2 ;;
         *) ONLY+=("$1"); shift ;;
     esac
