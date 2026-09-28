@@ -59,6 +59,8 @@ struct ChatPanelView: View {
     private var hasAnnouncements: Bool { whatsNew.update != nil || offeredUpdate != nil || crashNotice.isOffered }
     /// The diagnostics the capsule under the card offers once after a crash, and says Copied when they were.
     private let crashNotice = CrashNotice.shared
+    /// The presets above the card, those with text to put in the input.
+    private var presets: [PromptPreset] { preferences.presets.filter { !$0.text.trimmed.isEmpty } }
     /// What LLMs and agents have cost today, each past the amount set in Settings › Usage, on an empty panel.
     private var costNudges: [CostNudge] {
         guard !hasConversation, !preferences.costNudges.isEmpty else { return [] }
@@ -166,11 +168,20 @@ struct ChatPanelView: View {
         .padding(PanelController.margin)
         .padding(.top, ContextButtons.roomAbove)
         .padding(.bottom, hasAnnouncements || session.expiresAt != nil || !costNudges.isEmpty ? Announcements.roomBelow : 0)
-        .overlay(alignment: .topLeading) {
-            // Lined up with the sparkle under them.
-            ContextButtons(session: session, preferences: preferences, sources: sources, screen: screen, close: onClose) { isInputFocused = true }
-                .padding(.leading, PanelController.margin + 18)
-                .padding(.top, ContextButtons.inset)
+        .overlay(alignment: .top) {
+            HStack(spacing: 12) {
+                // Lined up with the sparkle under them.
+                ContextButtons(session: session, preferences: preferences, sources: sources, screen: screen, close: onClose) { isInputFocused = true }
+                    .fixedSize()
+                // Lined up with the gear under them, in the room the buttons leave.
+                PromptPresets(presets: presets, draft: session.draft, isShown: !hasConversation) { preset, sends in
+                    session.apply(preset, among: presets, sending: sends)
+                    if !sends { isInputFocused = true }
+                }
+            }
+            .padding(.leading, PanelController.margin + 18)
+            .padding(.trailing, PanelController.margin + 12)
+            .padding(.top, ContextButtons.inset)
         }
         .overlay(alignment: .bottomLeading) {
             // Lined up with the buttons above the card.

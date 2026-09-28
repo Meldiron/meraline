@@ -91,7 +91,7 @@ enum Diagnostics {
         lines.append("- Selected text: \(preferences.bringsSelection ? "on" : "off"), Accessibility access \(SelectionAccess.shared.isGranted ? "allowed" : "not allowed")")
         lines.append("- Screenshots: Screen Recording access \(ScreenCapture.hasAccess ? "allowed" : "not allowed")")
         let changedPrompts = SystemPrompt.allCases.filter(preferences.isChanged).map(\.title)
-        lines.append("- Prompts: \(changedPrompts.isEmpty ? "default" : "changed for \(changedPrompts.joined(separator: ", "))"), language \(preferences.language.name)")
+        lines.append("- Prompts: \(changedPrompts.isEmpty ? "default" : "changed for \(changedPrompts.joined(separator: ", "))"), language \(preferences.language.name), presets \(preferences.arePresetsChanged ? "changed, \(preferences.presets.count) of them" : "default")")
         if updates.isAvailable {
             let lastCheck = updates.lastCheck.map { $0.formatted(.iso8601) } ?? "never"
             lines.append("- Updates: \(updates.channel.title.lowercased()) channel, automatic checks \(updates.checksAutomatically ? "on" : "off"), automatic install \(updates.downloadsAutomatically ? "on" : "off"), last check \(lastCheck), \(updates.state)")

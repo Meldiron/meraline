@@ -150,7 +150,7 @@ struct PromptPane: View {
 
     var body: some View {
         Form {
-            PaneHeader(pane: .prompt, summary: "Tell the models how to answer. LLMs and agents each have their own instructions, and each game plays by its own.")
+            PaneHeader(pane: .prompt, summary: "Tell the models how to answer, and keep the prompts you use most a click away. LLMs and agents each have their own instructions, and each game plays by its own.")
 
             Section {
                 Picker("Language", selection: $preferences.language) {
@@ -175,6 +175,8 @@ struct PromptPane: View {
                     }
                 }
             }
+
+            PresetsSection(preferences: preferences)
 
             Section {
                 ForEach(Game.allCases) { game in

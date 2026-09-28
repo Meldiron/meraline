@@ -126,6 +126,8 @@ final class Preferences {
     }
     /// The prompts changed in Settings › Prompt. One left out says what it says by default.
     private var changedPrompts: [SystemPrompt: String]
+    /// The presets as Settings › Prompt changed them, or nil while they are the defaults.
+    private var changedPresets: [PromptPreset]?
     /// The language answers, agents, and games are in (see `AnswerLanguage`).
     var language: AnswerLanguage {
         didSet {
@@ -206,6 +208,7 @@ final class Preferences {
             }
         }
         self.changedPrompts = changedPrompts
+        changedPresets = defaults.data(forKey: PromptPreset.key).flatMap { try? JSONDecoder().decode([PromptPreset].self, from: $0) }
         language = defaults.string(forKey: "language").flatMap(AnswerLanguage.init(rawValue:)) ?? .english
         updateChannel = defaults.string(forKey: "updateChannel").flatMap(UpdateChannel.init(rawValue:)) ?? .stable
         hidesFromScreenSharing = defaults.bool(forKey: "hidesFromScreenSharing")
@@ -275,6 +278,24 @@ final class Preferences {
     func isChanged(_ prompt: SystemPrompt) -> Bool {
         changedPrompts[prompt] != nil
     }
+
+    /// The presets above an empty chat, as Settings › Prompt has them (see `PromptPreset`). Setting them back to
+    /// the defaults forgets the change, so they follow later defaults and the language again.
+    var presets: [PromptPreset] {
+        get { changedPresets ?? PromptPreset.defaults(in: language) }
+        set {
+            guard newValue != presets else { return }
+            if newValue == PromptPreset.defaults(in: language) {
+                changedPresets = nil
+                defaults.removeObject(forKey: PromptPreset.key)
+            } else {
+                changedPresets = newValue
+                defaults.set(try? JSONEncoder().encode(newValue), forKey: PromptPreset.key)
+            }
+        }
+    }
+
+    var arePresetsChanged: Bool { changedPresets != nil }
 
     /// Every ready provider. A cloud provider comes before Apple Intelligence, so a configured one
     /// outranks the on-device fallback.
