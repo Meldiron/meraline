@@ -376,6 +376,7 @@ struct PanelContext {
         return [PanelAction(
             id: "showChanges",
             title: isShowing ? "Show Answer" : "Show What Changed",
+            subtitle: turn.changes?.stats,
             icon: .symbol(isShowing ? "text.alignleft" : "plus.forwardslash.minus"),
             shortcut: .command("d"),
             keywords: ["diff", "changes", "compare", "edits", "corrections", "grammar"]

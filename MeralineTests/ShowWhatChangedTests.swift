@@ -101,6 +101,7 @@ struct ShowWhatChangedTests {
         let show = try #require(context.action(forKeyCode: 0, characters: "d", modifiers: .command))
         #expect(show.id == "showChanges")
         #expect(show.title == "Show What Changed")
+        #expect(show.subtitle == "30% changed · 4 edits")
         #expect(context.chatMenu?.sections.map(\.id).prefix(2) == ["primary", "changes"])
         context.run(show, in: .chat, fromShortcut: true)
         #expect(layout.answersShowingChanges == [session.turns[0].id])

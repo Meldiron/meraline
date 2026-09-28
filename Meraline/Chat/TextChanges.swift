@@ -22,8 +22,9 @@ nonisolated struct TextChanges: Equatable, Sendable {
     let segments: [Segment]
     /// How many places changed: each run of words and marks that went or came between ones that stayed.
     let count: Int
-    /// Somewhere only the spacing changed, such as a line break for a space. The new spacing shows, unmarked.
-    let changesSpacing: Bool
+    /// How much of the text changed, from 0 to 1: the letters, digits, and marks that went or came, out of those in
+    /// both texts. In a word put right, only the letters that differ count, so a typo is a small change.
+    let changedShare: Double
     /// The text compared is code, from a code block in the answer, and shows in monospace.
     let isCode: Bool
     /// How much of the text stayed, from 0 to 1: the letters, digits, and marks kept, in order, out of those in
@@ -38,10 +39,12 @@ nonisolated struct TextChanges: Equatable, Sendable {
     /// The most pairs of a text and a part of the answer compared in full, those with the most words in common.
     private static let comparisonLimit = 4
 
-    /// What the changes come to, beside Show Answer: “3 changes”, or that none were made.
-    var summary: String {
-        if count > 0 { return count == 1 ? "1 change" : "\(count.formatted()) changes" }
-        return changesSpacing ? "Only the spacing changed" : "No changes"
+    /// The changes in numbers, beside Show What Changed and on its row in the chat's actions: “5% changed · 6 edits”,
+    /// “<1%” when something changed that rounds to nothing, and “0% changed” when nothing did.
+    var stats: String {
+        let percent = count > 0 && changedShare < 0.005 ? "<1%" : "\(Int((changedShare * 100).rounded()))%"
+        guard count > 0 else { return "\(percent) changed" }
+        return "\(percent) changed · \(count.formatted()) \(count == 1 ? "edit" : "edits")"
     }
 
     /// The changes as VoiceOver reads them, which can't hear a line through a word.
@@ -182,8 +185,8 @@ nonisolated struct TextChanges: Equatable, Sendable {
 
         var segments: [Segment] = []
         var count = 0
-        var changesSpacing = false
         var kept = 0
+        var changed = 0
         func keep(_ text: String) {
             if case .same(let before)? = segments.last {
                 segments[segments.count - 1] = .same(before + text)
@@ -198,30 +201,33 @@ nonisolated struct TextChanges: Equatable, Sendable {
             } else if !region.removed.isEmpty, !region.added.isEmpty, region.removed.allSatisfy(\.isWhitespace), region.added.allSatisfy(\.isWhitespace) {
                 // Spacing for spacing: the text reads the same, laid out the new way.
                 keep(region.added)
-                changesSpacing = true
             } else {
                 count += 1
                 if !region.removed.isEmpty { segments.append(.removed(region.removed)) }
                 if !region.added.isEmpty { segments.append(.added(region.added)) }
-                kept += partialCredit(region.removed, region.added)
+                kept += commonLetters(region.removed, region.added, ignoringCase: true)
+                changed += characterCount(region.removed) + characterCount(region.added)
+                    - 2 * commonLetters(region.removed, region.added, ignoringCase: false)
             }
         }
         let longer = max(characterCount(original), characterCount(revised))
+        let both = characterCount(original) + characterCount(revised)
         return TextChanges(
             segments: segments,
             count: count,
-            changesSpacing: changesSpacing,
+            changedShare: both == 0 ? 0 : min(1, Double(changed) / Double(both)),
             isCode: isCode,
             similarity: longer == 0 ? 1 : min(1, Double(kept) / Double(longer))
         )
     }
 
-    /// How much of a short word that changed stayed, so “recieve” for “receive” still counts as the text put
-    /// right: the letters the two have in common, in order, whatever their case. Nothing for a longer stretch,
-    /// which is rewritten rather than corrected.
-    private static func partialCredit(_ removed: String, _ added: String) -> Int {
-        let a = Array(removed.lowercased().filter { !$0.isWhitespace })
-        let b = Array(added.lowercased().filter { !$0.isWhitespace })
+    /// The letters a short word that changed has in common with the one in its place, in order, so “recieve” for
+    /// “receive” still counts as the text put right, and as a small change. Whatever their case for how much of
+    /// the text stayed, and case and all for how much changed. None for a longer stretch, which is rewritten
+    /// rather than corrected.
+    private static func commonLetters(_ removed: String, _ added: String, ignoringCase: Bool) -> Int {
+        let a = Array((ignoringCase ? removed.lowercased() : removed).filter { !$0.isWhitespace })
+        let b = Array((ignoringCase ? added.lowercased() : added).filter { !$0.isWhitespace })
         guard !a.isEmpty, !b.isEmpty, a.count <= 40, b.count <= 40 else { return 0 }
         var row = [Int](repeating: 0, count: b.count + 1)
         for x in a {

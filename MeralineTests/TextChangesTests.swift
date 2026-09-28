@@ -12,15 +12,22 @@ struct TextChangesTests {
             .added("."),
         ])
         #expect(changes.count == 4)
-        #expect(changes.summary == "4 changes")
+        #expect(changes.stats == "30% changed · 4 edits", "7 of the 23 letters and marks went or came")
         #expect(changes.similarity >= TextChanges.minimumSimilarity)
         #expect(!changes.isCode)
+    }
+
+    @Test func aWordForAnotherIsAllChanged() throws {
+        let changes = try #require(TextChanges.diff(from: "cat", to: "dog"))
+        #expect(changes.changedShare == 1)
+        #expect(changes.stats == "100% changed · 1 edit")
+        #expect(try #require(TextChanges.diff(from: "Cat", to: "cat")).stats == "33% changed · 1 edit", "case counts as a change")
     }
 
     @Test func aTypoInOneWordStillCounts() throws {
         let changes = try #require(TextChanges.find(in: "receive", against: ["recieve"]))
         #expect(changes.segments == [.removed("recieve"), .added("receive")])
-        #expect(changes.summary == "1 change")
+        #expect(changes.stats == "14% changed · 1 edit", "only the two letters that moved count")
     }
 
     @Test func anAnswerAboutTheTextChangedNothing() {
@@ -37,7 +44,7 @@ struct TextChangesTests {
         let changes = try #require(TextChanges.find(in: text, against: [text]))
         #expect(changes.segments == [.same(text)])
         #expect(changes.count == 0)
-        #expect(changes.summary == "No changes")
+        #expect(changes.stats == "0% changed")
         #expect(changes.similarity == 1)
     }
 
@@ -45,12 +52,12 @@ struct TextChangesTests {
         let changes = try #require(TextChanges.diff(from: "one  two\nthree", to: "one two three"))
         #expect(changes.segments == [.same("one two three")])
         #expect(changes.count == 0)
-        #expect(changes.changesSpacing)
-        #expect(changes.summary == "Only the spacing changed")
+        #expect(changes.stats == "0% changed")
 
         let joined = try #require(TextChanges.diff(from: "Hello , world", to: "Hello, world"))
         #expect(joined.segments == [.same("Hello"), .removed(" "), .same(", world")], "a space that goes still shows")
         #expect(joined.count == 1)
+        #expect(joined.stats == "<1% changed · 1 edit", "a change that rounds to nothing still shows")
     }
 
     @Test func theTextInACodeBlockIsWhatIsCompared() throws {
@@ -168,6 +175,7 @@ struct TextChangesTests {
         sentences[229] = sentence.replacingOccurrences(of: "next", with: "last")
         let changes = try #require(TextChanges.find(in: sentences.joined(separator: " "), against: [original]))
         #expect(changes.count == 3)
+        #expect(changes.stats == "<1% changed · 3 edits")
         #expect(changes.segments.contains(.added("thoroughly")))
         #expect(changes.segments.contains(.added("last")))
     }

@@ -66,8 +66,8 @@ private nonisolated extension NSAppearance {
 }
 
 /// Under an answer that changed the text its question was about: Show What Changed, and once the changes show,
-/// Show Answer to go back, with how many places changed beside it. One button whose label changes, in neutral
-/// glass like the tools under an answer.
+/// Show Answer to go back, with the changes in numbers beside it either way (`TextChanges.stats`). One button whose
+/// label changes, in neutral glass like the tools under an answer.
 struct ChangesToggle: View {
     let changes: TextChanges
     let isShowingChanges: Bool
@@ -88,11 +88,9 @@ struct ChangesToggle: View {
             }
             .buttonStyle(.plain)
             .help(help)
-            if isShowingChanges {
-                Text(changes.summary)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
+            Text(changes.stats)
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.tertiary)
         }
         .lineLimit(1)
     }
