@@ -168,7 +168,7 @@ struct RhymeDuelRulesTests {
         #expect(RhymeDuel.verse(from: verse.kept) == verse)
         #expect(RhymeDuel.verse(from: "The sun came up to greet the day\n| Rhymes: play, stay, may").rhymes == ["play", "stay", "may"])
         #expect(RhymeDuel.verse(from: "The sun came up to greet the day | play stay may").rhymes == ["play", "stay", "may"])
-        #expect(RhymeDuel.hints(for: verse).first == "Try ending your line on “floor”.")
+        #expect(RhymeDuel.hints(for: verse) == ["Try ending your line on “floor”, “more”, or “four”."])
     }
 
     @Test func statusCountsLinesAndEnds() {
@@ -190,6 +190,7 @@ struct RhymeDuelRulesTests {
         #expect(RhymeDuel.systemPrompt.contains("short, common word of one syllable"))
         #expect(RhymeDuel.systemPrompt.contains("ends on a new word, one that rhymes with none of the lines so far"))
         #expect(RhymeDuel.systemPrompt.contains("“ | ”"))
+        #expect(RhymeDuel.systemPrompt.contains("ten common words that rhyme with your last word"), "more for Hint to show")
         #expect(RhymeDuel.systemPrompt.contains("One line only"))
         #expect(!RhymeDuel.opening.isEmpty)
     }
@@ -378,7 +379,7 @@ struct RhymeDuelSessionTests {
         let state = try #require(session.gameState)
         let offered = RhymeDuel.rhymes(for: .init(line: "and then a shout", rhymes: ["out", "about", "doubt", "sprout"]))
         #expect(state.phase == .yourMove(placeholder: "Rhyme with “shout”…", hints: RhymeDuel.hints(for: .init(line: "", rhymes: offered))), "the line ended on a word it was offered")
-        #expect(state.hints.contains("Try ending your line on “scout”."), "the family of “shout” helps out")
+        #expect(state.hints.contains { $0.contains("“scout”") }, "the family of “shout” helps out")
         #expect(RhymeDuel.lines(for: session.turns).map(\.text) == [opening, exchanges[0].0, exchanges[0].1], "the rhymes stay hidden")
     }
 
@@ -392,18 +393,33 @@ struct RhymeDuelSessionTests {
         #expect(session.nudge == RhymeDuel.lostTheThread)
     }
 
-    @Test func aHintShowsOneOfTheModelsRhymesAtATime() throws {
+    @Test func aHintListsTheModelsRhymesAFewAtATime() throws {
         let session = Support.session(ScriptedModel())
         session.reopen(duel())
         #expect(session.canHint)
-        let hints = RhymeDuel.hints(for: .init(line: opening, rhymes: ["floor", "more", "four"]))
+        session.hint()
+        #expect(session.nudge == "Try ending your line on “floor”, “more”, or “four”.", "three rhymes fit in one hint")
+        session.hint()
+        #expect(session.nudge == "Try ending your line on “floor”, “more”, or “four”.", "and there is no other")
+
+        let nine = ["floor", "more", "four", "shore", "roar", "core", "store", "pour", "before"]
+        let hints = RhymeDuel.hints(for: .init(line: opening, rhymes: nine))
+        #expect(hints == [
+            "Try ending your line on “floor”, “more”, “four”, or “shore”.",
+            "Try ending your line on “roar”, “core”, “store”, “pour”, or “before”."
+        ], "nine rhymes go over two hints, evenly, the model's own first")
+        #expect(RhymeDuel.hints(for: .init(line: opening, rhymes: ["floor"])) == ["Try ending your line on “floor”."])
+        #expect(RhymeDuel.hints(for: .init(line: opening)).isEmpty)
+
+        let reply = "\(opening) | \(nine.joined(separator: ", "))"
+        session.reopen(ChatSession.PastChat(turns: [Support.turn(cue: RhymeDuel.opening, reply: reply)], date: .now, mode: .game(.rhymeDuel)))
         session.hint()
         let first = try #require(session.nudge)
         #expect(hints.contains(first))
         for _ in 0..<10 {
             let shown = session.nudge
             session.hint()
-            #expect(session.nudge != shown, "a second hint is a different one")
+            #expect(session.nudge != shown, "the next press shows the other rhymes")
             #expect(session.nudge.map(hints.contains) == true)
         }
     }

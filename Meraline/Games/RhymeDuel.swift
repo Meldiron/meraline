@@ -12,8 +12,8 @@ import Foundation
 /// draws only its story, and its rhymes are the model's.
 ///
 /// A few words that rhyme with the model's ending travel after a bar in its reply ("The cat sat waiting by
-/// the door | floor, more, four"), hidden. Hint shows one of them or of the ending's family, and a line that
-/// ends on one of them rhymes whatever this Mac's ear says.
+/// the door | floor, more, four"), hidden. Hint lists them a few at a time, then the rest of the ending's
+/// family, and a line that ends on one of them rhymes whatever this Mac's ear says.
 ///
 /// The prompt asks for the line of nursery rhymes and ballads, four beats in about eight syllables, since a
 /// model left to itself writes a long line that buries its rhyme: a short line keeps the rhyme audible and
@@ -44,8 +44,8 @@ nonisolated enum RhymeDuel: GameRules {
     nothing comes after it. \
     Each message names a few words your line may end on: end it on whichever of them suits the story best. \
     When a message names none, end on a short, common word of one syllable that is easy to rhyme with, never the same word twice. \
-    After your line, write “ | ” and six common words that rhyme with your last word, separated by commas. \
-    For example: The cat sat waiting by the door | floor, more, four, shore, roar, core. \
+    After your line, write “ | ” and ten common words that rhyme with your last word, separated by commas. \
+    For example: The cat sat waiting by the door | floor, more, four, shore, roar, core, store, pour, before, ignore. \
     One line only: no preamble, no quotation marks, no Markdown, no explanation.
     """
 
@@ -257,9 +257,19 @@ nonisolated enum RhymeDuel: GameRules {
         return Verse(line: verse.line, rhymes: rhymes(for: verse))
     }
 
-    /// What Hint shows for a line of the model's, one at a time.
+    /// How many rhymes a hint lists at most.
+    static let hintWords = 6
+
+    /// What Hint shows for a line of the model's: the rhymes known for it, the model's own first, dealt out
+    /// evenly over as few hints as `hintWords` allows, so one press shows several and the next shows others.
     static func hints(for verse: Verse) -> [String] {
-        verse.rhymes.map { "Try ending your line on “\($0)”." }
+        let words = verse.rhymes
+        guard !words.isEmpty else { return [] }
+        let count = (words.count + hintWords - 1) / hintWords
+        return (0..<count).map { number in
+            let part = words[(words.count * number / count)..<(words.count * (number + 1) / count)]
+            return "Try ending your line on \(GameText.list(Array(part)))."
+        }
     }
 
     /// The words known to rhyme with a line of the model's: those it hid after the bar, then the rest of its

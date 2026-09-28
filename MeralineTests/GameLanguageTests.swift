@@ -28,7 +28,7 @@ struct GameLanguageTests {
     @Test func aCzechLineGetsOnlyTheModelsRhymesAsHints() {
         let session = Support.session(ScriptedModel())
         session.reopen(ChatSession.PastChat(turns: [Support.turn(cue: RhymeDuel.opening, reply: "Byl jednou jeden den | sen, len")], date: .now, mode: .game(.rhymeDuel)))
-        #expect(session.gameState?.hints == ["Try ending your line on “sen”.", "Try ending your line on “len”."], "“den” is in an English family, which wasn't offered")
+        #expect(session.gameState?.hints == ["Try ending your line on “sen” or “len”."], "“den” is in an English family, which wasn't offered")
         #expect(RhymeDuel.rhymes("rád", with: "hrad"), "accents aside")
         #expect(RhymeDuel.complaint(about: "Mám tě moc rád", after: .init(line: "Stál tam starý hrad")) == nil)
     }
