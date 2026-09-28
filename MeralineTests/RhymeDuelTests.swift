@@ -171,6 +171,23 @@ struct RhymeDuelRulesTests {
         #expect(RhymeDuel.hints(for: verse) == ["Try ending your line on “floor”, “more”, or “four”."])
     }
 
+    @Test func aRatingIsReadOffItsOwnLine() {
+        let rating = RhymeDuel.Rating(score: 7, tip: "Your third line ran long; cut it to four beats.")
+        #expect(RhymeDuel.rating(in: ["**Score: 7/10** — your third line ran long; cut it to four beats"]) == rating)
+        #expect(RhymeDuel.rating(in: ["7 out of 10: your third line ran long; cut it to four beats."]) == rating)
+        #expect(RhymeDuel.rating(in: ["Score: 9/10"]) == .init(score: 9, tip: ""))
+        #expect(RhymeDuel.rating(in: ["Score: 12/10 — generous"]) == nil)
+        #expect(RhymeDuel.rating(in: ["A cat sat waiting by the door"]) == nil)
+        #expect(rating.kept == "Score: 7/10 — Your third line ran long; cut it to four beats.")
+
+        let closing = "The cat sat waiting by the door | floor, more\n\(rating.kept)"
+        #expect(RhymeDuel.verse(from: closing) == .init(line: "The cat sat waiting by the door", rhymes: ["floor", "more"]), "the rating is no verse")
+        #expect(RhymeDuel.verse(from: rating.kept).line.isEmpty)
+        #expect(RhymeDuel.ending(youSetRhymes: false, rating: rating) == "Duel done: 7 out of 10, and the last word was yours.")
+        #expect(RhymeDuel.ending(youSetRhymes: true, rating: rating) == "Duel done: 7 out of 10, and the model had the last word.")
+        #expect(RhymeDuel.ending(youSetRhymes: false, rating: nil) == RhymeDuel.done)
+    }
+
     @Test func statusCountsLinesAndEnds() {
         #expect(RhymeDuel.status(linesPlayed: 0) == "Line 1 of 8")
         #expect(RhymeDuel.status(linesPlayed: 7) == "Line 8 of 8")
@@ -192,6 +209,16 @@ struct RhymeDuelRulesTests {
         #expect(RhymeDuel.systemPrompt.contains("“ | ”"))
         #expect(RhymeDuel.systemPrompt.contains("ten common words that rhyme with your last word"), "more for Hint to show")
         #expect(RhymeDuel.systemPrompt.contains("One line only"))
+        #expect(RhymeDuel.systemPrompt.contains("no quotation marks around your line"), "the tip quotes your words")
+        #expect(RhymeDuel.systemPrompt.contains("When a message says the duel is over, rate how the user played"))
+        #expect(RhymeDuel.systemPrompt.contains("“Score: N/10 — ”"), "the marker the rating is read by")
+        #expect(RhymeDuel.systemPrompt.contains("one thing they could do better in their next duel"))
+        #expect(RhymeDuel.systemPrompt.contains("Quote a few of the user's words, never yours"))
+        #expect(RhymeDuel.systemPrompt.contains("from the user's lines alone: 3 for lines that ramble"), "an honest score, of your play")
+        #expect(RhymeDuel.systemPrompt.contains("at most fifteen words"))
+        #expect(RhymeDuel.systemPrompt.contains("not syllable counts"), "models count them wrong")
+        #expect(RhymeDuel.rateTheDuel.contains("duel is over"))
+        #expect(RhymeDuel.yourLineEndsTheDuel.contains("duel is over"))
         #expect(!RhymeDuel.opening.isEmpty)
     }
 }
@@ -318,7 +345,8 @@ struct RhymeDuelSessionTests {
         let model = ScriptedModel([
             "Until the clouds began to pour | more, four",
             "A soggy dog stood in the light",
-            "It chased a mouse and then it sat", "And ate its supper on a tray"
+            "It chased a mouse and then it sat",
+            "And ate its supper on a tray | say, stay\n\n**Score: 6/10** — your fourth line’s “gray and flat” is padding; say what the kitten does"
         ])
         let session = Support.session(model)
         session.dice = GameDice(seed: 4)
@@ -346,8 +374,15 @@ struct RhymeDuelSessionTests {
         #expect(session.gameState?.status == "Line 7 of 8")
         await Support.play("It dreamed of fish, and far away", in: session)
         #expect(model.requests.count == 4, "the model answers your last line too")
-        #expect(session.gameState?.status == "Duel done")
-        #expect(session.nudge == RhymeDuel.doneByModel)
+        #expect(model.lastMessages.last?.hasSuffix(RhymeDuel.yourLineEndsTheDuel) == true, "and rates the duel under it")
+        #expect(model.lastMessages.last?.contains("End your line on a word that rhymes with “away”.") == true)
+        #expect(session.turns.last?.answer == "And ate its supper on a tray | say, stay\nScore: 6/10 — Your fourth line’s “gray and flat” is padding; say what the kitten does.")
+        #expect(session.gameState?.status == "Duel done · 6/10")
+        #expect(session.nudge == "Duel done: 6 out of 10, and the model had the last word.")
+        let lines = RhymeDuel.lines(for: session.turns)
+        #expect(lines.suffix(2).map(\.text) == ["And ate its supper on a tray", "6/10 · Your fourth line’s “gray and flat” is padding; say what the kitten does."])
+        #expect(lines.last?.kind == .verdict(youWon: nil))
+        #expect(session.conversationMarkdown?.contains("6/10") == false, "Copy takes the poem alone")
         #expect(session.history.isEmpty)
         session.reset()
         #expect(session.history.first?.title == "Rhyme Duel: \(opening)")
@@ -435,21 +470,42 @@ struct RhymeDuelSessionTests {
         #expect(session.nudge == RhymeDuel.done)
     }
 
-    @Test func theLastWordIsYoursAndReturnStartsARematch() throws {
-        let model = ScriptedModel()
+    @Test func theLastWordIsYoursAndTheModelRatesTheDuel() async throws {
+        let model = ScriptedModel(["The dog came back and that was that\nScore: 8/10 — “what a sight” is filler; show what the cat saw"])
         let session = Support.session(model)
         session.reopen(duel(exchanges: exchanges))
         #expect(session.gameState?.status == "Line 8 of 8")
-        session.draft = closing
-        session.send()
-        #expect(model.requests.isEmpty, "the closing line is not sent anywhere")
+        await Support.play(closing, in: session)
+        #expect(model.requests.count == 1, "the closing line goes to the model for its rating")
+        #expect(model.lastMessages.last == "\(closing)\n\n\(RhymeDuel.rateTheDuel)", "no words to end on: the model writes no line")
         #expect(session.failure == nil)
         #expect(session.turns.count == 5)
+        #expect(session.turns.last?.answer == "Score: 8/10 — “what a sight” is filler; show what the cat saw.", "a line the model wrote anyway is dropped")
+        #expect(session.gameState?.status == "Duel done · 8/10")
+        #expect(session.nudge == "Duel done: 8 out of 10, and the last word was yours.")
+        let poem = [opening] + exchanges.flatMap { [$0.0, $0.1] } + [closing]
+        #expect(RhymeDuel.lines(for: session.turns).map(\.text) == poem + ["8/10 · “what a sight” is filler; show what the cat saw."])
+        #expect(session.conversationMarkdown == poem.joined(separator: "\n"))
+    }
+
+    @Test func aRatingTheModelForgotStillEndsTheDuel() async {
+        let model = ScriptedModel(["What a lovely duel that was!"])
+        let session = Support.session(model)
+        session.reopen(duel(exchanges: exchanges))
+        await Support.play(closing, in: session)
+        #expect(session.turns.count == 5, "your closing line stays")
+        #expect(session.draft.isEmpty)
         #expect(session.gameState?.status == "Duel done")
         #expect(session.nudge == RhymeDuel.done)
-        let poem = [opening] + exchanges.flatMap { [$0.0, $0.1] } + [closing]
-        #expect(session.conversationMarkdown == poem.joined(separator: "\n"))
+        #expect(RhymeDuel.lines(for: session.turns).last?.text == closing)
+    }
 
+    @Test func returnStartsARematchOnceTheDuelIsOver() throws {
+        let model = ScriptedModel()
+        let session = Support.session(model)
+        session.reopen(duel(exchanges: exchanges, closing: closing))
+        #expect(session.gameState?.status == "Duel done", "a duel kept before ratings is over all the same")
+        #expect(session.nudge == RhymeDuel.done)
         session.send()
         #expect(model.requests.count == 1, "Return asks for a rematch")
         #expect(session.turns.last?.cue == RhymeDuel.rematchCue)

@@ -4,7 +4,8 @@ import Foundation
 /// rhyme: a line that ends on a word, which the other finishes the couplet with a line rhyming with, before
 /// the setter carries the story on with a line that ends on a new word. Four lines each, so the last word is
 /// the answerer's. Your line is a turn's question and the model's line its answer; the model's opening turn
-/// has only a cue, yours a cue and your line, and your closing line, when you answer, no answer.
+/// has only a cue, and yours a cue and your line. The duel's last reply rates it (`Rating`): under the model's
+/// closing line, or alone when the closing line is yours.
 ///
 /// Each duel's story and the words each of the model's lines may end on are drawn on this Mac: a model left to
 /// choose opens every duel alike and ends on the same few words. The words come from `families`, one rhyming
@@ -46,7 +47,15 @@ nonisolated enum RhymeDuel: GameRules {
     When a message names none, end on a short, common word of one syllable that is easy to rhyme with, never the same word twice. \
     After your line, write “ | ” and ten common words that rhyme with your last word, separated by commas. \
     For example: The cat sat waiting by the door | floor, more, four, shore, roar, core, store, pour, before, ignore. \
-    One line only: no preamble, no quotation marks, no Markdown, no explanation.
+    When a message says the duel is over, rate how the user played, on a line of its own under your line if you \
+    wrote one: “Score: N/10 — ” and one thing they could do better in their next duel, in a short sentence of at \
+    most fifteen words. Quote a few of the user's words, never yours, and say what to try instead: fewer words, \
+    a steadier beat, a fresher word, a line that moves the story on, or a truer rhyme. \
+    Talk of beats and words, not syllable counts, and don't number the lines. \
+    Score honestly, from the user's lines alone: 3 for lines that ramble or miss their rhymes, 5 for lines that \
+    work, 8 for good ones, and 10 is rare. \
+    One line only, and the rating under it when the duel is over: no preamble, no quotation marks around your line, \
+    no Markdown, no explanation.
     """
 
     /// What the model is asked for its opening line. Nothing of yours is sent for it.
@@ -63,6 +72,21 @@ nonisolated enum RhymeDuel: GameRules {
     /// The nudge when the model's reply has no line in it: the opening is asked for again, your line comes back.
     static let noOpening = "The model had no line to open with. Press Return to ask again."
     static let lostTheThread = "The model lost the thread. Press Return to send your line again."
+    /// What goes with your closing line: the model writes no line, only the rating.
+    static let rateTheDuel = "That was the duel’s last line, so the duel is over: write no line of your own, only the rating, “Score: N/10 — ” and one thing the user could do better next time."
+    /// What goes with your line when the model's answer closes the duel: its line, then the rating.
+    static let yourLineEndsTheDuel = "Your line is the duel’s last, so the duel is over: under it, write the rating, “Score: N/10 — ” and one thing the user could do better next time."
+
+    /// The model's rating of how you played a duel: a score out of 10 for your lines, and one thing to do better in
+    /// the next duel, quoting your words. Asked of the model's lines, a model grades itself kindly and the score
+    /// would say little about yours.
+    struct Rating: Equatable {
+        var score: Int
+        var tip: String
+
+        /// The rating as the game keeps it, on a line of its own, which is also how the model sees it later.
+        var kept: String { tip.isEmpty ? "Score: \(score)/10" : "Score: \(score)/10 — \(tip)" }
+    }
 
     /// A line of the model's: the verse, and the words it hid after the bar that rhyme with its last word.
     struct Verse: Equatable {
@@ -82,10 +106,18 @@ nonisolated enum RhymeDuel: GameRules {
     /// the model's next may end on. The words share a sound that no line of the duel has ended on yet, nor of the
     /// chat's earlier duels while there are sounds left. In a duel you opened, the model's line answers yours,
     /// so the words rhyme with your line instead.
+    /// The duel's last line, yours, gets only the ask for a rating; the one before it, when the model's answer is the
+    /// last, the ask for a rating after that line.
     static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> String? {
         let opens = turn.cue.map(cues.contains) == true
         let duel = opens ? [turn] : (turns.since(cues) ?? []) + [turn]
-        if youSetRhymes(in: duel) { return rhyming(with: turn.question, in: language, dice: &dice) }
+        let played = linesPlayed(in: duel)
+        if played >= lineLimit { return rateTheDuel }
+        if youSetRhymes(in: duel) {
+            let words = rhyming(with: turn.question, in: language, dice: &dice)
+            guard played == lineLimit - 1 else { return words }
+            return [words, yourLineEndsTheDuel].compactMap { $0 }.joined(separator: " ")
+        }
         guard language == .english else { return opens ? "This duel’s story: \(premise(dice: &dice))." : nil }
         let ending = rhymeWord(of: turn.question).map { [$0] } ?? []
         let inDuel = families(heardIn: duel.dropLast().flatMap(endings(of:)) + ending)
@@ -188,7 +220,11 @@ nonisolated enum RhymeDuel: GameRules {
         let youSet = youSetRhymes(in: duel)
         if played >= lineLimit {
             let next = GameOpening(placeholder: "Write the first line of a new duel, or press Return for a random one…", button: randomButton)
-            return GameState(phase: .over(outcome: GameOutcome(text: youSet ? doneByModel : done, youWon: nil), next: next), status: status)
+            let rating = rating(of: duel)
+            return GameState(
+                phase: .over(outcome: GameOutcome(text: ending(youSetRhymes: youSet, rating: rating), youWon: nil), next: next),
+                status: rating.map { "Duel done · \($0.score)/10" } ?? status
+            )
         }
         if youSet { return GameState(phase: .yourMove(placeholder: "Carry the story on, ending on a new sound…"), status: status) }
         let previous = lastVerse(of: duel)
@@ -208,14 +244,46 @@ nonisolated enum RhymeDuel: GameRules {
         if !insisting, let previous = lastVerse(of: duel), let complaint = complaint(about: line, after: previous) {
             return .reject(complaint)
         }
-        // The last word is yours: the model does not answer it.
-        return linesPlayed(in: duel) >= lineLimit - 1 ? .record(line, outcome: nil) : .ask(line)
+        // The last word is yours, and the model answers it only with its rating.
+        return .ask(line)
     }
 
+    /// The model's line, with the rating under it when that line closes the duel. The reply to your closing line
+    /// keeps only its rating, and a rating the model forgot costs nothing: the duel ends all the same.
     static func judge(_ reply: String, in turns: [ChatSession.Turn]) -> GameReply {
+        let played = linesPlayed(in: turns.since(cues) ?? [])
+        if played >= lineLimit { return .accept(rating(in: GameText.lines(reply))?.kept ?? "") }
         let verse = verse(from: reply)
-        guard verse.line.isEmpty else { return .accept(verse.kept) }
-        return .refuse(turns.last?.question.isEmpty == false ? lostTheThread : noOpening)
+        guard !verse.line.isEmpty else { return .refuse(turns.last?.question.isEmpty == false ? lostTheThread : noOpening) }
+        guard played == lineLimit - 1, let rating = rating(in: Array(GameText.lines(reply).dropFirst())) else { return .accept(verse.kept) }
+        return .accept("\(verse.kept)\n\(rating.kept)")
+    }
+
+    /// How a duel that is over went: who had the last word, and the model's score when it gave one.
+    static func ending(youSetRhymes: Bool, rating: Rating?) -> String {
+        guard let rating else { return youSetRhymes ? doneByModel : done }
+        return "Duel done: \(rating.score) out of 10, and \(youSetRhymes ? "the model had the last word" : "the last word was yours")."
+    }
+
+    /// The rating on one of `lines`: “Score: 7/10 — …”, or any line with a score out of 10, however decorated.
+    static func rating(in lines: [String]) -> Rating? {
+        for line in lines.map(GameText.unwrapped) {
+            guard let found = GameText.score(in: line) else { continue }
+            return Rating(score: found.score, tip: found.comment.isEmpty ? "" : GameText.sentence(found.comment))
+        }
+        return nil
+    }
+
+    /// The rating the duel's last reply keeps, once the duel is over.
+    static func rating(of duel: [ChatSession.Turn]) -> Rating? {
+        guard linesPlayed(in: duel) >= lineLimit, let reply = duel.last?.reply else { return nil }
+        return rating(in: GameText.lines(reply).filter(isRating))
+    }
+
+    /// Whether a line of a reply is its rating rather than verse: it starts with “Score” and gives a score.
+    private static func isRating(_ line: String) -> Bool {
+        let line = GameText.unwrapped(line)
+        return line.lowercased().hasPrefix("score") && GameText.score(in: line) != nil
     }
 
     static func lines(for turns: [ChatSession.Turn]) -> [GameLine] {
@@ -225,6 +293,9 @@ nonisolated enum RhymeDuel: GameRules {
             for turn in duel {
                 if !turn.question.isEmpty { lines.you(turn.question) }
                 if let reply = turn.reply { lines.model(verse(from: reply).line) }
+            }
+            if let rating = rating(of: duel) {
+                lines.verdict(GameOutcome(text: rating.tip.isEmpty ? "\(rating.score)/10" : "\(rating.score)/10 · \(rating.tip)", youWon: nil))
             }
         }
         return lines.all
@@ -243,9 +314,12 @@ nonisolated enum RhymeDuel: GameRules {
         return first.question.isEmpty ? first.reply.map { verse(from: $0).line } : first.question
     }
 
-    /// Lines played: yours as soon as it is sent, the model's once it is judged.
+    /// Lines played: yours as soon as it is sent, the model's once it is judged. A reply that only rates the duel
+    /// is no line.
     private static func linesPlayed(in duel: [ChatSession.Turn]) -> Int {
-        duel.reduce(0) { count, turn in count + (turn.question.isEmpty ? 0 : 1) + (turn.reply == nil ? 0 : 1) }
+        duel.reduce(0) { count, turn in
+            count + (turn.question.isEmpty ? 0 : 1) + (turn.reply.map { verse(from: $0).line.isEmpty ? 0 : 1 } ?? 0)
+        }
     }
 
     /// The model's last line, which your next one has to rhyme with, with the words known to rhyme with it: those
@@ -288,10 +362,10 @@ nonisolated enum RhymeDuel: GameRules {
         GameText.firstLine(text)
     }
 
-    /// The model's reply without the decoration models add: extra lines, wrapping quotes. The rhymes after
-    /// the bar may sit on a line of their own; the line's own last word is not one of them.
+    /// The model's reply without the decoration models add: extra lines, wrapping quotes, the rating. The rhymes
+    /// after the bar may sit on a line of their own; the line's own last word is not one of them.
     static func verse(from reply: String) -> Verse {
-        let (shown, hidden) = GameText.split(reply)
+        let (shown, hidden) = GameText.split(GameText.lines(reply).filter { !isRating($0) }.joined(separator: "\n"))
         var line = line(from: shown)
         while line.count >= 2, let first = line.first, let last = line.last, quotes.contains(first), quotes.contains(last) {
             line = String(line.dropFirst().dropLast()).trimmed
