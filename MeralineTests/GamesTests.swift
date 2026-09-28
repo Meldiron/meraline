@@ -458,11 +458,18 @@ struct GamePlayTests {
         await Support.play("Library", in: session)
         #expect(session.turns.first?.outcome?.youWon == true)
         #expect(FixTheTypo.lines(for: session.turns).first?.pieces.filter(\.isMarked).map(\.text) == [" libary"])
+        #expect(model.requests.count == 1, "the next sentence waits for you to choose")
+        #expect(session.gameState?.opening?.button == FixTheTypo.randomButton)
+        #expect(session.gameState?.status == "Sentence 2 of 5 · 1 fixed")
 
-        #expect(session.nudge == "The model’s sentence came out garbled. Press Return for another.", "the next sentence came back without its typo")
-        #expect(session.turns.count == 1)
         session.send()
         await Support.settle(session)
+        #expect(model.lastMessages.last == FixTheTypo.nextSentence, "Return leaves it to the model")
+        #expect(session.nudge == "The model’s sentence came out garbled. Press Return for another.", "the next sentence came back without its typo")
+        #expect(session.turns.count == 1)
+        session.choose(FixTheTypo.randomButton)
+        await Support.settle(session)
+        #expect(session.turns.last?.cue == FixTheTypo.nextSentence)
         #expect(session.gameState?.status == "Sentence 2 of 5 · 1 fixed")
         await Support.play("pass", in: session)
         #expect(session.turns.last?.outcome == GameOutcome(text: "It was “recieve”, spelled “receive”.", youWon: false))
@@ -488,12 +495,13 @@ struct GamePlayTests {
 
         session.choose(FixTheTypo.foundIt)
         #expect(session.turns.first?.outcome == GameOutcome(text: "The model found it.", youWon: false))
-        #expect(session.gameState?.phase == .yourMove(placeholder: "Your next sentence, with one misspelled word…"), "you write every sentence this game")
+        #expect(session.gameState?.opening == GameOpening(placeholder: "Type your next sentence with a typo, or press Return for a random one…", button: FixTheTypo.randomButton), "you choose again for the next sentence")
         #expect(session.gameState?.status == "Sentence 2 of 5 · Model found 1")
         #expect(model.requests.count == 1)
 
         await Support.play("See you tomorow at the station.", in: session)
-        #expect(session.turns.last?.cue == nil)
+        #expect(session.turns.last?.cue == FixTheTypo.yourSentence)
+        #expect(model.lastMessages.last == "\(FixTheTypo.yourSentence)\n\nSee you tomorow at the station.")
         #expect(session.turns.last?.answer == "tomorow → tomorrow")
         session.choose(FixTheTypo.foundIt)
 
@@ -515,6 +523,61 @@ struct GamePlayTests {
             return
         }
         #expect(outcome.youWon == false)
+    }
+
+    @Test func fixTheTypoLetsYouChooseWhoWritesEachSentence() async throws {
+        let model = ScriptedModel([
+            "We will meet at the libary after lunch. | libary → library",
+            "tomorow → tomorrow",
+            "Please recieve this gift with our thanks. | recieve → receive",
+            "NONE",
+            "The train leaves at seven in the evning. | evning → evening"
+        ])
+        let session = Support.session(model)
+        session.startGame(.fixTheTypo)
+        session.send()
+        await Support.settle(session)
+        #expect(session.turns.first?.cue == FixTheTypo.opening)
+        await Support.play("library", in: session)
+        #expect(session.gameState?.status == "Sentence 2 of 5 · 1 fixed")
+
+        await Support.play("See you tomorow at the station.", in: session)
+        #expect(session.turns.last?.cue == FixTheTypo.yourSentence, "a sentence of yours in the model's game")
+        #expect(session.gameState?.choices == [FixTheTypo.foundIt, FixTheTypo.missedIt])
+        session.choose(FixTheTypo.foundIt)
+        #expect(session.gameState?.status == "Sentence 3 of 5 · 1 fixed · Model found 1")
+
+        session.choose(FixTheTypo.randomButton)
+        await Support.settle(session)
+        #expect(session.turns.last?.cue == FixTheTypo.nextSentence)
+        await Support.play("pass", in: session)
+        await Support.play("I saw it yesturday by the river.", in: session)
+        session.choose(FixTheTypo.missedIt)
+        session.send()
+        await Support.settle(session)
+        await Support.play("evening", in: session)
+
+        guard case .over(let outcome, let next)? = session.gameState?.phase else {
+            Issue.record("five sentences should end the game")
+            return
+        }
+        #expect(outcome == GameOutcome(text: "Game done: you fixed 2 of 3, and the model found 1 of 2. You win 3 to 2.", youWon: true))
+        #expect(session.gameState?.status == "Game done · You 3 – 2 Model")
+        #expect(next.placeholder.contains("new game"))
+        #expect(FixTheTypo.lines(for: session.turns).map(\.text) == [
+            "We will meet at the libary after lunch.", "Fixed: “libary” is “library”.",
+            "See you tomorow at the station.", "The model says “tomorow” should be “tomorrow”.", "The model found it.",
+            "Please recieve this gift with our thanks.", "It was “recieve”, spelled “receive”.",
+            "I saw it yesturday by the river.", "The model found nothing misspelled.", "You fooled the model.",
+            "The train leaves at seven in the evning.", "Fixed: “evning” is “evening”."
+        ])
+
+        var dice = GameDice(seed: 1)
+        #expect(FixTheTypo.opener(after: session.turns, in: .english, dice: &dice) == .ask(FixTheTypo.newGame), "after five, a new game")
+        #expect(FixTheTypo.open(with: "My best freind lives next door.", after: session.turns) == .open("My best freind lives next door.", cue: FixTheTypo.yourGame))
+        #expect(FixTheTypo.open(with: "My best freind lives next door.", after: []) == .open("My best freind lives next door.", cue: FixTheTypo.yourGame))
+        #expect(FixTheTypo.opener(after: [], in: .english, dice: &dice) == .ask(FixTheTypo.opening))
+        #expect(FixTheTypo.systemPrompt.contains("Before each sentence the user chooses"))
     }
 
     @Test func aGameSendsItsOwnPromptAndTheChatSendsItsModes() {

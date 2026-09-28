@@ -1,8 +1,9 @@
 import Foundation
 
-/// Fix the typo: a sentence with one misspelled word, five a game, from one side for the whole game. Either
-/// the model writes them and you type each misspelled word spelled right, or you write them and the model
-/// finds the word, and you say whether it did. The model's answer to its own sentence travels after a bar in
+/// Fix the typo: a sentence with one misspelled word, five a game, and before each you choose who writes it.
+/// Either the model writes it and you type the misspelled word spelled right, or you write it and the model
+/// finds the word, and you say whether it did. Each sentence is a turn: the model's has only a cue and its reply,
+/// yours your sentence and the model's finding. The model's answer to its own sentence travels after a bar in
 /// its reply ("…at the libary. | libary → library"), so your fix is judged on this Mac and the typo stays
 /// hidden until then.
 nonisolated enum FixTheTypo: GameRules {
@@ -15,8 +16,10 @@ nonisolated enum FixTheTypo: GameRules {
     static let opening = "Write the first sentence."
     static let nextSentence = "Write the next sentence, on a different topic."
     static let newGame = "Start a new game with a fresh sentence on a different topic."
-    /// What goes with your first sentence: you write them all this game.
-    static let yourGame = "The user writes the sentences this game, each with one misspelled word for you to find. Here is the first."
+    /// What goes with a sentence of yours that starts a game.
+    static let yourGame = "A new game: the user wrote the sentence below, with one misspelled word for you to find."
+    /// What goes with a later sentence of yours.
+    static let yourSentence = "The user wrote the next sentence, below, with one misspelled word for you to find."
     private static let gameCues: Set<String> = [opening, newGame, yourGame]
 
     static let randomButton = "Random Sentence"
@@ -26,17 +29,19 @@ nonisolated enum FixTheTypo: GameRules {
     static let nothingWrong = "NONE"
 
     static let systemPrompt = """
-    You are playing Fix the typo. When asked for a sentence, reply on one line with a natural sentence of eight \
+    You are playing Fix the typo, five sentences a game. Before each sentence the user chooses: you write it \
+    and they fix it, or they write it and you find the typo. \
+    When asked for a sentence, reply on one line with a natural sentence of eight \
     to fifteen words in which exactly one word is misspelled: swap, drop, or double a letter or two so that it \
     is still recognizable, like “recieve” or “tomorow”. Every other word must be spelled correctly. After the \
     sentence write “ | ”, the misspelled word as it appears, “ → ”, and the correct spelling. For example: \
     We will meet at the libary after lunch. | libary → library. Use a different sentence and topic every time. \
-    When the user writes the sentences instead, find the one misspelled word in each and reply on one line with \
+    When the user writes the sentence instead, find its one misspelled word and reply on one line with \
     the word as it appears, “ → ”, and the correct spelling, for example: tomorow → tomorrow. If every word is \
     spelled right, write “NONE”. No quotation marks or Markdown.
     """
 
-    static let invitation = "Type a sentence with one misspelled word for the model to find, or let the model write one for you to fix. Five sentences a game."
+    static let invitation = "Type a sentence with one misspelled word for the model to find, or let the model write one for you to fix. Five sentences a game, and you choose before each."
 
     struct Puzzle: Equatable {
         var sentence: String
@@ -74,20 +79,26 @@ nonisolated enum FixTheTypo: GameRules {
         "\(puzzle.sentence) | \(puzzle.typo) → \(puzzle.fix)"
     }
 
-    /// Whether you write the sentences this game, and the model finds the typos.
-    static func youWrite(_ game: [ChatSession.Turn]) -> Bool {
-        game.first?.cue == yourGame
+    /// Whether you wrote this sentence, and the model looked for its typo. The model's sentences have no question.
+    static func isYours(_ turn: ChatSession.Turn) -> Bool {
+        !turn.question.isEmpty
     }
 
-    /// Left to the model, it writes the game's sentences.
+    /// Whether a game is under way with sentences still to come: the next one is chosen, not a new game.
+    private static func isMidGame(_ turns: [ChatSession.Turn]) -> Bool {
+        (turns.since(gameCues)?.count ?? roundLimit) < roundLimit
+    }
+
+    /// Left to the model, it writes the next sentence, or the first of a new game.
     static func opener(after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> GameOpener {
-        .ask(turns.isEmpty ? opening : newGame)
+        guard !isMidGame(turns) else { return .ask(nextSentence) }
+        return .ask(turns.isEmpty ? opening : newGame)
     }
 
-    /// Your sentence starts a game in which you write them all.
+    /// Your sentence is the next one, or starts a new game, for the model to find its typo.
     static func open(with input: String, after turns: [ChatSession.Turn]) -> GameMove {
         guard let sentence = sentence(in: input) else { return .reject(aSentence) }
-        return .open(sentence, cue: yourGame)
+        return .open(sentence, cue: isMidGame(turns) ? yourSentence : yourGame)
     }
 
     private static let aSentence = "A sentence of a few words, with one of them misspelled."
@@ -98,49 +109,82 @@ nonisolated enum FixTheTypo: GameRules {
         return GameText.words(line).count >= 4 ? line : nil
     }
 
+    /// How a game stands: the model's sentences you fixed and missed, and yours it missed and found.
+    struct Score: Equatable {
+        var fixed = 0, unfixed = 0
+        var fooled = 0, found = 0
+        /// Whether the game has sentences of each side, settled or not.
+        var hasTheModels = false, hasYours = false
+
+        init(of game: [ChatSession.Turn]) {
+            for turn in game {
+                let yours = FixTheTypo.isYours(turn)
+                if yours { hasYours = true } else { hasTheModels = true }
+                guard let outcome = turn.outcome else { continue }
+                switch (yours, outcome.youWon == true) {
+                case (false, true): fixed += 1
+                case (false, false): unfixed += 1
+                case (true, true): fooled += 1
+                case (true, false): found += 1
+                }
+            }
+        }
+
+        /// The sentences that went your way, fixed or fooling the model.
+        var yourPoints: Int { fixed + fooled }
+        var modelPoints: Int { unfixed + found }
+
+        /// The footer's count: “2 fixed”, “Model found 1”, or both in a game that has both.
+        var count: String {
+            [hasTheModels ? "\(fixed) fixed" : nil, hasYours ? "Model found \(found)" : nil].compactMap { $0 }.joined(separator: " · ")
+        }
+
+        /// How the game went, once it is over. A game of one side's sentences says it as before.
+        var outcome: GameOutcome {
+            let won = yourPoints > modelPoints
+            let text = switch (hasTheModels, hasYours) {
+            case (true, false): "Game done: \(fixed) of \(fixed + unfixed) fixed."
+            case (false, true): "Game done: the model found \(found) of \(fooled + found), and missed \(fooled)."
+            default: "Game done: you fixed \(fixed) of \(fixed + unfixed), and the model found \(found) of \(fooled + found). \(won ? "You win" : "The model wins") \(max(yourPoints, modelPoints)) to \(min(yourPoints, modelPoints))."
+            }
+            return GameOutcome(text: text, youWon: won)
+        }
+
+        /// The footer once the game is over.
+        var summary: String {
+            switch (hasTheModels, hasYours) {
+            case (true, false): "Game done · \(fixed) of \(fixed + unfixed) fixed"
+            case (false, true): "Game done · Model found \(found) of \(fooled + found)"
+            default: "Game done · You \(yourPoints) – \(modelPoints) Model"
+            }
+        }
+    }
+
+    /// Between sentences the next one waits for you to choose: type one of yours, or leave it to the model.
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let game = turns.since(gameCues), let last = game.last else {
             let opening = GameOpening(placeholder: "Type a sentence with one misspelled word, or press Return for a random sentence…", button: randomButton)
             return GameState(phase: .opening(opening), status: title)
         }
-        let next = GameOpening(placeholder: "Type a sentence with a typo for a new game, or press Return for a random sentence…", button: randomButton)
-        return youWrite(game) ? stateOfYourSentences(game, last: last, next: next) : stateOfTheModels(game, last: last, next: next)
-    }
-
-    private static func stateOfTheModels(_ game: [ChatSession.Turn], last: ChatSession.Turn, next: GameOpening) -> GameState {
-        let fixed = game.filter { $0.outcome?.youWon == true }.count
-        let current = "Sentence \(game.count) of \(roundLimit) · \(fixed) fixed"
+        let score = Score(of: game)
+        let current = "Sentence \(game.count) of \(roundLimit) · \(score.count)"
         if !last.isComplete { return GameState(phase: .waiting, status: current) }
-        if last.outcome == nil { return GameState(phase: .yourMove(placeholder: "The misspelled word, spelled right…"), status: current) }
-        if game.count >= roundLimit {
-            return GameState(
-                phase: .over(outcome: GameOutcome(text: "Game done: \(fixed) of \(roundLimit) fixed.", youWon: fixed * 2 > roundLimit), next: next),
-                status: "Game done · \(fixed) of \(roundLimit) fixed"
-            )
+        if last.outcome == nil {
+            guard isYours(last) else { return GameState(phase: .yourMove(placeholder: "The misspelled word, spelled right…"), status: current) }
+            return GameState(phase: .yourMove(placeholder: "Did the model find it?", choices: [foundIt, missedIt]), status: current)
         }
-        return GameState(phase: .modelMoves(cue: nextSentence), status: "Sentence \(game.count + 1) of \(roundLimit) · \(fixed) fixed")
+        if game.count >= roundLimit {
+            let next = GameOpening(placeholder: "Type a sentence with a typo for a new game, or press Return for a random sentence…", button: randomButton)
+            return GameState(phase: .over(outcome: score.outcome, next: next), status: score.summary)
+        }
+        let next = GameOpening(placeholder: "Type your next sentence with a typo, or press Return for a random one…", button: randomButton)
+        return GameState(phase: .opening(next), status: "Sentence \(game.count + 1) of \(roundLimit) · \(score.count)")
     }
 
-    private static func stateOfYourSentences(_ game: [ChatSession.Turn], last: ChatSession.Turn, next: GameOpening) -> GameState {
-        let found = game.filter { $0.outcome?.youWon == false }.count
-        let current = "Sentence \(game.count) of \(roundLimit) · Model found \(found)"
-        if !last.isComplete { return GameState(phase: .waiting, status: current) }
-        if last.outcome == nil { return GameState(phase: .yourMove(placeholder: "Did the model find it?", choices: [foundIt, missedIt]), status: current) }
-        if game.count >= roundLimit {
-            let missed = roundLimit - found
-            let outcome = GameOutcome(text: "Game done: the model found \(found) of \(roundLimit), and missed \(missed).", youWon: missed * 2 > roundLimit)
-            return GameState(phase: .over(outcome: outcome, next: next), status: "Game done · Model found \(found) of \(roundLimit)")
-        }
-        return GameState(phase: .yourMove(placeholder: "Your next sentence, with one misspelled word…"), status: "Sentence \(game.count + 1) of \(roundLimit) · Model found \(found)")
-    }
-
+    /// Your move settles the sentence: your fix of the model's, or whether the model found the typo in yours.
     static func play(_ input: String, in turns: [ChatSession.Turn], insisting: Bool) -> GameMove {
         let game = turns.since(gameCues) ?? []
-        if youWrite(game) {
-            guard let last = game.last, last.outcome == nil else {
-                guard let sentence = sentence(in: input) else { return .reject(aSentence) }
-                return .ask(sentence)
-            }
+        if let last = game.last, isYours(last) {
             switch GameText.judgement(input, yes: foundIt, no: missedIt) {
             case true?: return .settle(GameOutcome(text: "The model found it.", youWon: false))
             case false?: return .settle(GameOutcome(text: "You fooled the model.", youWon: true))
@@ -190,15 +234,13 @@ nonisolated enum FixTheTypo: GameRules {
         var lines = GameLines()
         for (number, game) in turns.rounds(gameCues).enumerated() {
             if number > 0 { lines.note("New game") }
-            if youWrite(game) {
-                for turn in game {
+            for turn in game {
+                if isYours(turn) {
                     lines.you(turn.question)
                     if let reply = turn.reply { lines.model(finding(reply)) }
                     if let outcome = turn.outcome { lines.verdict(outcome) }
+                    continue
                 }
-                continue
-            }
-            for turn in game {
                 guard let puzzle = turn.reply.flatMap(puzzle(from:)) else { continue }
                 guard let outcome = turn.outcome else {
                     lines.model(puzzle.sentence)
@@ -220,7 +262,7 @@ nonisolated enum FixTheTypo: GameRules {
     static func transcript(of turns: [ChatSession.Turn]) -> String? {
         let rounds = turns.rounds(gameCues).flatMap { game in
             game.compactMap { turn -> String? in
-                if youWrite(game) {
+                if isYours(turn) {
                     let found = turn.reply.map { "\n\(finding($0))" } ?? ""
                     return turn.question + found + (turn.outcome.map { "\n\($0.text)" } ?? "")
                 }
