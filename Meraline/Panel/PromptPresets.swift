@@ -9,7 +9,9 @@ import SwiftUI
 /// scrolls. Here presets are for a chat's first question: once the chat starts they sink into the card one after
 /// another, to rise again for the next chat, and the chat's actions (⌘K) offer them for its answer instead. They stay in the view
 /// tree all along, faded and disabled, so nothing is inserted or removed while the window is hidden (see
-/// `Announcements`).
+/// `Announcements`). Each capsule is a glass container of its own: a container draws its glass itself, so a fade
+/// or a scale on a capsule inside one shared with the others never reached its glass, and a sunk capsule stayed in
+/// view, half behind the card.
 struct PromptPresets: View {
     let presets: [PromptPreset]
     let draft: String
@@ -33,12 +35,10 @@ struct PromptPresets: View {
         let applied = PromptPreset.applied(in: draft, among: presets)?.id
         let showsTitles = titledWidth <= room
         ScrollView(.horizontal) {
-            GlassEffectContainer {
-                HStack(spacing: 8) {
-                    ForEach(Array(presets.enumerated()), id: \.element.id) { index, preset in
-                        // From the gear outward.
-                        bubble(preset, isApplied: preset.id == applied, showsTitle: showsTitles, order: presets.count - 1 - index)
-                    }
+            HStack(spacing: 8) {
+                ForEach(Array(presets.enumerated()), id: \.element.id) { index, preset in
+                    // From the gear outward.
+                    bubble(preset, isApplied: preset.id == applied, showsTitle: showsTitles, order: presets.count - 1 - index)
                 }
             }
             .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
@@ -71,12 +71,14 @@ struct PromptPresets: View {
 
     private func bubble(_ preset: PromptPreset, isApplied: Bool, showsTitle: Bool, order: Int) -> some View {
         let sends = isShiftDown && hovered == preset.id
-        return Button { click(preset) } label: {
-            PresetLabel(preset: preset, symbol: sends ? "arrow.up" : preset.shownSymbol, showsTitle: showsTitle, isApplied: isApplied)
-                .glassEffect(isApplied ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(), in: .capsule)
-                .contentShape(.capsule)
+        return GlassEffectContainer {
+            Button { click(preset) } label: {
+                PresetLabel(preset: preset, symbol: sends ? "arrow.up" : preset.shownSymbol, showsTitle: showsTitle, isApplied: isApplied)
+                    .glassEffect(isApplied ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(), in: .capsule)
+                    .contentShape(.capsule)
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
         .onHover { isOver in
             if isOver {
                 hovered = preset.id
