@@ -8,6 +8,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 - **Forget chats when you step away.** Settings › General › Privacy can forget every chat when the Mac sleeps or its display turns off, when the screen locks or you switch to another user, or both. The chat in the window and what's typed in it, Recent Chats, torn-off answers, and the folders agents worked in all go at that moment. Both are off unless you turn them on, and quitting, restarting, shutting down, or logging out forgets chats as always.
 - **Services › Ask Meraline takes pictures.** Select part of an image in Preview, or a photo in Photos, and choose Ask Meraline from the app's Services menu: the picture is attached to your next question, for any model, as text already was. The same picture comes only once, and a selection with both words and a picture still comes as words.
+- **Stash a draft for later.** Press ⌘S with no chat open to put what you typed, and the selected text, clipboard, screenshots, and files you added, in Recent Chats, and start on something else. Reopen it from the clock and it's all back in the input. It waits there for 30 minutes, like any recent chat, and reopening another chat stashes what you had typed in an empty one, so it isn't lost. Anonymous mode keeps drafts out of Recent Chats too.
 
 ## v1.7.0 - 2026-09-28
 

@@ -205,9 +205,10 @@ struct PanelContext {
         action.perform()
     }
 
-    /// The action a key press runs from anywhere in the window: one of the open chat's.
+    /// The action a key press runs from anywhere in the window: one of the open chat's, or Stash Draft while
+    /// there is no chat.
     func action(forKeyCode keyCode: UInt16, characters: String?, modifiers: ActionShortcut.Modifiers) -> PanelAction? {
-        chatMenu?.actions.first { action in
+        (chatMenu?.actions ?? [stashDraft].compactMap { $0 }).first { action in
             action.shortcut?.matches(keyCode: keyCode, characters: characters, modifiers: modifiers) == true
         }
     }
@@ -541,12 +542,39 @@ struct PanelContext {
 
     // MARK: Recent chats
 
-    /// The recent chats, newest first, and Clear Recent Chats, which asks first.
+    /// Stash Draft, which parks what an empty chat has typed and added in Recent Chats, for 30 minutes like any
+    /// chat there; nil while there is nothing to stash (see `ChatSession.canStashDraft`).
+    var stashDraft: PanelAction? {
+        guard session.canStashDraft else { return nil }
+        let session = session
+        let layout = layout
+        return PanelAction(
+            id: "stashDraft",
+            title: "Stash Draft",
+            subtitle: "Reopen it here within \(Int(ChatSession.chatLifetime / 60)) minutes",
+            icon: .symbol("tray.and.arrow.down"),
+            shortcut: .command("s"),
+            keywords: ["park", "later", "keep", "save"]
+        ) {
+            session.stashDraft()
+            layout.stashNotice += 1
+            focusInput()
+        }
+    }
+
+    /// Stash Draft while there is a draft to stash, the recent chats, newest first, and Clear Recent Chats, which
+    /// asks first.
     var historyMenu: ActionMenu {
         let session = session
         let layout = layout
         let chats = session.history.map { chat in
-            PanelAction(id: "chat.\(chat.id.uuidString)", title: chat.title.onOneLine, icon: icon(for: chat), detail: chat.date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))) {
+            PanelAction(
+                id: "chat.\(chat.id.uuidString)",
+                title: chat.title.onOneLine,
+                subtitle: chat.draft == nil ? nil : "Stashed draft",
+                icon: icon(for: chat),
+                detail: chat.date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))
+            ) {
                 session.reopen(chat.id)
                 focusInput()
             }
@@ -573,14 +601,19 @@ struct PanelContext {
         }
         return ActionMenu(
             title: "Recent Chats",
-            sections: [ActionSection(id: "chats", actions: chats), ActionSection(id: "clear", actions: clear)],
+            sections: [
+                ActionSection(id: "stash", actions: [stashDraft].compactMap { $0 }),
+                ActionSection(id: "chats", actions: chats),
+                ActionSection(id: "clear", actions: clear),
+            ],
             searchPrompt: "Search recent chats…",
-            emptyText: "No recent chats yet. A chat you close waits here until Meraline quits."
+            emptyText: "No recent chats yet. A chat you close, or a draft you stash with ⌘S, waits here for \(Int(ChatSession.chatLifetime / 60)) minutes."
         )
     }
 
     private func icon(for chat: ChatSession.PastChat) -> PanelAction.Icon {
         if case .game(let game) = chat.mode { return .symbol(game.symbol) }
+        if chat.draft != nil { return .symbol("tray.full") }
         return chat.workspace == nil ? .symbol("bubble.left") : .image(ProviderKind.agent.image)
     }
 }

@@ -62,6 +62,19 @@ final class ChatSession {
         }
     }
 
+    /// A question not asked yet: what is typed, and the texts, images, and files added for it.
+    struct Draft: Equatable {
+        var text = ""
+        var images: [ImageAttachment] = []
+        var files: [FileAttachment] = []
+        var selections: [SelectedText] = []
+
+        var isEmpty: Bool { text.trimmed.isEmpty && images.isEmpty && files.isEmpty && selections.isEmpty }
+
+        /// The draft as the question it would ask.
+        var turn: Turn { Turn(question: text.trimmed, images: images, files: files, selections: selections) }
+    }
+
     struct PastChat: Identifiable, Equatable {
         let id = UUID()
         let turns: [Turn]
@@ -69,17 +82,25 @@ final class ChatSession {
         var mode = Mode.chat
         /// The folder an agent worked in, kept with the chat so reopening it brings the files back.
         var workspace: ChatWorkspace?
+        /// What Stash Draft parked here in place of a conversation, which reopening puts back in the input.
+        var draft: Draft?
         /// When the chat goes, workspace and all: its time kept running from when it was open.
         var expiresAt = Date.now.addingTimeInterval(ChatSession.chatLifetime)
 
         var title: String {
-            let question = turns.first?.question ?? ""
+            let first = turns.first ?? draft?.turn
+            let question = first?.question ?? ""
             switch mode {
             case .chat:
-                return question.isEmpty ? turns.first?.selections.first?.excerpt ?? turns.first?.files.first?.name ?? "Image question" : question
+                return question.isEmpty ? first?.selections.first?.excerpt ?? first?.files.first?.name ?? "Image question" : question
             case .game(let game):
                 return game.rules.headline(of: turns).map { "\(game.title): \($0)" } ?? game.title
             }
+        }
+
+        /// Roughly how much memory the chat takes, a stashed draft's pictures included.
+        var byteCount: Int {
+            ChatSession.byteCount(of: turns) + (draft?.turn.byteCount ?? 0)
         }
     }
 
@@ -765,8 +786,9 @@ final class ChatSession {
     }
 
     /// Makes a past chat the open one, in the mode it was in, with the time it has left. Whatever was open moves
-    /// to Recent Chats. The chat leaves Recent Chats, so its workspace belongs to one chat only. A chat whose time
-    /// is already up goes instead, workspace and all, and the open one stays.
+    /// to Recent Chats, a draft in an empty chat as a stash of its own. The chat leaves Recent Chats, so its
+    /// workspace belongs to one chat only. A chat whose time is already up goes instead, workspace and all, and
+    /// the open one stays. A stashed draft comes back into the input, with no time of its own, like anything typed.
     func reopen(_ chat: PastChat) {
         history.removeAll { $0.id == chat.id }
         guard chat.expiresAt > .now else {
@@ -774,13 +796,50 @@ final class ChatSession {
             Log.chat.info("A recent chat ran out of time as it was reopened")
             return
         }
+        let typed = canStashDraft ? currentDraft : nil
         reset()
         turns = chat.turns
         mode = chat.mode
         workspace = chat.workspace
-        deadline = chat.expiresAt
+        if let parked = chat.draft {
+            (draft, draftImages, draftFiles, draftSelections) = (parked.text, parked.images, parked.files, parked.selections)
+            Log.chat.info("A stashed draft is back in the input")
+        } else {
+            deadline = chat.expiresAt
+        }
         if case .game(let game) = mode { lastGame = game }
         if case .over(let outcome, _)? = gameState?.phase { nudge = outcome.text }
+        if let typed { park(typed) }
+    }
+
+    /// Whether Stash Draft can park the draft in Recent Chats: something is in it, and no chat or game is open,
+    /// since a follow-up belongs with its chat. Anonymous mode keeps drafts out of Recent Chats too.
+    var canStashDraft: Bool {
+        turns.isEmpty && !isPlaying && !isAnonymous && !currentDraft.isEmpty
+    }
+
+    /// Stash Draft (⌘S): parks what is typed and added in an empty chat in Recent Chats, where its time runs like
+    /// any chat's there, and empties the input for something else. Reopening it puts it all back.
+    func stashDraft() {
+        guard canStashDraft else { return }
+        let parked = currentDraft
+        // What the last Finder selection brought leaves with the draft, so once it is back, the next selection
+        // can't take it out again.
+        broughtAttachments = []
+        clearDraft()
+        park(parked)
+        Log.chat.info("Draft stashed with \(parked.images.count) image(s), \(parked.files.count) file(s), \(parked.selections.count) text(s)")
+    }
+
+    private var currentDraft: Draft {
+        Draft(text: draft, images: draftImages, files: draftFiles, selections: draftSelections)
+    }
+
+    /// Puts a draft on top of Recent Chats, letting go of the oldest chats past the limit.
+    private func park(_ draft: Draft) {
+        let previous = history
+        history = Self.stashing(draft, into: history)
+        removeWorkspaces(leftFrom: previous)
     }
 
     /// Moves the chat to Recent Chats with its workspace and the time it has left, unless the chat is anonymous
@@ -792,10 +851,15 @@ final class ChatSession {
             let expiresAt = min(deadline, Date.now.addingTimeInterval(Self.chatLifetime))
             history = Self.archiving(turns, into: history, mode: mode, workspace: workspace, expiresAt: expiresAt)
         }
-        let kept = Set(history.map(\.id))
-        for chat in previous where !kept.contains(chat.id) { chat.workspace?.remove() }
+        removeWorkspaces(leftFrom: previous)
         if let workspace, !history.contains(where: { $0.workspace == workspace }) { workspace.remove() }
         workspace = nil
+    }
+
+    /// Removes the workspaces of the chats in `previous` that are no longer in Recent Chats.
+    private func removeWorkspaces(leftFrom previous: [PastChat]) {
+        let kept = Set(history.map(\.id))
+        for chat in previous where !kept.contains(chat.id) { chat.workspace?.remove() }
     }
 
     /// Recent Chats with the chat on top, holding at most `chatLimit` chats with the open one.
@@ -811,6 +875,14 @@ final class ChatSession {
             }
         guard !answered.isEmpty else { return history }
         let chat = PastChat(turns: answered, date: date, mode: mode, workspace: workspace, expiresAt: expiresAt ?? date.addingTimeInterval(chatLifetime))
+        return Array(([chat] + history).prefix(chatLimit - 1))
+    }
+
+    /// Recent Chats with a stashed draft on top, with 30 minutes of its own, holding at most `chatLimit` chats with
+    /// the open one.
+    static func stashing(_ draft: Draft, into history: [PastChat], at date: Date = .now) -> [PastChat] {
+        guard !draft.isEmpty else { return history }
+        let chat = PastChat(turns: [], date: date, draft: draft, expiresAt: date.addingTimeInterval(chatLifetime))
         return Array(([chat] + history).prefix(chatLimit - 1))
     }
 

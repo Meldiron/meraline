@@ -47,7 +47,7 @@ enum Diagnostics {
     /// Measures the chats of `session`, and walks their workspaces off the main thread, since a copied project
     /// can be thousands of files.
     static func storage(of session: ChatSession, now: Date = .now) async -> Storage {
-        let sizes = ([session.turns] + session.history.map(\.turns)).map(ChatSession.byteCount(of:))
+        let sizes = [ChatSession.byteCount(of: session.turns)] + session.history.map(\.byteCount)
         let deadlines = session.history.map(\.expiresAt) + [session.expiresAt].compactMap { $0 }
         var storage = Storage(
             openTurns: session.turns.count,

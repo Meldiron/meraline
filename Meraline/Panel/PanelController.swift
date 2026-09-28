@@ -42,6 +42,8 @@ final class PanelLayout {
     var copyNotice = 0
     /// The last time the recent chats were forgotten, for the clock under the input to react to.
     var lastForgetting: Forgetting?
+    /// Counts the drafts stashed in Recent Chats, for the clock under the input to say Stashed.
+    var stashNotice = 0
     /// How far the window's top may rise before it leaves the screen, for a panel of actions to choose
     /// between opening upward and downward.
     var roomOnScreenAbove: CGFloat = .greatestFiniteMagnitude

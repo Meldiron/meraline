@@ -34,6 +34,7 @@ struct ModeBar: View {
                 HistoryButton(
                     count: session.history.count,
                     forgetting: layout.lastForgetting,
+                    stashNotice: layout.stashNotice,
                     isOpen: layout.actionPanel?.kind == .history
                 ) {
                     layout.toggleActionPanel(.history)
@@ -300,10 +301,11 @@ private struct Emergence: ViewModifier {
 /// where a chat reopens and Clear Recent Chats forgets them all after asking. When they are forgotten, by
 /// that or by a shake of the window, the capsule says so for a moment, looking like the mode toggle's chosen
 /// segment (a pink clock, the words in the primary color, faint pink glass): the count rolls down to nothing
-/// and the clock bounces.
+/// and the clock bounces. A stashed draft gets the same moment, saying Stashed, so you see where it went.
 private struct HistoryButton: View {
     let count: Int
     let forgetting: PanelLayout.Forgetting?
+    let stashNotice: Int
     let isOpen: Bool
     let toggle: () -> Void
     /// What the capsule says in place of the count, for a moment after the chats were forgotten.
@@ -316,6 +318,7 @@ private struct HistoryButton: View {
                 Image(systemName: "clock.arrow.circlepath")
                     .frame(width: 16)
                     .symbolEffect(.bounce, value: forgetting)
+                    .symbolEffect(.bounce, value: stashNotice)
                     .foregroundStyle(caption == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.meralinePink))
                 if let caption {
                     Text(caption)
@@ -347,6 +350,7 @@ private struct HistoryButton: View {
             guard let forgetting else { return }
             say(forgetting.count > 0 ? "Forgotten" : "Nothing to forget")
         }
+        .onChange(of: stashNotice) { say("Stashed") }
     }
 
     private var glass: Glass {
