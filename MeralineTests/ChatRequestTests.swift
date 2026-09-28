@@ -77,6 +77,17 @@ struct ChatRequestTests {
         #expect(urlRequest.url?.absoluteString == "http://127.0.0.1:11434/api/chat")
     }
 
+    @Test func chatCompletionsAskForUsageAndOpenRouterForCost() throws {
+        let messages = [ChatMessage(role: .user, text: "Hi")]
+        let settings = ProviderSettings(model: "m", baseURL: "http://127.0.0.1:9", apiKey: "", isEnabled: true)
+        let custom = ChatRequest(provider: .custom, settings: settings, systemPrompt: "", messages: messages).chatCompletionsBody
+        #expect(custom["stream_options"] as? [String: Bool] == ["include_usage": true])
+        #expect(custom["usage"] == nil)
+        let openRouter = ChatRequest(provider: .openRouter, settings: settings, systemPrompt: "", messages: messages).chatCompletionsBody
+        #expect(openRouter["stream_options"] as? [String: Bool] == ["include_usage": true])
+        #expect(openRouter["usage"] as? [String: Bool] == ["include": true])
+    }
+
     @Test func missingKeyIsReported() {
         #expect(throws: LLMError.missingKey(.anthropic)) {
             try request(.anthropic, key: " ").urlRequest()

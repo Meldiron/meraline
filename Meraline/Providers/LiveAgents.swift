@@ -247,7 +247,7 @@ nonisolated struct AnswerTracker: Sendable {
         case .text(let text):
             answer = startsOver ? text : answer + text
             startsOver = false
-        case .prompt, .presented:
+        case .prompt, .presented, .usage:
             break
         }
     }
@@ -268,6 +268,8 @@ nonisolated final class LiveAgent: @unchecked Sendable {
     private let codex: CodexConnection?
     /// Codex's thread, with the model, instructions, and folder it was started with.
     private var thread: (id: String, signature: [String])?
+    /// The thread's running total of tokens, as Codex last reported it, so a turn's share can be worked out.
+    private var threadTokens = TokenUsage.zero
     private var warming: Task<Void, Error>?
 
     var isBusy: Bool {
@@ -375,6 +377,9 @@ nonisolated final class LiveAgent: @unchecked Sendable {
         loop: for await event in events {
             switch event {
             case .line(let line):
+                if let report = StreamDecoder.usage(in: line, from: .claudeCode) {
+                    yield(.usage(report.tokens, adds: report.adds))
+                }
                 switch try StreamDecoder.decode(line, from: .claudeCode, knownServers: request.settings.knownMCPServers) {
                 case .text(let text):
                     yield(.text(text))
@@ -429,7 +434,10 @@ nonisolated final class LiveAgent: @unchecked Sendable {
         guard let id = (result["thread"] as? [String: Any])?["id"] as? String else {
             throw LLMError.provider("Codex didn’t open a thread.")
         }
-        lock.withLock { thread = (id, Self.threadSignature(for: request, in: directory)) }
+        lock.withLock {
+            thread = (id, Self.threadSignature(for: request, in: directory))
+            threadTokens = .zero
+        }
         memory.forget()
         Log.commandLine.info("Codex opened a thread\(model.isEmpty ? "" : " with \(model)")")
     }
@@ -483,6 +491,15 @@ nonisolated final class LiveAgent: @unchecked Sendable {
                 // Only this question's turn; the thread's other news can wait.
                 guard envelope.turnID == nil || envelope.turnID == turnID else { continue }
                 if envelope.completesAgentMessage && receivedText { needsSeparator = true }
+                // Codex reports the thread's running total; this turn's share is what it grew by.
+                if let report = StreamDecoder.usage(in: line, from: .codex) {
+                    let grew = lock.withLock {
+                        let delta = report.tokens.subtracting(threadTokens)
+                        threadTokens = report.tokens
+                        return delta
+                    }
+                    yield(.usage(grew, adds: true))
+                }
                 switch try StreamDecoder.decode(line, from: .codex) {
                 case .text(let text):
                     if needsSeparator { yield(.text("\n\n")) }

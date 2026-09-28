@@ -19,6 +19,17 @@ nonisolated struct TokenUsage: Equatable, Sendable {
     /// Whether any token count is known.
     var hasTokens: Bool { input != nil || output != nil }
 
+    /// What this running total grew by since `earlier`: each count that is known, never below zero.
+    func subtracting(_ earlier: TokenUsage) -> TokenUsage {
+        func grew(_ keyPath: KeyPath<TokenUsage, Int?>) -> Int? {
+            self[keyPath: keyPath].map { max(0, $0 - (earlier[keyPath: keyPath] ?? 0)) }
+        }
+        return TokenUsage(
+            input: grew(\.input), output: grew(\.output), cacheRead: grew(\.cacheRead), cacheWrite: grew(\.cacheWrite),
+            cost: cost.map { max(0, $0 - (earlier.cost ?? 0)) }, model: model
+        )
+    }
+
     /// This usage with `other`'s fields taken over it: a later report of the same answer replaces the fields it
     /// carries, or, when `adding`, each of its counts is added to what was known, as OpenCode's steps add up.
     func merging(_ other: TokenUsage, adding: Bool) -> TokenUsage {

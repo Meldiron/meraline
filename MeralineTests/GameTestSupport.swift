@@ -7,18 +7,23 @@ import Foundation
 @MainActor
 final class ScriptedModel {
     var replies: [String]
+    /// What each reply says it took, in order, for a model that reports its usage.
+    var usage: [TokenUsage]
     private(set) var requests: [ChatRequest] = []
 
-    init(_ replies: [String] = []) {
+    init(_ replies: [String] = [], usage: [TokenUsage] = []) {
         self.replies = replies
+        self.usage = usage
     }
 
     func stream(_ request: ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> {
         requests.append(request)
         let reply = replies.isEmpty ? nil : replies.removeFirst()
+        let took = usage.isEmpty ? nil : usage.removeFirst()
         return AsyncThrowingStream { continuation in
             if let reply {
                 continuation.yield(.text(reply))
+                if let took { continuation.yield(.usage(took, adds: false)) }
                 continuation.finish()
             } else {
                 continuation.finish(throwing: LLMError.emptyResponse)

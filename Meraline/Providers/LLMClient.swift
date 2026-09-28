@@ -23,6 +23,9 @@ nonisolated enum LLMClient {
 
                     var receivedText = false
                     func handle(_ payload: String) throws -> Bool {
+                        if let report = StreamDecoder.usage(in: payload, from: request.provider) {
+                            continuation.yield(.usage(report.tokens, adds: report.adds))
+                        }
                         switch try StreamDecoder.decode(payload, from: request.provider) {
                         case .text(let text):
                             receivedText = true

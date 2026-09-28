@@ -18,6 +18,16 @@ nonisolated enum StreamOutput: Equatable, Sendable {
     case prompt(AgentPrompt, AgentPromptResponder?)
     /// The agent handed files to the person, by the paths it gave; the chat finds them in its workspace.
     case presented([String])
+    /// What the provider says the answer took so far (see `StreamDecoder.usage(in:from:)`): the fields it
+    /// carries replace what was known, or, when `adds`, add to it.
+    case usage(TokenUsage, adds: Bool)
+}
+
+/// What a provider's payload says an answer took, and whether it adds to earlier reports of the same answer or
+/// replaces the fields it carries.
+nonisolated struct UsageReport: Equatable, Sendable {
+    let tokens: TokenUsage
+    var adds = false
 }
 
 nonisolated enum Activity: Equatable, Sendable {
@@ -160,6 +170,118 @@ nonisolated enum StreamDecoder {
         case .opencode: try opencode(payload, knownServers: knownServers)
         case .apple: .ignored
         }
+    }
+
+    /// What `payload` says the answer took, if it says: read beside `decode`, since a Gemini chunk carries its
+    /// text and its usage together, and OpenAI's last event the end of the stream and the usage. Input tokens
+    /// are the ones not served from a cache, whatever the provider counts, and cached ones are `cacheRead`.
+    static func usage(in payload: String, from provider: Provider) -> UsageReport? {
+        let data = Data(payload.utf8)
+        switch provider {
+        case .anthropic:
+            guard payload.contains("\"usage\""), let event = try? decoder.decode(AnthropicEvent.self, from: data) else { return nil }
+            return anthropicUsage(event)
+        case .openAI:
+            guard payload.contains("response.completed"), let event = try? decoder.decode(ResponsesCompleted.self, from: data),
+                  let usage = event.response.usage else { return nil }
+            let cached = usage.inputTokensDetails?.cachedTokens ?? 0
+            return UsageReport(tokens: TokenUsage(
+                input: usage.inputTokens.map { max(0, $0 - cached) }, output: usage.outputTokens,
+                cacheRead: usage.inputTokensDetails?.cachedTokens, model: event.response.model
+            ))
+        case .openRouter, .custom:
+            guard payload.contains("\"usage\""), let chunk = try? decoder.decode(ChatCompletionChunk.self, from: data),
+                  let usage = chunk.usage else { return nil }
+            let cached = usage.promptTokensDetails?.cachedTokens ?? 0
+            return UsageReport(tokens: TokenUsage(
+                input: usage.promptTokens.map { max(0, $0 - cached) }, output: usage.completionTokens,
+                cacheRead: usage.promptTokensDetails?.cachedTokens, cost: usage.cost, model: chunk.model
+            ))
+        case .gemini:
+            guard payload.contains("usageMetadata"), let chunk = try? decoder.decode(GeminiChunk.self, from: data),
+                  let usage = chunk.usageMetadata else { return nil }
+            let cached = usage.cachedContentTokenCount ?? 0
+            let output = usage.candidatesTokenCount.map { $0 + (usage.thoughtsTokenCount ?? 0) }
+            return UsageReport(tokens: TokenUsage(
+                input: usage.promptTokenCount.map { max(0, $0 - cached) }, output: output,
+                cacheRead: usage.cachedContentTokenCount, model: chunk.modelVersion
+            ))
+        case .ollama:
+            guard payload.contains("eval_count"), let chunk = try? decoder.decode(OllamaChunk.self, from: data),
+                  chunk.promptEvalCount != nil || chunk.evalCount != nil else { return nil }
+            return UsageReport(tokens: TokenUsage(input: chunk.promptEvalCount, output: chunk.evalCount, model: chunk.model))
+        case .claudeCode:
+            guard payload.contains("sage"), let line = try? decoder.decode(ClaudeCodeLine.self, from: data) else { return nil }
+            switch line.type {
+            case "stream_event":
+                return line.event.flatMap(anthropicUsage)
+            case "result":
+                return claudeCodeUsage(line)
+            default:
+                return nil
+            }
+        case .codex:
+            // The thread's running total; the turn's share is worked out where the turn is known (see `LiveAgents`).
+            guard payload.contains("tokenUsage"), let line = try? decoder.decode(CodexTokenUsageLine.self, from: data),
+                  line.method == "thread/tokenUsage/updated", let total = line.params?.tokenUsage?.total else { return nil }
+            let cached = total.cachedInputTokens ?? 0
+            return UsageReport(tokens: TokenUsage(
+                input: total.inputTokens.map { max(0, $0 - cached) }, output: total.outputTokens,
+                cacheRead: total.cachedInputTokens, cacheWrite: total.cacheWriteInputTokens
+            ))
+        case .opencode:
+            guard payload.contains("step_finish"), let line = try? decoder.decode(OpenCodeStepLine.self, from: data),
+                  line.type == "step_finish", let part = line.part else { return nil }
+            let tokens = part.tokens
+            return UsageReport(tokens: TokenUsage(
+                input: tokens?.input, output: tokens.map { ($0.output ?? 0) + ($0.reasoning ?? 0) },
+                cacheRead: tokens?.cache?.read, cacheWrite: tokens?.cache?.write, cost: part.cost
+            ), adds: true)
+        case .apple:
+            return nil
+        }
+    }
+
+    /// Anthropic's usage: the prompt's tokens with `message_start`, the answer's with `message_delta`, each
+    /// replacing what it carries.
+    private static func anthropicUsage(_ event: AnthropicEvent) -> UsageReport? {
+        switch event.type {
+        case "message_start":
+            guard let usage = event.message?.usage else { return nil }
+            return UsageReport(tokens: TokenUsage(
+                input: usage.inputTokens, output: nil, cacheRead: usage.cacheReadInputTokens,
+                cacheWrite: usage.cacheCreationInputTokens, model: event.message?.model
+            ))
+        case "message_delta":
+            guard let usage = event.usage else { return nil }
+            return UsageReport(tokens: TokenUsage(
+                input: usage.inputTokens, output: usage.outputTokens,
+                cacheRead: usage.cacheReadInputTokens, cacheWrite: usage.cacheCreationInputTokens
+            ))
+        default:
+            return nil
+        }
+    }
+
+    /// Claude Code's `result`: the turn's tokens by model, which its cost follows, and the cost of the turn.
+    private static func claudeCodeUsage(_ line: ClaudeCodeLine) -> UsageReport? {
+        if let models = line.modelUsage, !models.isEmpty {
+            var tokens = TokenUsage(input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: line.totalCostUsd ?? 0)
+            for (_, usage) in models {
+                tokens.input! += usage.inputTokens ?? 0
+                tokens.output! += usage.outputTokens ?? 0
+                tokens.cacheRead! += usage.cacheReadInputTokens ?? 0
+                tokens.cacheWrite! += usage.cacheCreationInputTokens ?? 0
+            }
+            if line.totalCostUsd == nil { tokens.cost = models.values.reduce(0) { $0 + ($1.costUSD ?? 0) } }
+            tokens.model = models.max { ($0.value.outputTokens ?? 0) < ($1.value.outputTokens ?? 0) }?.key
+            return UsageReport(tokens: tokens)
+        }
+        guard let usage = line.usage else { return nil }
+        return UsageReport(tokens: TokenUsage(
+            input: usage.inputTokens, output: usage.outputTokens, cacheRead: usage.cacheReadInputTokens,
+            cacheWrite: usage.cacheCreationInputTokens, cost: line.totalCostUsd
+        ))
     }
 
     static func errorMessage(from data: Data) -> String {
@@ -459,6 +581,10 @@ private nonisolated struct AnthropicEvent: Decodable {
     let delta: Delta?
     let contentBlock: ContentBlock?
     let error: ErrorDetail?
+    /// With `message_start`: the model and the prompt's tokens.
+    let message: Message?
+    /// With `message_delta`: the answer's tokens so far.
+    let usage: Usage?
 
     struct ContentBlock: Decodable {
         let type: String
@@ -469,6 +595,81 @@ private nonisolated struct AnthropicEvent: Decodable {
         let type: String?
         let text: String?
         let stopReason: String?
+    }
+
+    struct Message: Decodable {
+        let model: String?
+        let usage: Usage?
+    }
+
+    struct Usage: Decodable {
+        let inputTokens: Int?
+        let outputTokens: Int?
+        let cacheCreationInputTokens: Int?
+        let cacheReadInputTokens: Int?
+    }
+}
+
+private nonisolated struct ResponsesCompleted: Decodable {
+    let response: Response
+
+    struct Response: Decodable {
+        let model: String?
+        let usage: Usage?
+    }
+
+    struct Usage: Decodable {
+        let inputTokens: Int?
+        let outputTokens: Int?
+        let inputTokensDetails: Details?
+    }
+
+    struct Details: Decodable {
+        let cachedTokens: Int?
+    }
+}
+
+/// Codex's `thread/tokenUsage/updated`: the thread's running total after each call to the model.
+private nonisolated struct CodexTokenUsageLine: Decodable {
+    let method: String
+    let params: Params?
+
+    struct Params: Decodable {
+        let tokenUsage: TokenUsage?
+    }
+
+    struct TokenUsage: Decodable {
+        let total: Breakdown?
+    }
+
+    struct Breakdown: Decodable {
+        let inputTokens: Int?
+        let cachedInputTokens: Int?
+        let outputTokens: Int?
+        let cacheWriteInputTokens: Int?
+    }
+}
+
+/// OpenCode's `step_finish`: one step's tokens and cost, which add up over the answer.
+private nonisolated struct OpenCodeStepLine: Decodable {
+    let type: String
+    let part: Part?
+
+    struct Part: Decodable {
+        let cost: Double?
+        let tokens: Tokens?
+    }
+
+    struct Tokens: Decodable {
+        let input: Int?
+        let output: Int?
+        let reasoning: Int?
+        let cache: Cache?
+    }
+
+    struct Cache: Decodable {
+        let read: Int?
+        let write: Int?
     }
 }
 
@@ -519,6 +720,9 @@ private nonisolated struct ResponsesFailure: Decodable {
 private nonisolated struct ChatCompletionChunk: Decodable {
     let choices: [Choice]?
     let error: ErrorDetail?
+    let model: String?
+    /// With the last chunk, when the request asked for it; OpenRouter adds what the answer cost.
+    let usage: Usage?
 
     struct Choice: Decodable {
         let delta: Delta?
@@ -528,12 +732,33 @@ private nonisolated struct ChatCompletionChunk: Decodable {
     struct Delta: Decodable {
         let content: String?
     }
+
+    struct Usage: Decodable {
+        let promptTokens: Int?
+        let completionTokens: Int?
+        let promptTokensDetails: Details?
+        let cost: Double?
+    }
+
+    struct Details: Decodable {
+        let cachedTokens: Int?
+    }
 }
 
 private nonisolated struct GeminiChunk: Decodable {
     let candidates: [Candidate]?
     let promptFeedback: PromptFeedback?
     let error: ErrorDetail?
+    /// The whole answer's tokens so far, with every chunk.
+    let usageMetadata: UsageMetadata?
+    let modelVersion: String?
+
+    struct UsageMetadata: Decodable {
+        let promptTokenCount: Int?
+        let candidatesTokenCount: Int?
+        let thoughtsTokenCount: Int?
+        let cachedContentTokenCount: Int?
+    }
 
     struct Candidate: Decodable {
         let content: Content?
@@ -558,6 +783,10 @@ private nonisolated struct OllamaChunk: Decodable {
     let message: Message?
     let done: Bool?
     let error: String?
+    let model: String?
+    /// With the last chunk: the prompt's tokens and the answer's.
+    let promptEvalCount: Int?
+    let evalCount: Int?
 
     struct Message: Decodable {
         let content: String?
@@ -570,6 +799,18 @@ private nonisolated struct ClaudeCodeLine: Decodable {
     let message: Message?
     let isError: Bool?
     let result: String?
+    /// With `result`: what the turn cost, and its tokens by model.
+    let totalCostUsd: Double?
+    let usage: AnthropicEvent.Usage?
+    let modelUsage: [String: ModelUsage]?
+
+    struct ModelUsage: Decodable {
+        let inputTokens: Int?
+        let outputTokens: Int?
+        let cacheReadInputTokens: Int?
+        let cacheCreationInputTokens: Int?
+        let costUSD: Double?
+    }
 
     struct Message: Decodable {
         let content: [Block]?

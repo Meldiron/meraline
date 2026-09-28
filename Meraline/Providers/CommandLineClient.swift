@@ -340,6 +340,9 @@ nonisolated enum CommandLineClient {
                     var receivedText = false
                     var needsSeparator = false
                     for try await line in lines(of: output.fileHandleForReading) {
+                        if let report = StreamDecoder.usage(in: line, from: request.provider) {
+                            continuation.yield(.usage(report.tokens, adds: report.adds))
+                        }
                         switch try StreamDecoder.decode(line, from: request.provider, knownServers: request.settings.knownMCPServers) {
                         case .text(let text):
                             if needsSeparator { continuation.yield(.text("\n\n")) }

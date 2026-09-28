@@ -204,6 +204,20 @@ struct UsageCountingTests {
         #expect(usage.allTime.answersCopied == 1)
     }
 
+    @Test func aReportedUsageCountsAsReportedWithItsCost() async throws {
+        let usage = UsageLedger(file: nil)
+        let took = TokenUsage(input: 120, output: 8, cacheRead: 30, cost: 0.0021, model: "served-model")
+        let model = ScriptedModel(["Hello"], usage: [took])
+        let session = Support.session(model, usage: usage)
+        await Support.play("Hi", in: session)
+        #expect(session.turns.last?.usage == took)
+        let counted = try #require(usage.allTime.models["custom/served-model"], "keyed by the model the provider named")
+        #expect(counted.answers == 1 && counted.reportedAnswers == 1 && counted.costedAnswers == 1)
+        #expect(counted.input == 120 && counted.output == 8 && counted.cacheRead == 30)
+        #expect(counted.cost == 0.0021 && counted.unpriced == .init(), "nothing left to price")
+        #expect(usage.allTime.inputTokens == 150 && usage.allTime.outputTokens == 8)
+    }
+
     @Test func askingAgainRewritingAndFailingAreCounted() async throws {
         let usage = UsageLedger(file: nil)
         let model = ScriptedModel(["First", "Again", "Shorter"])

@@ -1125,6 +1125,8 @@ final class ChatSession {
             } else {
                 Log.chat.info("Agent turned down its own ask \(prompt.kind.logDescription)")
             }
+        case .usage(let usage, let adds):
+            turns[last].usage = (turns[last].usage ?? .zero).merging(usage, adding: adds)
         case .presented(let paths):
             // Read as Meraline's MCP server read it, so these are the files the agent was told it handed over.
             guard let workspace else { return }

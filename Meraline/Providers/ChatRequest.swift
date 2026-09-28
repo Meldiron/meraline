@@ -136,9 +136,11 @@ nonisolated struct ChatRequest: Sendable {
     }
 
     var chatCompletionsBody: [String: Any] {
-        [
+        var body: [String: Any] = [
             "model": model,
             "stream": true,
+            // The last chunk then says what the answer took; OpenRouter also says what it cost.
+            "stream_options": ["include_usage": true],
             "messages": [["role": "system", "content": systemPrompt]] + messages.map { message -> [String: Any] in
                 guard !message.images.isEmpty else {
                     return ["role": message.role.rawValue, "content": message.text]
@@ -149,6 +151,8 @@ nonisolated struct ChatRequest: Sendable {
                 return ["role": message.role.rawValue, "content": content]
             }
         ]
+        if provider == .openRouter { body["usage"] = ["include": true] }
+        return body
     }
 
     var ollamaBody: [String: Any] {
