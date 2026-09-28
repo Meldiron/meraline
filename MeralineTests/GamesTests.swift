@@ -291,9 +291,41 @@ struct GamePlayTests {
 
         await Support.play("Then", in: session)
         #expect(session.turns.last?.cue == AddAWord.yourNextSentence, "a word typed once a sentence is done starts the next")
-        #expect(model.lastMessages.last == "\(AddAWord.yourNextSentence)\n\nThen", "the next sentence carries the story so far")
+        #expect(model.lastMessages.last == "\(AddAWord.yourNextSentence)\n\nThen\n\n\(AddAWord.storySoFar)Yesterday my grandmother danced.", "the next sentence brings the story so far, written out")
         #expect(session.gameState?.status == "Sentence 2 · 2 words")
         #expect(session.conversationMarkdown == "Yesterday my grandmother danced. (7/10)\nThen nobody")
+        #expect(AddAWord.lines(for: session.turns).map(\.text).last == "Then nobody", "the story so far never shows")
+
+        await Support.play("smiled", in: session)
+        #expect(model.lastMessages.last == "smiled", "once a sentence has it, its next words go alone")
+        #expect(model.lastMessages.filter { $0.contains(AddAWord.storySoFar) }.count == 1, "and the model reads it once, where it came")
+    }
+
+    @Test func addAWordGivesEachLaterSentenceTheStorySoFar() throws {
+        var dice = GameDice(seed: 1)
+        let first = [
+            Support.turn("Yesterday", cue: AddAWord.yourOpening, reply: "my"),
+            Support.turn("grandmother", reply: "danced.\nScore: 7/10 — lively")
+        ]
+        #expect(AddAWord.aside(for: Support.turn("Yesterday", cue: AddAWord.yourOpening), after: [], in: .english, dice: &dice) == nil, "the first sentence has no story yet")
+        #expect(AddAWord.aside(for: Support.turn("grandmother"), after: [first[0]], in: .english, dice: &dice) == nil)
+
+        let story = "\(AddAWord.storySoFar)Yesterday my grandmother danced."
+        #expect(AddAWord.aside(for: Support.turn("Then", cue: AddAWord.yourNextSentence), after: first, in: .english, dice: &dice) == story)
+        #expect(AddAWord.aside(for: Support.turn(cue: AddAWord.nextSentence), after: first, in: .czech, dice: &dice) == story, "the model asked to start it")
+
+        let drawn = first + [Support.turn(cue: AddAWord.nextSentence, reply: "Meanwhile")]
+        #expect(AddAWord.aside(for: Support.turn("the"), after: drawn, in: .english, dice: &dice) == story, "after a drawn word, with your first word to the model")
+
+        var second = first + [Support.turn("Then", cue: AddAWord.yourNextSentence, reply: "nobody")]
+        second[second.count - 1].aside = story
+        #expect(AddAWord.aside(for: Support.turn("smiled"), after: second, in: .english, dice: &dice) == nil, "once a sentence")
+
+        second.append(Support.turn("smiled", reply: "again.\nScore: 6/10 — tidy"))
+        let third = try #require(AddAWord.aside(for: Support.turn("Later", cue: AddAWord.yourNextSentence), after: second, in: .english, dice: &dice))
+        #expect(third == "\(AddAWord.storySoFar)Yesterday my grandmother danced. Then nobody smiled again.", "every finished sentence, in order")
+        #expect(AddAWord.systemPrompt.contains("the story so far comes with the sentence's first message"))
+        #expect(AddAWord.systemPrompt.contains("10 makes perfect sense in the story so far"))
     }
 
     @Test func addAWordCanStartFromARandomWord() async throws {

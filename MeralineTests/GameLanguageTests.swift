@@ -61,7 +61,7 @@ struct GameLanguageTests {
         #expect(session.isYourMove)
         #expect(AddAWord.lines(for: session.turns).map(\.text) == ["Včera"])
         var dice = GameDice(seed: 1)
-        #expect(AddAWord.aside(for: Support.turn(cue: AddAWord.nextSentence), after: session.turns, in: .czech, dice: &dice) == nil, "the next sentence carries the story on")
+        #expect(AddAWord.aside(for: Support.turn(cue: AddAWord.nextSentence), after: session.turns, in: .czech, dice: &dice) == nil, "no subject for the next sentence, and no story until one is finished")
     }
 
     @Test func categoriesInCzechNameTheDrawnCategoryInCzech() async throws {

@@ -4,7 +4,8 @@ import Foundation
 /// model's (in another language than English, the model starts it), and you and the model add one word each in
 /// turn until someone ends it with a period. Then the model
 /// scores how much sense the sentence makes. The next sentence carries the same story on, so the model builds
-/// on what came before.
+/// on what came before: the first move of each later sentence that goes to the model brings the finished
+/// sentences written out (`storySoFar`), since the turns before hold them one word a message.
 nonisolated enum AddAWord: GameRules {
     static let title = "Add-a-Word"
     static let summary = "Build a sentence one word at a time"
@@ -31,9 +32,10 @@ nonisolated enum AddAWord: GameRules {
     When the sentence has at least six words and could end, end it by putting a period, question mark, or \
     exclamation mark right after your word. Keep sentences under twenty words. \
     Whenever the sentence is finished, by you or by the user, add a new line that scores the finished sentence \
-    as “Score: N/10”, where 10 makes perfect sense, followed by a few playful words about it. \
+    as “Score: N/10”, where 10 makes perfect sense in the story so far, followed by a few playful words about it. \
     If the user's word finishes the sentence, reply with the score line alone. \
-    When asked to start the next sentence, carry on the same story.
+    When asked to start the next sentence, carry on the same story: from the second sentence on, the story so far \
+    comes with the sentence's first message, and every word you add should follow on from it.
     """
 
     static let invitation = "Type the first word, or take a random one. Then add one word at a time, taking turns, and end a word with a period to finish the sentence."
@@ -97,11 +99,18 @@ nonisolated enum AddAWord: GameRules {
         return .drawn(cue: sentences.isEmpty ? opening : nextSentence, move: word)
     }
 
+    /// How an aside gives the story so far.
+    static let storySoFar = "The story so far: "
+
     /// The model's first sentence gets a subject, so it doesn't start the same way every game. The next ones carry
-    /// the story on.
+    /// the story on, and the first move of each that goes to the model, the cue or your first word or, after a word
+    /// drawn on this Mac, your second, brings the finished sentences in full.
     static func aside(for turn: ChatSession.Turn, after turns: [ChatSession.Turn], in language: AnswerLanguage, dice: inout GameDice) -> String? {
-        guard turn.cue == opening else { return nil }
-        return "This sentence’s subject: \(OddOneOut.themes.randomElement(using: &dice) ?? OddOneOut.themes[0])."
+        if turn.cue == opening { return "This sentence’s subject: \(OddOneOut.themes.randomElement(using: &dice) ?? OddOneOut.themes[0])." }
+        let sentences = (turns + [turn]).rounds(cues)
+        guard let current = sentences.last, !current.dropLast().contains(where: { $0.aside?.hasPrefix(storySoFar) == true }) else { return nil }
+        let story = sentences.dropLast().map { sentence(from: $0) }.filter(\.isFinished).map(\.text)
+        return story.isEmpty ? nil : storySoFar + story.joined(separator: " ")
     }
 
     /// Your first word starts the sentence.
