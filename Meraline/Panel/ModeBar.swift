@@ -298,8 +298,9 @@ private struct Emergence: ViewModifier {
 
 /// The recent chats behind a clock that shows how many there are. A click opens their panel of actions,
 /// where a chat reopens and Clear Recent Chats forgets them all after asking. When they are forgotten, by
-/// that or by a shake of the window, the capsule says so for a moment in the pink of the active pin: the
-/// count rolls down to nothing and the clock bounces.
+/// that or by a shake of the window, the capsule says so for a moment, looking like the mode toggle's chosen
+/// segment (a pink clock, the words in the primary color, faint pink glass): the count rolls down to nothing
+/// and the clock bounces.
 private struct HistoryButton: View {
     let count: Int
     let forgetting: PanelLayout.Forgetting?
@@ -315,18 +316,20 @@ private struct HistoryButton: View {
                 Image(systemName: "clock.arrow.circlepath")
                     .frame(width: 16)
                     .symbolEffect(.bounce, value: forgetting)
+                    .foregroundStyle(caption == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.meralinePink))
                 if let caption {
                     Text(caption)
+                        .foregroundStyle(.primary)
                         .transition(.blurReplace)
                 } else {
                     Text("\(count)")
                         .monospacedDigit()
+                        .foregroundStyle(.secondary)
                         .contentTransition(.numericText(countsDown: true))
                         .transition(.blurReplace)
                 }
             }
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(caption == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.meralinePink))
             .padding(.horizontal, 10)
             .frame(height: 30)
             .glassEffect(glass, in: .capsule)
