@@ -105,7 +105,7 @@ struct GameLanguageTests {
         let round = LongestWordRulesTests.round("kunabcdef", model: "KŮŇ", in: .czech)
         #expect(LongestWord.language(of: round) == .czech)
         #expect(LongestWord.hints(for: Array("kunabcdef"), in: .czech).isEmpty)
-        #expect(WordCheck.isWord("parked", in: .czech) != true || WordCheck.spellChecker(for: .czech) == nil, "a Czech round asks the Czech dictionary")
+        #expect([nil, "cs"].contains(WordCheck.spellChecker(for: .czech)), "a Czech round asks the Czech dictionary, when this Mac has one")
     }
 
     @Test func aGameInAnotherLanguageReadsEnglishInItsRulesAsThatLanguage() throws {
