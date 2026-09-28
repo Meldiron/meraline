@@ -14,6 +14,10 @@ import Foundation
 /// A few words that rhyme with the model's ending travel after a bar in its reply ("The cat sat waiting by
 /// the door | floor, more, four"), hidden. Hint shows one of them or of the ending's family, and a line that
 /// ends on one of them rhymes whatever this Mac's ear says.
+///
+/// The prompt asks for the line of nursery rhymes and ballads, four beats in about eight syllables, since a
+/// model left to itself writes a long line that buries its rhyme: a short line keeps the rhyme audible and
+/// says one thing, and the rhyme word has to do real work in it rather than hang off the end.
 nonisolated enum RhymeDuel: GameRules {
     static let title = "Rhyme Duel"
     static let summary = "Tell a story in rhyming couplets, four lines each"
@@ -30,7 +34,14 @@ nonisolated enum RhymeDuel: GameRules {
     writes, you carry the story on with a line that ends on a new word, one that rhymes with none of the lines so far. \
     When the user opens, answer each of the user's lines with the next line of the story, rhyming with it. \
     When asked to open, write the first line of a story about the subject the message gives, in its mood. \
-    Carry on from the user's line, in the same spirit and about the same length. \
+    Carry on from the user's line in the same spirit, and keep your own line short whatever the length of theirs. \
+    Write like a nursery rhyme or a ballad, not a poem for the page: a line is one breath of four beats, \
+    about eight syllables and rarely more than nine words, such as “The cat sat waiting by the door” or \
+    “Until the rain began to pour”. \
+    Say one plain thing that moves the story on, in everyday words and in the order you would speak them: \
+    no inversions, no filler, no strings of adjectives. \
+    Choose the ending first and build the line to land on it, so the last word does real work in the story and \
+    nothing comes after it. \
     Each message names a few words your line may end on: end it on whichever of them suits the story best. \
     When a message names none, end on a short, common word of one syllable that is easy to rhyme with, never the same word twice. \
     After your line, write “ | ” and six common words that rhyme with your last word, separated by commas. \

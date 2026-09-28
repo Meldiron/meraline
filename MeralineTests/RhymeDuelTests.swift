@@ -177,8 +177,12 @@ struct RhymeDuelRulesTests {
         #expect(RhymeDuel.status(linesPlayed: 8) == "Duel done")
     }
 
-    @Test func thePromptAsksForShortEndingsANewWordEachLineAndHiddenRhymes() {
+    @Test func thePromptAsksForShortLinesShortEndingsANewWordEachLineAndHiddenRhymes() {
         #expect(RhymeDuel.systemPrompt.contains("Whoever opens the duel sets each rhyme"))
+        #expect(RhymeDuel.systemPrompt.contains("four beats"), "the measure of nursery rhymes and ballads")
+        #expect(RhymeDuel.systemPrompt.contains("about eight syllables and rarely more than nine words"))
+        #expect(RhymeDuel.systemPrompt.contains("keep your own line short whatever the length of theirs"))
+        #expect(RhymeDuel.systemPrompt.contains("Choose the ending first"))
         #expect(RhymeDuel.systemPrompt.contains("When the user opens, answer each of the user's lines"))
         #expect(RhymeDuel.systemPrompt.contains("the subject the message gives"))
         #expect(RhymeDuel.systemPrompt.contains("Each message names a few words your line may end on"))
