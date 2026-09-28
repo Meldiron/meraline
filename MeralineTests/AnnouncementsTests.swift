@@ -59,4 +59,31 @@ struct AnnouncementsTests {
         settle("there is no update") { updater.pretend(.idle) }
         #expect(!controller.isVisible)
     }
+
+    /// The capsules that say what today cost show in the timer's place on an empty panel, so a chat that runs
+    /// out while the window is hidden fades the timer out and them in, on the same spot.
+    @Test func costNudgesTakeTheTimersPlaceWithoutHangingTheHiddenPanel() async throws {
+        let defaults = Self.throwaway()
+        defaults.set(true, forKey: ShortcutSetup.chosenKey)
+        let preferences = Support.preferences()
+        preferences.costNudges = [.llm: 1, .agent: 1]
+        let session = Support.session(ScriptedModel(["Hello"]))
+        session.usage.record { $0.count(answer: TokenUsage(input: 1, output: 1, cost: 2), reported: true, for: "anthropic/claude-sonnet-5") }
+        session.usage.record { $0.count(answer: TokenUsage(input: 1, output: 1, cost: 3), reported: true, for: "claudeCode") }
+        let controller = PanelController(
+            session: session, preferences: preferences,
+            whatsNew: WhatsNew(defaults: defaults, currentVersion: "1.0.0"),
+            updater: Updater(preferences: preferences, defaults: defaults), updateNotice: UpdateNotice(defaults: defaults),
+            shortcutSetup: ShortcutSetup(defaults: defaults), openSettings: { _ in }
+        )
+        settle("the panel is made, with what LLMs and agents cost today") {}
+
+        await Support.play("Hi", in: session)
+        settle("a chat starts, and its timer takes their place") {}
+        let expiresAt = try #require(session.expiresAt)
+        settle("the chat runs out while the window is hidden") { session.expireChats(now: expiresAt.addingTimeInterval(1)) }
+        #expect(session.turns.isEmpty)
+        settle("an amount is switched off") { preferences.costNudges[.agent] = nil }
+        #expect(!controller.isVisible)
+    }
 }

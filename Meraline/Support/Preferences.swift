@@ -146,6 +146,19 @@ final class Preferences {
             Log.settings.info("Hide from screen sharing \(hidesFromScreenSharing ? "on" : "off")")
         }
     }
+    /// What LLMs or agents may cost in a day, in US dollars, before a capsule under the empty panel says what they
+    /// have cost today (see `CostNudge`). A kind left out has no capsule, and neither has one until you set it in
+    /// Settings › Usage.
+    var costNudges: [ProviderKind: Double] {
+        didSet {
+            guard costNudges != oldValue else { return }
+            for kind in ProviderKind.allCases {
+                defaults.set(costNudges[kind], forKey: "costNudge.\(kind.rawValue)")
+            }
+            let amounts = ProviderKind.allCases.map { kind in "\(kind.pluralTitle) \(costNudges[kind].map { "$\($0)" } ?? "off")" }
+            Log.settings.info("Cost nudges: \(amounts.joined(separator: ", "))")
+        }
+    }
     private(set) var providerSettings: [Provider: ProviderSettings]
 
     /// `onDeviceModelAvailable` decides whether Apple Intelligence starts turned on. It is on by default
@@ -196,6 +209,9 @@ final class Preferences {
         language = defaults.string(forKey: "language").flatMap(AnswerLanguage.init(rawValue:)) ?? .english
         updateChannel = defaults.string(forKey: "updateChannel").flatMap(UpdateChannel.init(rawValue:)) ?? .stable
         hidesFromScreenSharing = defaults.bool(forKey: "hidesFromScreenSharing")
+        costNudges = Dictionary(uniqueKeysWithValues: ProviderKind.allCases.compactMap { kind in
+            (defaults.object(forKey: "costNudge.\(kind.rawValue)") as? Double).map { (kind, $0) }
+        })
         providerSettings = Dictionary(uniqueKeysWithValues: Provider.allCases.map { provider in
             (provider, ProviderSettings(
                 model: defaults.string(forKey: "\(provider.rawValue).model") ?? provider.defaultModel,

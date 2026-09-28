@@ -386,6 +386,13 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
         }
     }
 
+    /// What the models of one kind cost, the LLMs' or the agents', with `price` for the tokens no one has priced.
+    func cost(of kind: ProviderKind, pricedBy price: (String) -> ModelPrice?) -> Double {
+        models.reduce(0) { sum, entry in
+            ModelTally.provider(of: entry.key)?.kind == kind ? sum + entry.value.cost(pricedAt: price(entry.key)) : sum
+        }
+    }
+
     /// Whether anything at all was counted.
     var isEmpty: Bool { self == UsageTally() }
 

@@ -42,6 +42,9 @@ struct ChatPanelView: View {
     @State private var cardHeight: CGFloat = 0
     @State private var actionPanelSpan: ActionPanelSpan?
     @State private var roomAbove: CGFloat = 0
+    /// A moment of today, for the capsules that say what today has cost: moved on when the day changes, and when
+    /// the window opens on a new one.
+    @State private var today = Date.now
 
     /// A game has its footer from the start; its transcript waits for the first move.
     private var hasConversation: Bool { !session.turns.isEmpty || session.isPlaying }
@@ -56,8 +59,14 @@ struct ChatPanelView: View {
     private var hasAnnouncements: Bool { whatsNew.update != nil || offeredUpdate != nil || crashNotice.isOffered }
     /// The diagnostics the capsule under the card offers once after a crash, and says Copied when they were.
     private let crashNotice = CrashNotice.shared
+    /// What LLMs and agents have cost today, each past the amount set in Settings › Usage, on an empty panel.
+    private var costNudges: [CostNudge] {
+        guard !hasConversation, !preferences.costNudges.isEmpty else { return [] }
+        return CostNudge.nudges(limits: preferences.costNudges) { session.usage.cost(of: $0, onDayOf: today) }
+    }
 
     var body: some View {
+        let costNudges = costNudges
         GlassEffectContainer {
             VStack(spacing: 0) {
                 inputRow
@@ -156,7 +165,7 @@ struct ChatPanelView: View {
         }
         .padding(PanelController.margin)
         .padding(.top, ContextButtons.roomAbove)
-        .padding(.bottom, hasAnnouncements || session.expiresAt != nil ? Announcements.roomBelow : 0)
+        .padding(.bottom, hasAnnouncements || session.expiresAt != nil || !costNudges.isEmpty ? Announcements.roomBelow : 0)
         .overlay(alignment: .topLeading) {
             // Lined up with the sparkle under them.
             ContextButtons(session: session, preferences: preferences, sources: sources, screen: screen, close: onClose) { isInputFocused = true }
@@ -173,6 +182,13 @@ struct ChatPanelView: View {
             // Lined up with the footer's actions.
             if let expiresAt = session.expiresAt {
                 ChatTimer(expiresAt: expiresAt, keep: session.keepChat)
+                    .padding(.trailing, PanelController.margin + 12)
+                    .padding(.bottom, Announcements.inset)
+                    .transition(.opacity)
+            }
+            // In the timer's place before there is a chat.
+            if !costNudges.isEmpty {
+                CostNudges(nudges: costNudges)
                     .padding(.trailing, PanelController.margin + 12)
                     .padding(.bottom, Announcements.inset)
                     .transition(.opacity)
@@ -195,7 +211,11 @@ struct ChatPanelView: View {
             }
         }
         .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted, perform: acceptDrop)
-        .onChange(of: layout.focusRequest) { isInputFocused = true }
+        .onChange(of: layout.focusRequest) {
+            isInputFocused = true
+            if !Calendar.current.isDate(today, inSameDayAs: .now) { today = .now }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in today = .now }
         .onChange(of: session.isStreaming) {
             if !session.isStreaming && layout.actionPanel == nil { isInputFocused = true }
         }
@@ -214,6 +234,7 @@ struct ChatPanelView: View {
         .animation(.smooth(duration: Self.cardAnimation), value: offeredUpdate)
         .animation(.smooth(duration: Self.cardAnimation), value: crashNotice.isOffered)
         .animation(.smooth(duration: Self.cardAnimation), value: session.expiresAt == nil)
+        .animation(.smooth(duration: Self.cardAnimation), value: costNudges.isEmpty)
         .animation(.smooth(duration: Self.cardAnimation), value: shortcutSetup.showsNotice)
     }
 

@@ -151,9 +151,23 @@ final class UsageLedger {
     func summary(from start: Date, to end: Date) -> UsageTally {
         let first = Self.slot(of: start)
         let last = Self.slot(of: end)
-        return slots.keys.filter { (first...last).contains($0) }.sorted().reduce(UsageTally()) { sum, slot in
+        guard first <= last else { return UsageTally() }
+        // A short span, such as today's for the panel's nudge, looks up its own slots rather than going through
+        // a year of them.
+        let counted = last - first < slots.count
+            ? (first...last).filter { slots[$0] != nil }
+            : slots.keys.filter { (first...last).contains($0) }.sorted()
+        return counted.reduce(UsageTally()) { sum, slot in
             sum + (slots[slot] ?? UsageTally())
         }
+    }
+
+    /// What one kind of model, the LLMs or the agents, has cost on the calendar day of `date`, for the capsules
+    /// under the panel's card (see `CostNudge`).
+    func cost(of kind: ProviderKind, onDayOf date: Date, calendar: Calendar = .current) -> Double {
+        let start = calendar.startOfDay(for: date)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(24 * 3_600)
+        return summary(from: start, to: end.addingTimeInterval(-1)).cost(of: kind, pricedBy: price(forKey:))
     }
 
     /// Everything ever counted.

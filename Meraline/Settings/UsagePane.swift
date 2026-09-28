@@ -5,9 +5,11 @@ import SwiftUI
 /// ledger. A chart of tokens along the span, tiles with the headline numbers, and rows for asking, models and
 /// what they cost, and agents, tiles for each game played, then rows for what went with questions, habits, and
 /// what was done with answers. Every
-/// number is a count; nothing here ever says what was asked or answered.
+/// number is a count; nothing here ever says what was asked or answered. At the end, the amounts a day past which
+/// the empty panel says what LLMs and agents have cost today (`CostNudges`).
 struct UsagePane: View {
     let ledger: UsageLedger
+    let preferences: Preferences
     @State private var window: UsageWindow
     /// The bar under the pointer, by its label.
     @State private var selectedBar: String?
@@ -15,8 +17,9 @@ struct UsagePane: View {
     /// Moves on while the pane is open, so the spans roll with the clock.
     @State private var now = Date.now
 
-    init(ledger: UsageLedger, window: UsageWindow = .day) {
+    init(ledger: UsageLedger, preferences: Preferences, window: UsageWindow = .day) {
         self.ledger = ledger
+        self.preferences = preferences
         _window = State(initialValue: window)
     }
 
@@ -50,6 +53,7 @@ struct UsagePane: View {
                 habits
             }
 
+            nudges
             prices
         }
         .formStyle(.grouped)
@@ -303,6 +307,20 @@ struct UsagePane: View {
         }
     }
 
+    // MARK: Nudges
+
+    private var nudges: some View {
+        Section {
+            ForEach(ProviderKind.allCases) { kind in
+                CostNudgeRow(kind: kind, preferences: preferences, today: ledger.cost(of: kind, onDayOf: now))
+            }
+        } header: {
+            Text("Daily nudge")
+        } footer: {
+            Text("Once LLMs or agents have cost more than this today, a capsule under the window says how much while no chat is open. It never stops you from asking.")
+        }
+    }
+
     private var prices: some View {
         Section {
             LabeledContent {
@@ -337,6 +355,54 @@ struct UsagePane: View {
         } label: {
             Text(label)
             if !detail.isEmpty { Text(detail) }
+        }
+    }
+}
+
+/// One kind's amount a day for the nudge: a switch, and the amount while it is on, with what today has cost so far.
+private struct CostNudgeRow: View {
+    let kind: ProviderKind
+    let preferences: Preferences
+    let today: Double
+
+    var body: some View {
+        LabeledContent {
+            HStack(spacing: 10) {
+                if preferences.costNudges[kind] != nil {
+                    HStack(spacing: 3) {
+                        Text("$").foregroundStyle(.secondary)
+                        TextField("Amount", value: amount, format: .number.precision(.fractionLength(2)))
+                            .labelsHidden()
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 64)
+                    }
+                }
+                Toggle("Nudge", isOn: isOn)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .tint(.meralinePink)
+            }
+        } label: {
+            Text(kind.pluralTitle)
+            Text("\(UsageInsights.money(today)) so far today")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Nudge for \(kind.pluralTitle)")
+    }
+
+    private var isOn: Binding<Bool> {
+        Binding {
+            preferences.costNudges[kind] != nil
+        } set: { isOn in
+            preferences.costNudges[kind] = isOn ? CostNudge.standardLimit(for: kind) : nil
+        }
+    }
+
+    private var amount: Binding<Double> {
+        Binding {
+            preferences.costNudges[kind] ?? CostNudge.standardLimit(for: kind)
+        } set: { amount in
+            preferences.costNudges[kind] = max(0, amount)
         }
     }
 }
