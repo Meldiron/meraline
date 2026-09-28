@@ -105,6 +105,24 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
     <td align="center"><sub>The clock keeps your recent chats, to reopen or clear</sub></td>
   </tr>
   <tr>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/longest-word.png">
+        <img src="docs/screenshots/longest-word-light.png" width="440" alt="Longest Word: nine letters in glass bubbles with a shuffle button, while the model's word stays hidden until you play yours">
+      </picture>
+    </td>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/opening.png">
+        <img src="docs/screenshots/opening-light.png" width="440" alt="Rhyme Duel waiting for its first move: a card that explains the duel, with a Random Rhyme button to let the model open">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Longest Word: your Mac deals the letters and checks both words</sub></td>
+    <td align="center"><sub>Make the first move, or leave it to the model</sub></td>
+  </tr>
+  <tr>
     <td align="center" colspan="2">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/actions.png">
@@ -145,7 +163,13 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
     <td align="center"><sub>Every permission in one place, with what it's for</sub></td>
   </tr>
   <tr>
-    <td align="center" colspan="2">
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/usage.png">
+        <img src="docs/screenshots/usage-light.png" width="440" alt="Settings › Usage over the last 30 days: questions, answers, tokens in and out, cost, and rounds, with a chart of tokens by day">
+      </picture>
+    </td>
+    <td align="center">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings.png">
         <img src="docs/screenshots/settings-light.png" width="440" alt="Settings on the Claude Code page: model, reasoning effort, web search, MCP servers turned on, and the list of MCP servers with a toggle each">
@@ -153,7 +177,8 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
     </td>
   </tr>
   <tr>
-    <td align="center" colspan="2"><sub>Settings look like System Settings; each agent lists its MCP servers with a switch for each</sub></td>
+    <td align="center"><sub>Settings › Usage counts what you asked, played, and spent, numbers only</sub></td>
+    <td align="center"><sub>Settings look like System Settings; each agent lists its MCP servers with a switch for each</sub></td>
   </tr>
 </table>
 
@@ -207,7 +232,7 @@ That's it. Press <kbd>⌥</kbd> <kbd>Space</kbd> whenever you have a question.
 Meraline is built so you don't have to take its word for any of this.
 
 - **No account and no server in between.** Questions go straight from your Mac to the provider you chose. Meraline has no backend, no analytics, and no crash reporting. The only other connections are a once-a-day update check against `github.com`, which you can turn off in Settings, and the pictures in a release's notes, fetched from GitHub when you open What's New. Watch the traffic with any network monitor and you'll see nothing else.
-- **Nothing on disk.** Conversations and games live in memory and are gone when you quit. The preferences file (`defaults read com.meldiron.meraline`) holds settings only: shortcut, window placement, which providers are on, and the prompts you changed.
+- **Nothing on disk.** Conversations and games live in memory and are gone when you quit. The preferences file (`defaults read com.meldiron.meraline`) holds settings only: shortcut, window placement, which providers are on, and the prompts you changed. The one other file, `~/Library/Application Support/Meraline/usage.json`, holds the counts Settings › Usage shows: how many questions, answers, tokens, and games in each five-minute slot, by provider, model, and game. Open it and you'll find numbers and names of models and games, never a word of what was asked or answered; Clear Usage Data deletes it.
 - **Chats last 30 minutes.** Each chat is deleted from memory, with the folder its agent worked in, 30 minutes after its last message, in the window or in Recent Chats. The capsule under the window's bottom right counts down, turning pink in the last 5 minutes; click it to give the chat 30 minutes again. Start a new chat (<kbd>⌘</kbd> <kbd>N</kbd> or <kbd>Esc</kbd>) and the last one goes to Recent Chats with the time it has left, which reopening it doesn't change, or is forgotten if it was anonymous.
 - **Keys in the Keychain.** API keys are stored as Keychain items under the service `com.meldiron.meraline.api-keys`, where Keychain Access can show and delete them. They never appear in preferences, logs, or diagnostics.
 - **Command-line agents stay in charge of their own sign-in.** Meraline runs the unmodified `claude`, `codex`, and `opencode` commands with session persistence off. It never reads or copies their tokens. The MCP servers set up in an agent are available to it here too, as the agent reports them; **Settings › Agents** lists them and lets you turn any of them off for Meraline alone, without touching the agent's own configuration. Each chat gives its agent a scratch folder in the temporary directory, holding only copies of the files and folders you attach, never your originals, and what the agent writes there. It is removed when the chat's time runs out, the chat is forgotten, or Meraline quits, and it takes in at most 20,000 files and folders. A file the agent hands you stays in that folder until you copy or save it, and it's marked as downloaded before it leaves for another app, so macOS checks any app or program in it before it first runs. **Open** never runs anything: scripts open as text, and apps are only shown in Finder. When Claude Code wants to write there, or has a question of its own, Meraline shows it and waits for you; **Why?** has it say in one line why it wants to.
