@@ -179,6 +179,8 @@ struct PanelContext {
     let openSettings: (SettingsPane?) -> Void
     /// Insert Answer's way into the app in front, or nil when there is none, as when Meraline itself is.
     var insertion: AnswerInsertion?
+    /// Copies the diagnostics, for the sparkle's Copy Diagnostics, which shows only when this is set.
+    var copyDiagnostics: (() -> Void)?
 
     func menu(for kind: ActionPanelKind) -> ActionMenu? {
         switch kind {
@@ -476,7 +478,7 @@ struct PanelContext {
     // MARK: The sparkle
 
     /// The sparkle's panel: the ready providers of the current mode, the other mode, anonymous mode, hiding
-    /// from screen sharing, and Settings.
+    /// from screen sharing, Settings, and Copy Diagnostics.
     var providersMenu: ActionMenu {
         let preferences = preferences
         let session = session
@@ -521,6 +523,17 @@ struct PanelContext {
         settings.append(PanelAction(id: "settings", title: "Settings…", icon: .symbol("gearshape"), shortcut: .command(",")) { [openSettings] in
             openSettings(nil)
         })
+        if let copyDiagnostics {
+            // The same report as Settings › About's and the crash capsule's, at any time.
+            settings.append(PanelAction(
+                id: "copyDiagnostics",
+                title: "Copy Diagnostics",
+                subtitle: "No questions, answers, or keys",
+                icon: .symbol("stethoscope"),
+                keywords: ["bug", "report", "issue", "log", "debug", "support"],
+                perform: copyDiagnostics
+            ))
+        }
         return ActionMenu(
             title: kind.pluralTitle,
             sections: [

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Capsules under the card, at its left, as the buttons above it are at its top: Copy Diagnostics after a crash,
-/// What's New after an update, which opens the notes under the input, and an update Sparkle found or staged,
+/// Capsules under the card, at its left, as the buttons above it are at its top: Copy Diagnostics after a crash
+/// (which also says Copied for a moment when the sparkle's panel copies them), What's New after an update, which opens the notes under the input, and an update Sparkle found or staged,
 /// which opens Sparkle's window or restarts into it. Each cross hides its capsule until the next update, or the
 /// next crash. Glass with the faint pink tint of the active pin, a little stronger while the notes are open.
 struct Announcements: View {
@@ -17,7 +17,7 @@ struct Announcements: View {
     let update: Updater.State?
     let openUpdate: () -> Void
     let hideUpdate: (Updater.Update) -> Void
-    /// Offers the diagnostics once after a crash (see `CrashNotice`).
+    /// Offers the diagnostics once after a crash, and says Copied when they were (see `CrashNotice`).
     let crash: CrashNotice
     let copyDiagnostics: () -> Void
 
@@ -28,7 +28,9 @@ struct Announcements: View {
                     AnnouncementCapsule(
                         title: crash.isCopied ? "Copied" : "Copy Diagnostics",
                         symbol: crash.isCopied ? "checkmark" : "exclamationmark.triangle",
-                        help: "Meraline quit unexpectedly. Copy what went wrong, with no questions, answers, or keys in it, to paste into a bug report.",
+                        help: crash.isCopied
+                            ? "Diagnostics copied, with no questions, answers, or keys in them, to paste into a bug report."
+                            : "Meraline quit unexpectedly. Copy what went wrong, with no questions, answers, or keys in it, to paste into a bug report.",
                         dismissHelp: "Hide"
                     ) {
                         copyDiagnostics()

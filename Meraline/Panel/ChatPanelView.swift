@@ -46,7 +46,7 @@ struct ChatPanelView: View {
     /// A game has its footer from the start; its transcript waits for the first move.
     private var hasConversation: Bool { !session.turns.isEmpty || session.isPlaying }
     private var context: PanelContext {
-        PanelContext(session: session, preferences: preferences, layout: layout, openSettings: openSettings, insertion: inserter?.insertion)
+        PanelContext(session: session, preferences: preferences, layout: layout, openSettings: openSettings, insertion: inserter?.insertion, copyDiagnostics: copyDiagnostics)
     }
     /// Who is asking when an agent stops to ask, for the prompt card.
     private var agentName: String { preferences.activeProvider?.name ?? "The agent" }
@@ -54,7 +54,7 @@ struct ChatPanelView: View {
     private var offeredUpdate: Updater.State? { updateNotice.offer(for: updater.state) }
     /// Whether the capsules under the card show, for the window to make room for them.
     private var hasAnnouncements: Bool { whatsNew.update != nil || offeredUpdate != nil || crashNotice.isOffered }
-    /// The diagnostics the capsule under the card offers once after a crash.
+    /// The diagnostics the capsule under the card offers once after a crash, and says Copied when they were.
     private let crashNotice = CrashNotice.shared
 
     var body: some View {
@@ -165,12 +165,7 @@ struct ChatPanelView: View {
         }
         .overlay(alignment: .bottomLeading) {
             // Lined up with the buttons above the card.
-            Announcements(whatsNew: whatsNew, update: offeredUpdate, openUpdate: openUpdate, hideUpdate: updateNotice.hide, crash: crashNotice) {
-                Task {
-                    let storage = await Diagnostics.storage(of: session)
-                    crashNotice.copy(Diagnostics.report(preferences: preferences, updates: updater.status, storage: storage))
-                }
-            }
+            Announcements(whatsNew: whatsNew, update: offeredUpdate, openUpdate: openUpdate, hideUpdate: updateNotice.hide, crash: crashNotice, copyDiagnostics: copyDiagnostics)
                 .padding(.leading, PanelController.margin + 18)
                 .padding(.bottom, Announcements.inset)
         }
@@ -237,6 +232,11 @@ struct ChatPanelView: View {
             onClose()
             updater.checkForUpdates()
         }
+    }
+
+    /// Copies the diagnostics, from the crash capsule or the sparkle's panel, and has the capsule say Copied.
+    private func copyDiagnostics() {
+        Task { await crashNotice.copyDiagnostics(of: session, preferences: preferences, updates: updater.status) }
     }
 
     /// The card under the input: a game's nudge, or its invitation while a round waits to be opened.

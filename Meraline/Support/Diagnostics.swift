@@ -2,10 +2,10 @@ import AppKit
 import Foundation
 import KeyboardShortcuts
 
-/// The report behind Settings › About › Copy Diagnostics, and the capsule that offers it after a crash:
-/// versions, the machine, the crash macOS reported since the previous launch, how providers are set up,
+/// The report behind Settings › About › Copy Diagnostics, the sparkle's panel, and the capsule that offers it after
+/// a crash: versions, the machine, the crash macOS reported since the previous launch, how providers are set up,
 /// update state, what the chats hold, and the recent log. It never includes a question, an answer, or a key,
-/// so it is safe to paste into a public issue.
+/// so it is safe to paste into a public issue, and it is copied the same way whenever it is asked for.
 enum Diagnostics {
     struct UpdateStatus: Equatable {
         var isAvailable: Bool
@@ -118,12 +118,27 @@ enum Diagnostics {
             lines.append("\(entry.date.formatted(.iso8601)) [\(entry.category)] \(entry.level.rawValue): \(entry.message)")
         }
         lines.append("```")
-        return lines.joined(separator: "\n")
+        return redacting(lines.joined(separator: "\n"), keys: Provider.allCases.map { preferences[$0].apiKey })
     }
 
-    static func copyToPasteboard(_ report: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(report, forType: .string)
+    static func copyToPasteboard(_ report: String, to pasteboard: NSPasteboard = .general) {
+        pasteboard.clearContents()
+        pasteboard.setString(report, forType: .string)
+    }
+
+    /// What `text` says with the home folder written as `~`, since a log line's path names the person, and with
+    /// each of `keys` taken out. No key should ever reach the log; this is so one that slipped into an error
+    /// description still stays off the clipboard.
+    static func redacting(_ text: String, keys: [String], home: String = NSHomeDirectory()) -> String {
+        var text = text
+        // Longer keys first, in case one holds another.
+        for key in Set(keys.map(\.trimmed)).filter({ $0.count >= 8 }).sorted(by: { $0.count > $1.count }) {
+            text = text.replacingOccurrences(of: key, with: "[key]")
+        }
+        guard home.count > 1 else { return text }
+        // Only the whole folder name: /Users/ann, not the start of /Users/anna.
+        let pattern = NSRegularExpression.escapedPattern(for: home) + "(?![A-Za-z0-9._-])"
+        return text.replacingOccurrences(of: pattern, with: "~", options: .regularExpression)
     }
 
     private static var architecture: String {

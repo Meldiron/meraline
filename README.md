@@ -273,7 +273,7 @@ open "meraline://ask?text=What%27s%20wrong%20here%3F&screen=1&clipboard=1&send=1
 
 Meraline checks for updates once a day and installs them quietly in the background; a capsule under the window, the menu bar menu, and Settings › Software Update show when one is ready. To try builds before they are released, switch **Settings › Software Update › Update channel** to Beta. After an update, a What's New capsule under the window opens the release notes, pictures included.
 
-Something off? **Settings › About › Copy Diagnostics** gives you a report to paste into a [bug report](https://github.com/Meldiron/meraline/issues/new?template=bug_report.yml). It has no keys, questions, or answers in it. If Meraline ever quits unexpectedly, the next time you open the window it offers the same report, with where it crashed, once.
+Something off? **Copy Diagnostics**, in the sparkle's panel or Settings › About, gives you a report to paste into a [bug report](https://github.com/Meldiron/meraline/issues/new?template=bug_report.yml), whenever you like. It has no keys, questions, or answers in it, and your home folder is written as `~`. If Meraline ever quits unexpectedly, the next time you open the window it offers the same report, with where it crashed, once.
 
 ## Build it yourself
 
