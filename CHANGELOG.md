@@ -8,6 +8,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ### Ask
 
+- **Buttons with nothing to add fade further.** The selection, clipboard, and screenshot buttons above the window go much fainter when there is nothing they could add, so a glance tells which of them a click would do something with.
 - **Quoted text opens in full.** The text a question went with, quoted above it, now says how many words it is, and when its two lines cut it short, a click on its header shows all of it and folds it back. Handy after copying a few long messages to ask about together. The card under the input offers its chevron only when its three lines really leave something out.
 
 ### Settings

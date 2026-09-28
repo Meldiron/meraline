@@ -7,8 +7,8 @@ import SwiftUI
 /// screenshot of the screen the window is on, taken without Meraline's own windows (⇧⌘S). Each click adds
 /// what the button has now, so texts from several apps or screenshots of several visits all come along;
 /// only when that very text, copy, or visit is in the draft already does a click take it out again (see
-/// `ContextSources`). Each circle shows which it would do: dimmed when there is nothing to add, neutral glass
-/// when it would add, and the active pin's pink while what it has is in the draft. A capsule beside them says
+/// `ContextSources`). Each circle shows which it would do: faded to a ghost of itself when there is nothing
+/// to add, neutral glass when it would add, and the active pin's pink while what it has is in the draft. A capsule beside them says
 /// when a button couldn't do its part. `ContextSources` does the adding, so `meraline://ask?clipboard=1&screen=1`
 /// adds exactly as a click does. Games take none of it, so the buttons step aside while one is on.
 struct ContextButtons: View {
@@ -234,9 +234,9 @@ extension ContextButtons {
     }
 }
 
-/// One of the circles, with ⇧⌘ and its key, dressed for its status: dimmed and still when there is nothing
-/// to add, neutral glass when a click adds, and the active pin's pink, symbol and a faint glass tint, while
-/// what it has is in the draft.
+/// One of the circles, with ⇧⌘ and its key, dressed for its status: faded to `unavailableOpacity` and still
+/// when there is nothing to add, so it reads as out of use next to one that would add, neutral glass when a
+/// click adds, and the active pin's pink, symbol and a faint glass tint, while what it has is in the draft.
 private struct ContextButton<Icon: View>: View {
     let status: ContextButtons.Status
     let label: String
@@ -244,6 +244,10 @@ private struct ContextButton<Icon: View>: View {
     let key: KeyEquivalent
     let action: () -> Void
     @ViewBuilder let icon: Icon
+
+    /// How much of a circle with nothing to add shows. The row's shadow comes from what it draws, so the
+    /// circle's shadow fades with it and it lies flat and gray beside the ones that would add.
+    static var unavailableOpacity: Double { 0.4 }
 
     var body: some View {
         Button(action: action) {
@@ -253,7 +257,7 @@ private struct ContextButton<Icon: View>: View {
                 .frame(width: ContextButtons.size, height: ContextButtons.size)
                 .glassEffect(glass, in: .circle)
                 .contentShape(.circle)
-                .opacity(status == .unavailable ? 0.6 : 1)
+                .opacity(status == .unavailable ? Self.unavailableOpacity : 1)
         }
         .buttonStyle(.plain)
         .disabled(status == .unavailable)
