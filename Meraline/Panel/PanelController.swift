@@ -6,6 +6,8 @@ import SwiftUI
 final class FloatingPanel: EditingPanel {
     var onEscape: (() -> Void)?
     var onClose: (() -> Void)?
+    /// A pinch on the trackpad, anywhere over the window.
+    var onMagnify: ((NSEvent) -> Void)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -17,11 +19,19 @@ final class FloatingPanel: EditingPanel {
     override func performClose(_ sender: Any?) {
         onClose?()
     }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .magnify, let onMagnify {
+            onMagnify(event)
+        } else {
+            super.sendEvent(event)
+        }
+    }
 }
 
 /// What the panel keeps between showings, in memory only: how tall the conversation may be, requests to
-/// focus the input, which group under the input is open, the panel of actions open over the window, and the
-/// last time the recent chats were forgotten.
+/// focus the input, which group under the input is open, the panel of actions open over the window, the
+/// answers' zoom, and the last time the recent chats were forgotten.
 @Observable
 final class PanelLayout {
     /// The recent chats were forgotten, by a shake of the window or Clear Recent Chats, and how many went.
@@ -47,6 +57,8 @@ final class PanelLayout {
     /// How far the window's top may rise before it leaves the screen, for a panel of actions to choose
     /// between opening upward and downward.
     var roomOnScreenAbove: CGFloat = .greatestFiniteMagnitude
+    /// How large the answers are drawn, in every chat, until Meraline quits or ⌘0.
+    var answerZoom = AnswerZoom.actualSize
 
     /// Closes the panel of actions and gives the keyboard back to the input.
     func closeActionPanel() {
@@ -72,6 +84,12 @@ final class PanelLayout {
         } else {
             actionPanel = ActionPanelRequest(kind: kind)
         }
+    }
+
+    /// ⌘+, ⌘−, or ⌘0 for the answers.
+    func zoomAnswers(_ step: AnswerZoom.Step) {
+        answerZoom = answerZoom.applying(step)
+        Log.panel.info("Answers zoomed to \(self.answerZoom.percent)")
     }
 
     func noteForgotten(_ count: Int) {
@@ -139,6 +157,7 @@ final class PanelController: NSObject {
         panel.delegate = self
         panel.onEscape = { [weak self] in self?.handleEscape() }
         panel.onClose = { [weak self] in self?.close() }
+        panel.onMagnify = { [weak self] in self?.magnify($0) }
         observeScreenSharingPreference()
         inserter.closeWindow = { [weak self] in self?.close() }
         AnswerNotes.shared.configure(preferences: preferences) { [weak self] in self?.cardFrame }
@@ -286,6 +305,14 @@ final class PanelController: NSObject {
         } onChange: {
             Task { @MainActor [weak self] in self?.observeScreenSharingPreference() }
         }
+    }
+
+    /// A pinch zooms the answers smoothly, wherever the pointer is over the window, and settles when it ends.
+    private func magnify(_ event: NSEvent) {
+        guard context.canZoomAnswers else { return }
+        let ending = !event.phase.isDisjoint(with: [.ended, .cancelled])
+        layout.answerZoom = layout.answerZoom.pinched(by: event.magnification, ending: ending)
+        if ending { Log.panel.info("Answers pinched to \(self.layout.answerZoom.percent)") }
     }
 
     private func handleEscape() {

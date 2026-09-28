@@ -4,7 +4,8 @@ import SwiftUI
 
 /// Answers torn off the window into small floating glass notes (Tear Off Answer, ⌘T), so a recipe or a list of
 /// steps stays on the screen while you follow it in another app. A note moves by its header or any empty space,
-/// resizes from its sides and bottom, and can fold its question away. It keeps its answer in memory only: its
+/// resizes from its sides and bottom, can fold its question away, and zooms its answer on its own (⌘+, ⌘−, ⌘0,
+/// or a pinch), starting from the window's zoom. It keeps its answer in memory only: its
 /// cross, Esc while it has the keyboard, or quitting puts it away, and nothing of it is saved. Notes float above
 /// other apps on every Space, beside the window when there is room, and hide from screen sharing when the window
 /// does.
@@ -21,6 +22,12 @@ final class AnswerNotes {
     static let margin: CGFloat = 28
     /// How far each note opens from the one before, down and to the right.
     private static let cascade: CGFloat = 26
+
+    /// A note's card width while it fits its answer: wider as its answer is zoomed, so larger words don't wrap
+    /// into a narrow column.
+    static func width(for zoom: AnswerZoom) -> CGFloat {
+        min(max(width * zoom.scale, minimumWidth), maximumWidth)
+    }
 
     private var notes: [AnswerNoteWindow] = []
     /// The card of the window the answers come from, in screen coordinates, to open a note beside it.
@@ -39,12 +46,13 @@ final class AnswerNotes {
         observeScreenSharingPreference()
     }
 
-    /// Opens an answer in a note of its own, headed by the question it answers. `level` and `origin` are for
-    /// pictures of a note taken where nobody sees it; a note floats beside the window otherwise.
-    func open(answer: String, question: String, level: NSWindow.Level = .floating, at origin: NSPoint? = nil) {
+    /// Opens an answer in a note of its own, headed by the question it answers, at the window's zoom. `level` and
+    /// `origin` are for pictures of a note taken where nobody sees it; a note floats beside the window otherwise.
+    func open(answer: String, question: String, zoom: AnswerZoom = .actualSize, level: NSWindow.Level = .floating, at origin: NSPoint? = nil) {
         let note = AnswerNoteWindow(
             answer: answer,
             question: question,
+            zoom: zoom,
             showsQuestion: showsQuestion,
             hidesFromScreenSharing: preferences?.hidesFromScreenSharing ?? false,
             level: level
@@ -100,9 +108,11 @@ final class AnswerNotes {
 private final class NoteLayout {
     var fitsAnswer = true
     var showsQuestion: Bool
+    var zoom: AnswerZoom
 
-    init(showsQuestion: Bool) {
+    init(showsQuestion: Bool, zoom: AnswerZoom) {
         self.showsQuestion = showsQuestion
+        self.zoom = zoom
     }
 }
 
@@ -116,7 +126,8 @@ private struct NoteEdges: OptionSet {
 
 /// One note's window: borderless and clear, with the card drawing its own rounded shadow, like the main window.
 /// It floats, takes the keyboard only when clicked, and closes on Esc, ⌘W, or its cross. Its SwiftUI content fills
-/// it, so a resize lays the answer out again at the new size.
+/// it, so a resize lays the answer out again at the new size. A pinch over it zooms its answer, as do ⌘+, ⌘−, and
+/// ⌘0 while it has the keyboard.
 private final class AnswerNoteWindow: NSObject, NSWindowDelegate {
     private let panel: NotePanel
     private let layout: NoteLayout
@@ -135,15 +146,16 @@ private final class AnswerNoteWindow: NSObject, NSWindowDelegate {
     init(
         answer: String,
         question: String,
+        zoom: AnswerZoom,
         showsQuestion: Bool,
         hidesFromScreenSharing: Bool,
         level: NSWindow.Level,
         onClose: @escaping (AnswerNoteWindow) -> Void
     ) {
         self.onClose = onClose
-        layout = NoteLayout(showsQuestion: showsQuestion)
+        layout = NoteLayout(showsQuestion: showsQuestion, zoom: zoom)
         panel = NotePanel(
-            contentRect: NSRect(x: 0, y: 0, width: AnswerNotes.width + AnswerNotes.margin * 2, height: 200),
+            contentRect: NSRect(x: 0, y: 0, width: AnswerNotes.width(for: zoom) + AnswerNotes.margin * 2, height: 200),
             styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -162,6 +174,12 @@ private final class AnswerNoteWindow: NSObject, NSWindowDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.delegate = self
         panel.onClose = { [weak self] in self?.close() }
+        panel.onZoom = { [weak self] step in self?.zoom(step) ?? false }
+        panel.onMagnify = { [weak self] event in
+            guard let self else { return }
+            let ending = !event.phase.isDisjoint(with: [.ended, .cancelled])
+            self.setZoom(self.layout.zoom.pinched(by: event.magnification, ending: ending))
+        }
         self.hidesFromScreenSharing = hidesFromScreenSharing
 
         let hostingView = NSHostingView(rootView: AnswerNoteView(
@@ -173,7 +191,8 @@ private final class AnswerNoteWindow: NSObject, NSWindowDelegate {
                 fit: { [weak self] height in self?.fit(height: height) },
                 resize: { [weak self] edges in self?.resize(edges) },
                 endResize: { [weak self] in self?.resizeStart = nil },
-                toggleQuestion: { [weak self] in self?.toggleQuestion() }
+                toggleQuestion: { [weak self] in self?.toggleQuestion() },
+                zoom: { [weak self] step in _ = self?.zoom(step) }
             )
         ))
         hostingView.sizingOptions = []
@@ -245,6 +264,30 @@ private final class AnswerNoteWindow: NSObject, NSWindowDelegate {
         AnswerNotes.shared.showsQuestion = layout.showsQuestion
     }
 
+    /// ⌘+, ⌘−, or ⌘0. False when the zoom is as far as that step goes.
+    private func zoom(_ step: AnswerZoom.Step) -> Bool {
+        guard layout.zoom.allows(step) else { return false }
+        setZoom(layout.zoom.applying(step))
+        Log.panel.info("Answer note zoomed to \(self.layout.zoom.percent)")
+        return true
+    }
+
+    /// Zooms the answer. While the note fits its answer, it widens and narrows with the zoom, its left edge where
+    /// it was unless the screen's edge is in the way; once you have resized it, it keeps the size you gave it.
+    private func setZoom(_ zoom: AnswerZoom) {
+        guard zoom != layout.zoom else { return }
+        layout.zoom = zoom
+        guard layout.fitsAnswer else { return }
+        let margin = AnswerNotes.margin
+        var frame = panel.frame
+        frame.size.width = AnswerNotes.width(for: zoom) + margin * 2
+        if let visible = (panel.screen ?? NSScreen.main)?.visibleFrame {
+            frame.size.width = min(frame.width, visible.width + margin * 2)
+            frame.origin.x = min(max(frame.minX, visible.minX - margin), visible.maxX + margin - frame.width)
+        }
+        panel.setFrame(frame, display: true)
+    }
+
     func windowWillClose(_ notification: Notification) {
         close()
     }
@@ -252,9 +295,30 @@ private final class AnswerNoteWindow: NSObject, NSWindowDelegate {
 
 private final class NotePanel: EditingPanel {
     var onClose: (() -> Void)?
+    /// ⌘+, ⌘−, or ⌘0, which says whether it zoomed.
+    var onZoom: ((AnswerZoom.Step) -> Bool)?
+    /// A pinch on the trackpad over the note.
+    var onMagnify: ((NSEvent) -> Void)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.type == .keyDown, let onZoom,
+           let step = AnswerZoom.Step(keyCode: event.keyCode, characters: event.charactersIgnoringModifiers, modifiers: ActionShortcut.Modifiers(event.modifierFlags)),
+           onZoom(step) {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .magnify, let onMagnify {
+            onMagnify(event)
+        } else {
+            super.sendEvent(event)
+        }
+    }
 
     override func cancelOperation(_ sender: Any?) {
         onClose?()
@@ -273,6 +337,7 @@ private struct NoteActions {
     let resize: (NoteEdges) -> Void
     let endResize: () -> Void
     let toggleQuestion: () -> Void
+    let zoom: (AnswerZoom.Step) -> Void
 }
 
 /// A torn-off answer in a card of neutral glass: a header with the question it answers, which folds away, and
@@ -344,6 +409,7 @@ private struct AnswerNoteView: View {
                     .padding(.top, layout.showsQuestion ? 12 : 0)
                     .padding(.bottom, 14)
                     .onGeometryChange(for: CGFloat.self, of: \.size.height) { answerHeight = $0 }
+                    .environment(\.answerZoom, layout.zoom.scale)
             }
             .frame(height: layout.fitsAnswer ? min(answerHeight, maximumHeight) : nil)
             .frame(maxHeight: layout.fitsAnswer ? nil : .infinity)
@@ -369,6 +435,10 @@ private struct AnswerNoteView: View {
                     .transition(.opacity)
             }
             Spacer(minLength: 8)
+            if !layout.zoom.isActualSize {
+                AnswerZoomBadge(zoom: layout.zoom, height: 26) { actions.zoom(.actualSize) }
+                    .transition(.opacity)
+            }
             noteButton(layout.showsQuestion ? "chevron.up" : "chevron.down", label: layout.showsQuestion ? "Hide Question" : "Show Question", action: actions.toggleQuestion)
             noteButton(showsCopied ? "checkmark" : "doc.on.doc", label: showsCopied ? "Copied" : "Copy Answer", action: copy)
             noteButton("xmark", label: "Close Note", action: actions.close)
@@ -376,6 +446,7 @@ private struct AnswerNoteView: View {
         .padding(.leading, 14)
         .padding(.trailing, 8)
         .frame(height: layout.showsQuestion ? 40 : 36)
+        .animation(.smooth(duration: 0.2), value: layout.zoom.isActualSize)
         .contentShape(.rect)
         .gesture(WindowDragGesture())
         .allowsWindowActivationEvents(true)

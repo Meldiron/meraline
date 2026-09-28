@@ -8,6 +8,11 @@ import SwiftUI
 nonisolated struct ActionShortcut: Equatable, Sendable {
     enum Key: Equatable, Sendable {
         case character(Character)
+        /// + as Zoom In has it: = too, with Shift or without, since + takes Shift on many keyboards, and the
+        /// keypad's +.
+        case plus
+        /// − as Zoom Out has it, the keypad's too.
+        case minus
         case delete
         case returnKey
         /// Shown only: Esc belongs to the window's own steps (see `PanelController.handleEscape`).
@@ -59,6 +64,8 @@ nonisolated struct ActionShortcut: Equatable, Sendable {
         if modifiers.contains(.command) { caps.append("⌘") }
         switch key {
         case .character(let character): caps.append(String(character).uppercased())
+        case .plus: caps.append("+")
+        case .minus: caps.append("−")
         case .delete: caps.append("⌫")
         case .returnKey: caps.append("↵")
         case .escape: caps.append("esc")
@@ -72,10 +79,14 @@ nonisolated struct ActionShortcut: Equatable, Sendable {
     /// Whether a key press is this shortcut. `characters` is the press's `charactersIgnoringModifiers`, which
     /// keeps Shift, so it is compared without case.
     func matches(keyCode: UInt16, characters: String?, modifiers pressed: Modifiers) -> Bool {
-        guard pressed == modifiers else { return false }
+        guard key == .plus ? pressed.subtracting(.shift) == modifiers : pressed == modifiers else { return false }
         switch key {
         case .character(let character):
             return characters?.lowercased() == String(character).lowercased()
+        case .plus:
+            return characters == "+" || characters == "=" || keyCode == UInt16(kVK_ANSI_KeypadPlus)
+        case .minus:
+            return characters == "-" || keyCode == UInt16(kVK_ANSI_KeypadMinus)
         case .delete:
             return keyCode == UInt16(kVK_Delete)
         case .returnKey:
@@ -265,8 +276,8 @@ struct PanelContext {
         }
         if !session.isStreaming, let answer = session.lastAnswer {
             let question = session.turns.last { !$0.answer.isEmpty }?.question ?? ""
-            copy.append(PanelAction(id: "tearOff", title: "Tear Off Answer", icon: .symbol("macwindow.on.rectangle"), shortcut: .command("t"), keywords: ["note", "float", "keep", "pin"]) {
-                AnswerNotes.shared.open(answer: answer, question: question)
+            copy.append(PanelAction(id: "tearOff", title: "Tear Off Answer", icon: .symbol("macwindow.on.rectangle"), shortcut: .command("t"), keywords: ["note", "float", "keep", "pin"]) { [layout] in
+                AnswerNotes.shared.open(answer: answer, question: question, zoom: layout.answerZoom)
                 session.usage.record { $0.answersTornOff += 1 }
             })
         }
@@ -287,6 +298,7 @@ struct PanelContext {
                 }
             }
         }
+        let zoom = zoomActions
         var chat = [PanelAction(id: "newChat", title: "New Chat", icon: .symbol("square.and.pencil"), shortcut: .command("n")) {
             session.reset()
             focusInput()
@@ -321,12 +333,37 @@ struct PanelContext {
                 ActionSection(id: "copy", actions: copy),
                 ActionSection(id: "files", actions: files),
                 ActionSection(id: "answer", actions: answer),
+                ActionSection(id: "zoom", actions: zoom),
                 ActionSection(id: "chat", actions: chat),
                 ActionSection(id: "delete", actions: [delete]),
             ].filter { !$0.actions.isEmpty },
             searchPrompt: "Search for actions…",
             marksPrimary: true
         )
+    }
+
+    /// Whether there are answers to zoom: a chat's, not a game's, once the first one has begun.
+    var canZoomAnswers: Bool {
+        session.game == nil && session.turns.contains { !$0.answer.isEmpty }
+    }
+
+    /// Zoom In, Zoom Out, and Actual Size for the answers, each while it would change something.
+    private var zoomActions: [PanelAction] {
+        guard canZoomAnswers else { return [] }
+        let layout = layout
+        let zoom = layout.answerZoom
+        return AnswerZoom.Step.allCases.filter(zoom.allows).map { step in
+            PanelAction(
+                id: step.rawValue,
+                title: step.title,
+                subtitle: step == .actualSize ? "Answers are at \(zoom.percent)" : nil,
+                icon: .symbol(step.symbol),
+                shortcut: step.shortcut,
+                keywords: step.keywords
+            ) {
+                layout.zoomAnswers(step)
+            }
+        }
     }
 
     /// Copy Code Block for each block of code in the last answer, up to nine, with its language and first line.

@@ -57,7 +57,7 @@ struct PanelActionsTests {
         #expect(menu?.title == "Capital of France?")
         #expect(menu?.marksPrimary == true)
         #expect(menu?.primary?.id == "copyAnswer")
-        #expect(ids(menu) == ["copyAnswer", "copyConversation", "tearOff", "askAgain"] + Rewrite.allCases.map { "rewrite.\($0.rawValue)" } + ["newChat", "deleteChat"])
+        #expect(ids(menu) == ["copyAnswer", "copyConversation", "tearOff", "askAgain"] + Rewrite.allCases.map { "rewrite.\($0.rawValue)" } + ["zoomIn", "zoomOut", "newChat", "deleteChat"])
         #expect(menu?.actions.last?.confirmation != nil)
         #expect(menu?.actions.last?.isDestructive == true)
     }

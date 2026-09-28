@@ -322,7 +322,8 @@ nonisolated enum MarkdownBlock: Equatable, Sendable {
 }
 
 /// Markdown drawn as blocks: text you can select in each, headings, lists with their markers, quotes, code in a
-/// monospaced box with Copy, tables in a grid, and rules. Neutral like the rest of the panel.
+/// monospaced box with Copy, tables in a grid, and rules. Neutral like the rest of the panel. The environment's
+/// `answerZoom` enlarges the text and the room around it, leaving the code boxes' language and Copy as they are.
 struct MarkdownView: View {
     let markdown: String
     var fontSize: CGFloat = 15
@@ -336,8 +337,10 @@ private struct MarkdownBlocksView: View {
     let blocks: [MarkdownBlock]
     let fontSize: CGFloat
 
+    @Environment(\.answerZoom) private var zoom
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10 * zoom) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
                 blockView(block, isFirst: index == 0)
             }
@@ -352,15 +355,15 @@ private struct MarkdownBlocksView: View {
             InlineText(text: text, fontSize: fontSize)
         case .heading(let level, let text):
             InlineText(text: text, fontSize: fontSize + Self.headingGrowth(level), weight: level <= 2 ? .bold : .semibold)
-                .padding(.top, isFirst ? 0 : 4)
+                .padding(.top, isFirst ? 0 : 4 * zoom)
                 .accessibilityAddTraits(.isHeader)
         case .list(let items):
             MarkdownListView(items: items, fontSize: fontSize)
         case .quote(let inner):
-            HStack(alignment: .top, spacing: 10) {
-                RoundedRectangle(cornerRadius: 1.5)
+            HStack(alignment: .top, spacing: 10 * zoom) {
+                RoundedRectangle(cornerRadius: 1.5 * zoom)
                     .fill(.secondary.opacity(0.35))
-                    .frame(width: 3)
+                    .frame(width: 3 * zoom)
                 MarkdownBlocksView(blocks: inner, fontSize: fontSize)
                     .foregroundStyle(.secondary)
             }
@@ -371,7 +374,7 @@ private struct MarkdownBlocksView: View {
             MarkdownTableView(table: table, fontSize: fontSize)
         case .rule:
             Divider()
-                .padding(.vertical, 4)
+                .padding(.vertical, 4 * zoom)
         }
     }
 
@@ -391,10 +394,12 @@ private struct InlineText: View {
     let fontSize: CGFloat
     var weight: Font.Weight = .regular
 
+    @Environment(\.answerZoom) private var zoom
+
     var body: some View {
         Text(Self.render(text))
-            .font(.system(size: fontSize, weight: weight))
-            .lineSpacing(3)
+            .font(.system(size: fontSize * zoom, weight: weight))
+            .lineSpacing(3 * zoom)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -413,17 +418,19 @@ private struct MarkdownListView: View {
     let items: [MarkdownBlock.ListItem]
     let fontSize: CGFloat
 
+    @Environment(\.answerZoom) private var zoom
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 5 * zoom) {
             ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                HStack(alignment: .firstTextBaseline, spacing: 7 * zoom) {
                     marker(item)
-                        .font(.system(size: fontSize).monospacedDigit())
+                        .font(.system(size: fontSize * zoom).monospacedDigit())
                         .foregroundStyle(.secondary)
-                        .frame(minWidth: 14, alignment: .trailing)
+                        .frame(minWidth: 14 * zoom, alignment: .trailing)
                     InlineText(text: item.text, fontSize: fontSize)
                 }
-                .padding(.leading, CGFloat(item.depth) * 20)
+                .padding(.leading, CGFloat(item.depth) * 20 * zoom)
             }
         }
     }
@@ -447,6 +454,7 @@ private struct CodeBlockView: View {
     let code: MarkdownBlock.CodeBlock
     let fontSize: CGFloat
 
+    @Environment(\.answerZoom) private var zoom
     @State private var showsCopied = false
     @State private var copiedTask: Task<Void, Never>?
 
@@ -475,13 +483,13 @@ private struct CodeBlockView: View {
             .padding(.top, 6)
             ScrollView(.horizontal) {
                 Text(code.code)
-                    .font(.system(size: fontSize - 2, design: .monospaced))
-                    .lineSpacing(2)
+                    .font(.system(size: (fontSize - 2) * zoom, design: .monospaced))
+                    .lineSpacing(2 * zoom)
                     .textSelection(.enabled)
                     .fixedSize()
-                    .padding(.horizontal, 12)
-                    .padding(.top, 4)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, 12 * zoom)
+                    .padding(.top, 4 * zoom)
+                    .padding(.bottom, 12 * zoom)
             }
             .scrollIndicators(.automatic)
         }
@@ -512,6 +520,8 @@ private struct MarkdownTableView: View {
     let table: MarkdownBlock.Table
     let fontSize: CGFloat
 
+    @Environment(\.answerZoom) private var zoom
+
     var body: some View {
         ScrollView(.horizontal) {
             Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
@@ -541,13 +551,13 @@ private struct MarkdownTableView: View {
     private func cell(_ text: String, column: Int, weight: Font.Weight) -> some View {
         let alignment = table.alignments.indices.contains(column) ? table.alignments[column] : .leading
         return Text(InlineText.render(text))
-            .font(.system(size: fontSize - 1, weight: weight))
+            .font(.system(size: (fontSize - 1) * zoom, weight: weight))
             .multilineTextAlignment(alignment.text)
             .textSelection(.enabled)
-            .frame(maxWidth: 260, alignment: alignment.frame)
+            .frame(maxWidth: 260 * zoom, alignment: alignment.frame)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10 * zoom)
+            .padding(.vertical, 6 * zoom)
             .gridColumnAlignment(alignment.horizontal)
     }
 }

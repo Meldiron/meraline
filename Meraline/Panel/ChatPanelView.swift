@@ -355,6 +355,7 @@ struct ChatPanelView: View {
             .padding(.vertical, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .onGeometryChange(for: CGFloat.self, of: \.size.height) { conversationHeight = $0 }
+            .environment(\.answerZoom, layout.answerZoom.scale)
         }
         .frame(height: min(conversationHeight, layout.maximumConversationHeight))
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
@@ -385,6 +386,10 @@ struct ChatPanelView: View {
                     .controlSize(.mini)
                     .help("Answering")
             }
+            if !layout.answerZoom.isActualSize, context.canZoomAnswers {
+                AnswerZoomBadge(zoom: layout.answerZoom) { layout.zoomAnswers(.actualSize) }
+                    .transition(.opacity)
+            }
             let menu = context.chatMenu
             ActionBar(primary: menu?.primary, isOpen: layout.actionPanel?.kind == .chat, copyNotice: layout.copyNotice) {
                 if let primary = menu?.primary { context.run(primary, in: .chat) }
@@ -396,6 +401,7 @@ struct ChatPanelView: View {
         .padding(.leading, 20)
         .padding(.trailing, 12)
         .padding(.vertical, 10)
+        .animation(.smooth(duration: 0.2), value: layout.answerZoom.isActualSize)
     }
 
     private func acceptDrop(_ providers: [NSItemProvider]) -> Bool {

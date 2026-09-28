@@ -216,6 +216,7 @@ That's it. Press <kbd>⌥</kbd> <kbd>Space</kbd> whenever you have a question.
 | <kbd>⌘</kbd> <kbd>↩</kbd> | Close the window and paste the last answer into the app you were in |
 | <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>C</kbd> | Copy the whole conversation as Markdown |
 | <kbd>⌘</kbd> <kbd>T</kbd> | Tear the last answer off into a floating note |
+| <kbd>⌘</kbd> <kbd>+</kbd>, <kbd>⌘</kbd> <kbd>−</kbd>, <kbd>⌘</kbd> <kbd>0</kbd> | Make answers larger for reading across the room, smaller, or their own size again; pinching on the trackpad zooms too, in the window or a torn-off note |
 | <kbd>⌘</kbd> <kbd>R</kbd> | Ask the last question again; in a game, restart it, or play again once a round is over |
 | <kbd>⌘</kbd> <kbd>I</kbd> | Show a hint in a game |
 | <kbd>⌘</kbd> <kbd>1</kbd> or <kbd>⌘</kbd> <kbd>2</kbd> | Ask an LLM or an agent |
