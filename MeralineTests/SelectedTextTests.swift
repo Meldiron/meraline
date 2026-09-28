@@ -49,6 +49,13 @@ struct SelectedTextTests {
         #expect(selection.wordCount == 3)
         #expect(selection.markdownQuote == "> One  two\n>\n> three")
     }
+
+    @Test func lengthLabelCountsWordsOrSaysWhereTheTextWasCut() throws {
+        #expect(try #require(SelectedText("one")).lengthLabel == "1 word")
+        #expect(try #require(SelectedText("One  two\n\nthree")).lengthLabel == "3 words")
+        let cut = try #require(SelectedText(String(repeating: "word ", count: SelectedText.limit)))
+        #expect(cut.lengthLabel == "first \(SelectedText.limit.formatted()) characters")
+    }
 }
 
 @MainActor

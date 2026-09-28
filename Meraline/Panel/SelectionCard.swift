@@ -4,19 +4,18 @@ import SwiftUI
 
 /// The text selected in another app, between the input and the row under it, going along with the next
 /// question. Neutral glass like the panel's other cards: the app's icon, its name, and how long the text is,
-/// then the text itself as a quote of up to three lines, which the chevron opens in full. The cross, or ⌫ in
-/// an empty input, leaves the selection out.
+/// then the text itself as a quote of up to three lines, which the chevron opens in full when they cut it
+/// short. The cross, or ⌫ in an empty input, leaves the selection out.
 struct SelectionCard: View {
     let selection: SelectedText
     let remove: () -> Void
 
     @State private var isExpanded = false
+    @State private var isCut = false
     @State private var textHeight: CGFloat = 0
 
-    /// Past about three lines of the card's width, or three line breaks, the quote is cut short.
-    private var isLong: Bool {
-        selection.text.count > 260 || selection.text.filter(\.isNewline).count >= 3
-    }
+    /// The three lines leave some of the text out, or the card is open in full and can close again.
+    private var canExpand: Bool { isExpanded || isCut }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -39,11 +38,11 @@ struct SelectionCard: View {
             Text(selection.appName ?? "Selected text")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text(length)
+            Text("· \(selection.lengthLabel)")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
             Spacer(minLength: 8)
-            if isLong {
+            if canExpand {
                 CardButton(symbol: "chevron.down", label: isExpanded ? "Show less" : "Show all", turn: .degrees(isExpanded ? 180 : 0)) {
                     isExpanded.toggle()
                 }
@@ -55,65 +54,79 @@ struct SelectionCard: View {
         .lineLimit(1)
     }
 
-    private var length: String {
-        if selection.isShortened { return "· first \(SelectedText.limit.formatted()) characters" }
-        let words = selection.wordCount
-        return "· \(words.formatted()) \(words == 1 ? "word" : "words")"
-    }
-
     private var quote: some View {
         HStack(alignment: .top, spacing: 10) {
             QuoteBar()
             if isExpanded {
                 ScrollView {
-                    quoteText
+                    QuoteText(selection.text, size: 13, lineSpacing: 2)
                         .onGeometryChange(for: CGFloat.self, of: \.size.height) { textHeight = $0 }
                 }
                 .frame(height: min(textHeight, 200))
                 .scrollEdgeEffectStyle(.soft, for: .vertical)
             } else {
-                quoteText.lineLimit(3)
+                QuoteText(selection.text, lines: 3, size: 13, lineSpacing: 2, isCut: $isCut)
             }
         }
+        .foregroundStyle(.primary.opacity(0.85))
         .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var quoteText: some View {
-        Text(selection.text)
-            .font(.system(size: 13))
-            .lineSpacing(2)
-            .foregroundStyle(.primary.opacity(0.85))
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
-/// The selection a question went with, above the question in the conversation: the app it came from, then
-/// two quiet lines of the text.
+/// The selection a question went with, above the question in the conversation: the app it came from and how
+/// long the text is, then two quiet lines of the text. When the two lines cut it short, a chevron joins the
+/// header, and the header opens all of the text in place, in the conversation's own scroll, and folds it back.
 struct SelectionQuote: View {
     let selection: SelectedText
+
+    @State private var isExpanded = false
+    @State private var isCut = false
+
+    private var canExpand: Bool { isExpanded || isCut }
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
             QuoteBar()
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
-                    AppIcon(selection: selection, size: 13)
-                    Text(selection.appName ?? "Selected text")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.tertiary)
+                if canExpand {
+                    Button {
+                        isExpanded.toggle()
+                    } label: {
+                        header.contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .help(isExpanded ? "Show less" : "Show all of it")
+                    .accessibilityLabel("\(selection.appName ?? "Selected text"), \(selection.lengthLabel)")
+                    .accessibilityHint(isExpanded ? "Shows less of the text" : "Shows all of the text")
+                } else {
+                    header
                 }
-                Text(selection.text)
-                    .font(.system(size: 12))
+                QuoteText(selection.text, lines: 2, isOpen: isExpanded, size: 12, isCut: $isCut)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .textSelection(.enabled)
             }
         }
         .fixedSize(horizontal: false, vertical: true)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Asked about text\(selection.appName.map { " from \($0)" } ?? ""): \(selection.excerpt)")
+        .animation(.smooth(duration: 0.25), value: isExpanded)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Asked about text\(selection.appName.map { " from \($0)" } ?? "")")
+    }
+
+    private var header: some View {
+        HStack(spacing: 5) {
+            AppIcon(selection: selection, size: 13)
+            Text(selection.appName ?? "Selected text")
+                .font(.system(size: 11, weight: .medium))
+            Text("· \(selection.lengthLabel)")
+                .font(.system(size: 11))
+            if canExpand {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                    .accessibilityHidden(true)
+            }
+        }
+        .foregroundStyle(.tertiary)
+        .lineLimit(1)
     }
 }
 
@@ -147,6 +160,62 @@ struct SelectionHintRow: View {
 
     private var shortcut: String {
         KeyboardShortcuts.getShortcut(for: .togglePanel)?.description ?? "the shortcut"
+    }
+}
+
+/// A quote's text, cut to `lines` of it until `isOpen` (all of it when `lines` is nil), that knows whether the
+/// cut leaves anything out: behind the text, hidden, the same text is laid out twice more, cut the same way and
+/// in full, and `isCut` says whether the full one is taller. So a chevron shows only when there is more to see,
+/// whatever the width and the font, and a text of exactly three lines gets none. The copies keep measuring
+/// while the text is open, so the chevron stays to close it. They never draw, take clicks, or count for
+/// accessibility, and the visible text stays selectable.
+private struct QuoteText: View {
+    let text: String
+    let lines: Int?
+    var isOpen = false
+    let size: CGFloat
+    var lineSpacing: CGFloat = 0
+    var isCut: Binding<Bool> = .constant(false)
+
+    @State private var cutHeight: CGFloat = 0
+    @State private var fullHeight: CGFloat = 0
+
+    init(_ text: String, lines: Int? = nil, isOpen: Bool = false, size: CGFloat, lineSpacing: CGFloat = 0, isCut: Binding<Bool> = .constant(false)) {
+        self.text = text
+        self.lines = lines
+        self.isOpen = isOpen
+        self.size = size
+        self.lineSpacing = lineSpacing
+        self.isCut = isCut
+    }
+
+    var body: some View {
+        styled(Text(text))
+            .lineLimit(isOpen ? nil : lines)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .background {
+                if let lines {
+                    ZStack(alignment: .topLeading) {
+                        styled(Text(text))
+                            .lineLimit(lines)
+                            .onGeometryChange(for: CGFloat.self, of: \.size.height) { cutHeight = $0 }
+                        styled(Text(text))
+                            .onGeometryChange(for: CGFloat.self, of: \.size.height) { fullHeight = $0 }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .hidden()
+                    .accessibilityHidden(true)
+                }
+            }
+            .onChange(of: fullHeight > cutHeight + 0.5, initial: true) { isCut.wrappedValue = $1 }
+    }
+
+    private func styled(_ text: Text) -> some View {
+        text
+            .font(.system(size: size))
+            .lineSpacing(lineSpacing)
     }
 }
 

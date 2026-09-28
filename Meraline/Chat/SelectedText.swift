@@ -44,6 +44,13 @@ nonisolated struct SelectedText: Identifiable, Equatable, Sendable {
         text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
     }
 
+    /// How long the text is, as its card and its quote say it: the words, or that only the first `limit`
+    /// characters came.
+    var lengthLabel: String {
+        if isShortened { return "first \(Self.limit.formatted()) characters" }
+        return "\(wordCount.formatted()) \(wordCount == 1 ? "word" : "words")"
+    }
+
     /// The selection on one line, for the title of a chat in Recent Chats.
     var excerpt: String {
         text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ")
