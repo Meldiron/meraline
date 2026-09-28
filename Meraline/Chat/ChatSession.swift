@@ -351,8 +351,15 @@ final class ChatSession {
     /// question, keeping the tools it used and the asks it settled, so a follow-up or the next rewrite reads
     /// the new one. Whatever is typed in the input stays there.
     func rewrite(_ rewrite: Rewrite) {
+        rewriteLastAnswer(asking: rewrite.instruction, countedAs: rewrite.rawValue, named: rewrite.rawValue)
+    }
+
+    /// A rewrite of the last answer that `instruction` asks for, never shown, counted in the usage ledger under
+    /// `key`, a name of Meraline's own and never text of yours, and logged as `name`: a `Rewrite`, or a preset
+    /// run on the answer (see `run(_:)`).
+    func rewriteLastAnswer(asking instruction: String, countedAs key: String, named name: String) {
         guard canRewrite, let provider = preferences.activeProvider else { return }
-        let request = makeRequest(asking: rewrite.instruction, images: [], of: provider)
+        let request = makeRequest(asking: instruction, images: [], of: provider)
         guard let last = turns.popLast() else { return }
         replacedTurn = last
         isRewriting = true
@@ -366,11 +373,11 @@ final class ChatSession {
         turns.append(turn)
         isStreaming = true
         usage.record { tally in
-            tally.rewrites[rewrite.rawValue, default: 0] += 1
+            tally.rewrites[key, default: 0] += 1
             tally.providers[provider.rawValue, default: 0] += 1
             if provider.isCommandLine { tally.agentRuns += 1 }
         }
-        Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))) to rewrite the last answer (\(rewrite.rawValue)), turn \(turns.count)")
+        Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))) to rewrite the last answer (\(name)), turn \(turns.count)")
         stream(request, for: turn.id)
     }
 

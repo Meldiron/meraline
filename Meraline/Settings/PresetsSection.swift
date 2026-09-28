@@ -28,7 +28,7 @@ struct PresetsSection: View {
             Text("Presets")
         } footer: {
             HStack(alignment: .firstTextBaseline) {
-                Text("They wait above an empty chat, beside the gear. A click puts a preset’s text in the input, ahead of anything you typed, and a Shift-click sends it at once. They’re for a chat’s first question, so they go once it starts.")
+                Text("They wait above an empty chat, beside the gear. A click puts a preset’s text in the input, ahead of anything you typed, and a Shift-click sends it at once. They’re for a chat’s first question, so they go once it starts. Once an answer is ready, Actions (⌘K) runs them on it, and ⌘1 to ⌘9 run the first nine.")
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 Button("Restore Defaults") {

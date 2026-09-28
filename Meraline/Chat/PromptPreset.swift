@@ -1,8 +1,9 @@
 import AppKit
 
 /// A prompt that waits above an empty chat as a glass capsule with an icon (see `PromptPresets`): a click puts its
-/// text in the input, a Shift-click sends it at once. Settings › Prompt edits, adds, and deletes them. They are for
-/// a chat's first question, so the chat's actions (⌘K) never offer them. Only a changed list is kept, in
+/// text in the input, a Shift-click sends it at once. Settings › Prompt edits, adds, and deletes them. Above the
+/// card they are for a chat's first question; once an answer is ready, the chat's actions (⌘K) offer them for the
+/// answer instead, the first nine on ⌘1…⌘9 (see `ChatSession.run(_:)`). Only a changed list is kept, in
 /// UserDefaults, so presets left alone follow later defaults and the language chosen for answers.
 nonisolated struct PromptPreset: Codable, Hashable, Identifiable, Sendable {
     var id: String
@@ -16,6 +17,13 @@ nonisolated struct PromptPreset: Codable, Hashable, Identifiable, Sendable {
 
     /// Where a changed list is kept.
     static let key = "promptPresets"
+
+    /// How many presets the chat's actions give a shortcut, ⌘1 to ⌘9.
+    static let shortcutLimit = 9
+
+    /// What the usage ledger counts a preset run on an answer under, among the rewrites: never the preset's name,
+    /// which is text of yours.
+    static let usageKey = "preset"
 
     /// The presets until the list is changed. Translate goes into the language chosen for answers.
     static func defaults(in language: AnswerLanguage) -> [PromptPreset] {
@@ -51,6 +59,19 @@ nonisolated struct PromptPreset: Codable, Hashable, Identifiable, Sendable {
 
     static func exists(_ symbol: String) -> Bool {
         !symbol.isEmpty && NSImage(systemSymbolName: symbol, accessibilityDescription: nil) != nil
+    }
+
+    /// The presets that can run, in their order: those with text.
+    static func runnable(_ presets: [PromptPreset]) -> [PromptPreset] {
+        presets.filter { !$0.text.trimmed.isEmpty }
+    }
+
+    /// What the model is asked when the preset runs on the last answer: the preset's own text, then that the text is
+    /// the answer, and to reply with only what comes of it, which takes the answer's place. It never shows. On
+    /// haiku and sonnet, the four default presets run on a message to a landlord this way came back as the text
+    /// alone every time, and with its details kept.
+    var instruction: String {
+        "\(text.trimmed)\n\nThe text is your last answer. Reply with only the result: no preamble, and no comment on what changed."
     }
 
     // MARK: The input
@@ -96,5 +117,19 @@ extension ChatSession {
         draft = PromptPreset.draft(draft, applying: preset, among: presets, toggling: !sending)
         Log.panel.info("Preset \(sending ? "sent" : "put in the input")")
         if sending { send() }
+    }
+
+    /// Runs a preset on the last answer, from the chat's actions or its ⌘1…⌘9, as a rewrite: the model reads the
+    /// conversation and the preset's text (`PromptPreset.instruction`), and the answer it writes takes the old one's
+    /// place under the same question. Stopped or failed partway, the old answer comes back.
+    func run(_ preset: PromptPreset) {
+        guard !PromptPreset.runnable([preset]).isEmpty else { return }
+        rewriteLastAnswer(asking: preset.instruction, countedAs: PromptPreset.usageKey, named: "a preset")
+    }
+
+    /// How many of ⌘1…⌘9 run presets on the answer right now, which the mode toggle gives up meanwhile: none until
+    /// an answer is ready.
+    func presetShortcuts(among presets: [PromptPreset]) -> Int {
+        canRewrite ? min(PromptPreset.shortcutLimit, PromptPreset.runnable(presets).count) : 0
     }
 }

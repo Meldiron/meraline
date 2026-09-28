@@ -13,6 +13,9 @@ nonisolated struct ActionShortcut: Equatable, Sendable {
         case plus
         /// − as Zoom Out has it, the keypad's too.
         case minus
+        /// 1 to 9 by the key's place, on the number row or the keypad, whatever the layout types there without ⌘,
+        /// as the menu bar's ⌘1 does on an AZERTY or Czech keyboard.
+        case digit(Int)
         case delete
         case returnKey
         /// Shown only: Esc belongs to the window's own steps (see `PanelController.handleEscape`).
@@ -55,6 +58,18 @@ nonisolated struct ActionShortcut: Equatable, Sendable {
     static let escape = ActionShortcut(.escape)
     static let returnKey = ActionShortcut(.returnKey)
 
+    /// ⌘ and a digit, 1 to 9.
+    static func command(digit: Int) -> ActionShortcut {
+        ActionShortcut(.digit(digit), .command)
+    }
+
+    /// The number row's keys and the keypad's, 1 to 9, by key code.
+    private static let digitKeys: [Int: [Int]] = [
+        1: [kVK_ANSI_1, kVK_ANSI_Keypad1], 2: [kVK_ANSI_2, kVK_ANSI_Keypad2], 3: [kVK_ANSI_3, kVK_ANSI_Keypad3],
+        4: [kVK_ANSI_4, kVK_ANSI_Keypad4], 5: [kVK_ANSI_5, kVK_ANSI_Keypad5], 6: [kVK_ANSI_6, kVK_ANSI_Keypad6],
+        7: [kVK_ANSI_7, kVK_ANSI_Keypad7], 8: [kVK_ANSI_8, kVK_ANSI_Keypad8], 9: [kVK_ANSI_9, kVK_ANSI_Keypad9],
+    ]
+
     /// One keycap per key, modifiers first, in the order macOS menus use: ⌃ ⌥ ⇧ ⌘.
     var keycaps: [String] {
         var caps: [String] = []
@@ -66,6 +81,7 @@ nonisolated struct ActionShortcut: Equatable, Sendable {
         case .character(let character): caps.append(String(character).uppercased())
         case .plus: caps.append("+")
         case .minus: caps.append("−")
+        case .digit(let digit): caps.append("\(digit)")
         case .delete: caps.append("⌫")
         case .returnKey: caps.append("↵")
         case .escape: caps.append("esc")
@@ -87,6 +103,8 @@ nonisolated struct ActionShortcut: Equatable, Sendable {
             return characters == "+" || characters == "=" || keyCode == UInt16(kVK_ANSI_KeypadPlus)
         case .minus:
             return characters == "-" || keyCode == UInt16(kVK_ANSI_KeypadMinus)
+        case .digit(let digit):
+            return Self.digitKeys[digit]?.contains(Int(keyCode)) == true
         case .delete:
             return keyCode == UInt16(kVK_Delete)
         case .returnKey:
@@ -282,6 +300,7 @@ struct PanelContext {
             })
         }
         let files = fileActions
+        let presets = presetActions
         var answer: [PanelAction] = []
         if session.canAskAgain {
             answer.append(PanelAction(id: "askAgain", title: "Ask Again", icon: .symbol("arrow.clockwise"), shortcut: .command("r")) {
@@ -334,6 +353,7 @@ struct PanelContext {
                 ActionSection(id: "copy", actions: copy),
                 ActionSection(id: "files", actions: files),
                 ActionSection(id: "answer", actions: answer),
+                ActionSection(id: "presets", actions: presets),
                 ActionSection(id: "zoom", actions: zoom),
                 ActionSection(id: "chat", actions: chat),
                 ActionSection(id: "delete", actions: [delete]),
@@ -341,6 +361,28 @@ struct PanelContext {
             searchPrompt: "Search for actions…",
             marksPrimary: true
         )
+    }
+
+    /// The presets of Settings › Prompt, to run on the last answer once it is ready, as a rewrite does
+    /// (`ChatSession.run(_:)`): the first nine on ⌘1…⌘9, which the mode toggle gives up meanwhile. Ahead of the
+    /// zoom, so ⌘ and the key where a Czech keyboard types + is ⌘1, as in the menu bar.
+    private var presetActions: [PanelAction] {
+        guard session.canRewrite else { return [] }
+        let session = session
+        let presets = PromptPreset.runnable(preferences.presets)
+        let shortcuts = session.presetShortcuts(among: presets)
+        return presets.enumerated().map { index, preset in
+            PanelAction(
+                id: "preset.\(preset.id)",
+                title: preset.title.trimmed.isEmpty ? "Preset \(index + 1)" : preset.title.trimmed,
+                icon: .symbol(preset.shownSymbol),
+                shortcut: index < shortcuts ? .command(digit: index + 1) : nil,
+                keywords: ["preset", "prompt", "answer"]
+            ) {
+                session.run(preset)
+                focusInput()
+            }
+        }
     }
 
     /// Whether there are answers to zoom: a chat's, not a game's, once the first one has begun.

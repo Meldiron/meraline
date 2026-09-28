@@ -6,8 +6,8 @@ import SwiftUI
 /// typed there, and a second click takes it out again; a Shift-click sends it at once, and while Shift is down the
 /// capsule under the pointer shows an arrow for it. The preset whose text starts the input wears the active pin's
 /// pink. When the names don't fit beside the buttons on the left, only the icons show, and past that the row
-/// scrolls. Presets are for a chat's first question, so the chat's actions (⌘K) never offer them, and once the
-/// chat starts they sink into the card one after another, to rise again for the next chat. They stay in the view
+/// scrolls. Here presets are for a chat's first question: once the chat starts they sink into the card one after
+/// another, to rise again for the next chat, and the chat's actions (⌘K) offer them for its answer instead. They stay in the view
 /// tree all along, faded and disabled, so nothing is inserted or removed while the window is hidden (see
 /// `Announcements`).
 struct PromptPresets: View {

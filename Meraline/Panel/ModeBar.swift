@@ -18,7 +18,7 @@ struct ModeBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ModeToggle(mode: preferences.mode, choose: switchMode)
+            ModeToggle(mode: preferences.mode, presetShortcuts: session.presetShortcuts(among: preferences.presets), choose: switchMode)
             // Ahead of the spacer, so the words keep the room there is before giving way to their symbol.
             PrivacyBadges(preferences: preferences)
                 .layoutPriority(1)
@@ -60,9 +60,12 @@ struct ModeBar: View {
 }
 
 /// Two segments in a glass capsule. The chosen one carries a tinted glass pill that slides across when the
-/// mode changes. ⌘1 and ⌘2 pick them from the keyboard.
+/// mode changes. ⌘1 and ⌘2 pick them from the keyboard, except while presets hold those shortcuts for a ready
+/// answer (see `ChatSession.presetShortcuts(among:)`).
 private struct ModeToggle: View {
     let mode: ProviderKind
+    /// How many of ⌘1…⌘9 run presets on the answer now.
+    let presetShortcuts: Int
     let choose: (ProviderKind) -> Void
     @Namespace private var thumb
     @State private var hovered: ProviderKind?
@@ -110,19 +113,19 @@ private struct ModeToggle: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .keyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: .command)
+        .keyboardShortcut(number > presetShortcuts ? KeyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: .command) : nil)
         .onHover { inside in
             if inside { hovered = kind } else if hovered == kind { hovered = nil }
         }
-        .help(help(for: kind, number: number))
+        .help(help(for: kind, shortcut: number > presetShortcuts ? " (⌘\(number))" : ""))
         .accessibilityLabel(kind.title)
         .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
-    private func help(for kind: ProviderKind, number: Int) -> String {
+    private func help(for kind: ProviderKind, shortcut: String) -> String {
         switch kind {
-        case .llm: "Ask a model through its API or on this Mac (⌘\(number))"
-        case .agent: "Ask an agent on this Mac that can use tools: Claude Code, Codex, or OpenCode (⌘\(number))"
+        case .llm: "Ask a model through its API or on this Mac\(shortcut)"
+        case .agent: "Ask an agent on this Mac that can use tools: Claude Code, Codex, or OpenCode\(shortcut)"
         }
     }
 }
