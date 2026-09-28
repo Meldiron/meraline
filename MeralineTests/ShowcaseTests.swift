@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Testing
+import WebKit
 @testable import Meraline
 
 /// The pictures `scripts/showcase.sh` takes (see `Showcase`), one test a scene, each in every appearance asked for.
@@ -16,6 +17,7 @@ import Testing
 ///   presets       the presets above an empty chat, Fix Grammar put in the input for a text selected in Mail
 ///   prompt-presets  Settings › Prompt › Presets: the four defaults and one of your own
 ///   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
+///   preview       Agent mode: a page and a Markdown file an agent handed over, each with its preview strip
 @MainActor
 @Suite(.serialized, .enabled(if: Showcase.output != nil, "scripts/showcase.sh takes these pictures"))
 struct ShowcaseTests {
@@ -155,6 +157,44 @@ struct ShowcaseTests {
         }
     }
 
+    @Test func preview() async throws {
+        guard Showcase.wants("preview") else { return }
+        let root = FileManager.default.temporaryDirectory.appending(path: "MeralineShowcase-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.agentPanel(on: stage, workspaces: root) { request in
+                AsyncThrowingStream { continuation in
+                    if let workspace = request.workspace {
+                        try? Data(ShowcaseFiles.page.utf8).write(to: workspace.appending(path: "release-notes.html"))
+                        try? Data(ShowcaseFiles.notes.utf8).write(to: workspace.appending(path: "release-notes.md"))
+                        continuation.yield(.activity(.presenting))
+                        continuation.yield(.presented(["release-notes.html", "release-notes.md"]))
+                    }
+                    continuation.yield(.text("Here's the page for the website, and the same notes in Markdown for the GitHub release."))
+                    continuation.finish()
+                }
+            }
+            await GameTestSupport.play("Turn the release notes into a page for the website, and keep a Markdown copy for GitHub.", in: scene.session)
+            // The stage's windows sit behind every other, where WebKit counts them hidden and draws no page, so
+            // the page's web view is told to draw anyway once it is there.
+            var webViews: [WKWebView] = []
+            for _ in 0..<100 where webViews.isEmpty {
+                await Showcase.settle(0.1)
+                webViews = scene.panel.contentView?.showcaseDescendants(of: WKWebView.self) ?? []
+            }
+            let occlusion = NSSelectorFromString("_setWindowOcclusionDetectionEnabled:")
+            if let method = class_getInstanceMethod(WKWebView.self, occlusion) {
+                typealias Setter = @convention(c) (AnyObject, Selector, Bool) -> Void
+                let setter = unsafeBitCast(method_getImplementation(method), to: Setter.self)
+                for view in webViews { setter(view, occlusion, false) }
+            }
+            await Showcase.settle(2)
+            try await stage.capturePanel(scene.panel, as: "preview")
+            stage.close(scene.panel)
+        }
+    }
+
     // MARK: Scenes
 
     private struct PanelScene {
@@ -188,6 +228,25 @@ struct ShowcaseTests {
         let (preferences, defaults) = preferences()
         let model = ScriptedModel(replies)
         let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { model.stream($0) }
+        return try place(session, preferences: preferences, defaults: defaults, model: model, on: stage)
+    }
+
+    /// The real panel on the stage in Agent mode, Claude Code answering through `stream` in a workspace under `root`.
+    private static func agentPanel(
+        on stage: ShowcaseStage, workspaces root: URL,
+        stream: @escaping @MainActor (ChatRequest) -> AsyncThrowingStream<StreamOutput, Error>
+    ) throws -> PanelScene {
+        let (preferences, defaults) = preferences()
+        preferences[.claudeCode] = ProviderSettings(model: "", baseURL: "/bin/echo", apiKey: "", isEnabled: true)
+        preferences.setDefaultProvider(.claudeCode, for: .agent)
+        preferences.mode = .agent
+        let session = ChatSession(preferences: preferences, workspaceRoot: root, usage: UsageLedger(file: nil), stream: stream)
+        return try place(session, preferences: preferences, defaults: defaults, model: ScriptedModel(), on: stage)
+    }
+
+    private static func place(
+        _ session: ChatSession, preferences: Preferences, defaults: UserDefaults, model: ScriptedModel, on stage: ShowcaseStage
+    ) throws -> PanelScene {
         let before = Set(NSApp.windows.map(ObjectIdentifier.init))
         let controller = PanelController(
             session: session, preferences: preferences,
