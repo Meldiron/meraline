@@ -102,9 +102,9 @@ struct UsagePane: View {
     }
 
     private var costDetail: String {
-        if insights.unpricedAnswers > 0 { return "\(UsageInsights.count(insights.unpricedAnswers, "answer")) without a price" }
+        if insights.unpricedAnswers > 0 { return "\(UsageInsights.count(insights.unpricedAnswers, "answer")) unpriced" }
         if insights.estimatedAnswers > 0 { return "\(UsageInsights.count(insights.estimatedAnswers, "answer")) estimated" }
-        return "as the providers reported"
+        return "from the providers"
     }
 
     // MARK: The chart
