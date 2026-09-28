@@ -79,7 +79,8 @@ targets:
               default: Ask Meraline
             NSMessage: askAboutSelection
             NSPortName: Meraline
-            NSSendTypes: [public.utf8-plain-text]
+            # Preview hands over a selected picture as TIFF; the other image types are for apps that hand over their own.
+            NSSendTypes: [public.utf8-plain-text, public.tiff, public.png, public.jpeg, public.heic, public.image]
             NSSendFileTypes: [public.item]
             NSRequiredContext: {}
         MeralineRepositoryURL: $(MERALINE_REPOSITORY_URL)

@@ -929,6 +929,17 @@ final class ChatSession {
         failure = nil
     }
 
+    /// A picture selected in another app, such as Preview or Photos, and handed over by the Services menu, for
+    /// either mode. The same picture comes only once, as the same text does.
+    func bring(_ image: NSImage) {
+        guard !isPlaying, let attachment = try? ImageAttachment.make(from: image) else {
+            // A game's nudge, or why the picture can't go in.
+            return attach(image)
+        }
+        guard !draftImages.contains(where: { $0.data == attachment.data }) else { return }
+        attach { attachment }
+    }
+
     /// Leaves one text out of the next question.
     func removeSelection(_ id: SelectedText.ID) {
         draftSelections.removeAll { $0.id == id }

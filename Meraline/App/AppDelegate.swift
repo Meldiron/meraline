@@ -137,20 +137,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         session.prewarm()
     }
 
-    /// Services › Ask Meraline, in the app where text or files are selected: they come into the window as with
-    /// the shortcut, without the Accessibility access the shortcut needs. Declared as `NSServices` in
-    /// project.yml.
+    /// Services › Ask Meraline, in the app where text, files, or a picture are selected: they come into the
+    /// window as with the shortcut, without the Accessibility access the shortcut needs, and a picture is
+    /// attached as an image. Declared as `NSServices` in project.yml.
     @objc func askAboutSelection(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
-        let files = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        if !files.isEmpty {
+        switch ClipboardContent.readSelection(from: pasteboard) {
+        case .files(let files):
             Log.app.info("Services: Ask Meraline, \(files.count) file(s) or folder(s)")
             session.bring(files: Array(files.prefix(SelectionReader.fileLimit)), deliberately: true)
-        } else {
+        case .image(let image):
+            Log.app.info("Services: Ask Meraline, an image")
+            session.bring(image)
+        case .text(let text):
             let app = NSWorkspace.shared.frontmostApplication.flatMap { $0.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : $0 }
-            guard let text = pasteboard.string(forType: .string),
-                  let selection = SelectedText(text, appName: app?.localizedName, appURL: app?.bundleURL) else { return }
+            guard let selection = SelectedText(text, appName: app?.localizedName, appURL: app?.bundleURL) else { return }
             Log.app.info("Services: Ask Meraline, \(selection.text.count) characters")
             session.bring(selection)
+        case nil:
+            return
         }
         panel.show()
     }

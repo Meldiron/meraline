@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 /// text. When the clipboard holds both a picture and text, as copying from a document or a web page often
 /// does, the kind the copying app put first wins, so a copied image stays a picture and a copied paragraph
 /// stays words. A password copied from a password manager, which marks it concealed, is never read.
+/// Services › Ask Meraline reads what an app hands it the same way, but with text first (`readSelection`).
 enum ClipboardContent {
     case files([URL])
     case image(NSImage)
@@ -29,12 +30,26 @@ enum ClipboardContent {
 
     /// What `pasteboard` holds, or nil when there is nothing Meraline can add.
     static func read(from pasteboard: NSPasteboard) -> ClipboardContent? {
+        read(from: pasteboard, pictureWins: picturesFirst)
+    }
+
+    /// What Services › Ask Meraline was handed with a selection: files, text, or a picture, as Preview and
+    /// Photos hand over a selected image. Text wins over a picture whatever the app listed first, so a
+    /// selection that is both, as a stretch of a web page can be, still comes as words, as it did before the
+    /// service took pictures.
+    static func readSelection(from pasteboard: NSPasteboard) -> ClipboardContent? {
+        read(from: pasteboard) { _ in false }
+    }
+
+    /// Files, else text or a picture: a picture when there is no text or `pictureWins` says so of the kinds
+    /// the first item lists.
+    private static func read(from pasteboard: NSPasteboard, pictureWins: ([NSPasteboard.PasteboardType]) -> Bool) -> ClipboardContent? {
         guard !isConcealed(pasteboard.types ?? []) else { return nil }
         let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         if !urls.isEmpty { return .files(urls) }
         let text = pasteboard.string(forType: .string).flatMap { $0.trimmed.isEmpty ? nil : $0 }
         let types = pasteboard.pasteboardItems?.first?.types ?? pasteboard.types ?? []
-        if text == nil || picturesFirst(types), let image = NSImage(pasteboard: pasteboard) {
+        if text == nil || pictureWins(types), let image = NSImage(pasteboard: pasteboard) {
             return .image(image)
         }
         return text.map(ClipboardContent.text)

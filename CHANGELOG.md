@@ -4,6 +4,10 @@ Notable changes in each Meraline release, newest first.
 
 When a version has an entry here, the Release workflow uses it as the release notes on GitHub and in the in-app update window. A version without an entry gets the list of commits since the previous tag instead. Headings are `## vX.Y.Z - YYYY-MM-DD`.
 
+## Unreleased
+
+- **Services › Ask Meraline takes pictures.** Select part of an image in Preview, or a photo in Photos, and choose Ask Meraline from the app's Services menu: the picture is attached to your next question, for any model, as text already was. The same picture comes only once, and a selection with both words and a picture still comes as words.
+
 ## v1.7.0 - 2026-09-28
 
 ### Usage

@@ -79,6 +79,31 @@ struct ClipboardContentTests {
         #expect(text == "A paragraph")
     }
 
+    @Test func aPictureSelectedInPreviewIsAnImageForTheServicesMenu() throws {
+        let tiff = try #require(GameTestSupport.image().tiffRepresentation)
+        let board = pasteboard { $0.setData(tiff, forType: .tiff) }
+        defer { board.releaseGlobally() }
+        guard case .image = try #require(ClipboardContent.readSelection(from: board)) else {
+            Issue.record("Expected an image")
+            return
+        }
+    }
+
+    @Test func theServicesMenuTakesWordsOverAPictureWhateverComesFirst() throws {
+        let handed = item([(.png, try png()), (.string, Data("A caption".utf8))])
+        let board = pasteboard { $0.writeObjects([handed]) }
+        defer { board.releaseGlobally() }
+        guard case .text(let text) = try #require(ClipboardContent.readSelection(from: board)) else {
+            Issue.record("Expected text")
+            return
+        }
+        #expect(text == "A caption")
+        guard case .image = try #require(ClipboardContent.read(from: board)) else {
+            Issue.record("Expected the clipboard to keep the picture")
+            return
+        }
+    }
+
     @Test func blankTextAndAnEmptyClipboardAreNothing() {
         let blank = pasteboard { $0.setString(" \n\t ", forType: .string) }
         let empty = pasteboard { _ in }
@@ -178,6 +203,33 @@ struct ClipboardInChatTests {
         #expect(session.draftFiles.count == 1)
     }
 
+    @Test func aPictureFromTheServicesMenuComesOnce() {
+        let session = GameTestSupport.session(ScriptedModel())
+        let white = NSImage(size: NSSize(width: 4, height: 4), flipped: false) { rect in
+            NSColor.white.setFill()
+            rect.fill()
+            return true
+        }
+        session.bring(GameTestSupport.image())
+        session.bring(GameTestSupport.image())
+        #expect(session.draftImages.count == 1)
+        session.bring(white)
+        #expect(session.draftImages.count == 2)
+        #expect(session.failure == nil)
+    }
+
+    @Test func aPictureFromTheServicesMenuGoesWithTheQuestion() async {
+        let model = ScriptedModel(["A black square."])
+        let session = GameTestSupport.session(model)
+        session.bring(GameTestSupport.image())
+        #expect(session.canSend)
+        session.draft = "What is this?"
+        session.send()
+        await GameTestSupport.settle(session)
+        #expect(session.turns.first?.images.count == 1)
+        #expect(session.draftImages.isEmpty)
+    }
+
     @Test func removingContextTakesOutWhatItNames() throws {
         let session = GameTestSupport.session(ScriptedModel())
         let text = session.addClipboard(.text("Copied"))
@@ -194,8 +246,10 @@ struct ClipboardInChatTests {
         session.startGame(.categories)
         #expect(session.addClipboard(.text("Copied")).isEmpty)
         #expect(session.addClipboard(.image(GameTestSupport.image())).isEmpty)
+        session.bring(GameTestSupport.image())
         #expect(session.draftSelections.isEmpty)
         #expect(session.draftImages.isEmpty)
+        #expect(session.nudge == Game.noImages)
     }
 
     @Test func severalTextsGoInOrderBeforeTheQuestion() throws {
