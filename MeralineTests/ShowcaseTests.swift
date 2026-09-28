@@ -12,6 +12,8 @@ import Testing
 ///   usage-games   further down the same page: the games played, and a section for each
 ///   prompt        Settings › Prompt: the language, and the LLMs' and the agents' instructions
 ///   prompt-games  further down the same page: the games, one of them changed, and Why?
+///   presets       the presets above an empty chat, Fix Grammar put in the input for a text selected in Mail
+///   prompt-presets  Settings › Prompt › Presets: the four defaults and one of your own
 ///   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
 @MainActor
 @Suite(.serialized, .enabled(if: Showcase.output != nil, "scripts/showcase.sh takes these pictures"))
@@ -73,7 +75,8 @@ struct ShowcaseTests {
             try await Self.settings(on: stage, pane: .prompt, defaults: changed) { window in
                 Self.scroll(window, to: 170)
                 if Showcase.wants("prompt") { try await stage.captureWindow(window, as: "prompt") }
-                Self.scroll(window, to: 820)
+                // Past the presets too.
+                Self.scroll(window, to: 1_187)
                 if Showcase.wants("prompt-games") { try await stage.captureWindow(window, as: "prompt-games") }
             }
             stage.close()
@@ -91,6 +94,41 @@ struct ShowcaseTests {
             }
             try await Self.settings(on: stage, pane: .softwareUpdate, defaults: ["updateChannel": "beta"], updater: updater) { window in
                 try await stage.captureWindow(window, as: "software-update")
+            }
+            stage.close()
+        }
+    }
+
+    @Test func presets() async throws {
+        guard Showcase.wants("presets") else { return }
+        let presets = PromptPreset.defaults(in: .english)
+        let text = "hi all, their going to move the launch meeting to thursday because the the slides isnt ready yet, sorry for the late notice"
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage)
+            scene.session.bring(try #require(SelectedText(text, appName: "Mail", appURL: URL(fileURLWithPath: "/System/Applications/Mail.app"))))
+            scene.session.apply(presets[0], among: presets, sending: false)
+            await Showcase.settle(1.5)
+            // With the keyboard, as after a click: the cursor after the preset, not all of it selected.
+            await Showcase.waitForIdle()
+            scene.panel.makeKey()
+            await Showcase.settle(0.3)
+            PromptPresets.moveCursorToEnd(in: scene.panel)
+            try await stage.capturePanel(scene.panel, as: "presets")
+            stage.close(scene.panel)
+        }
+    }
+
+    @Test func promptPresets() async throws {
+        guard Showcase.wants("prompt-presets") else { return }
+        var presets = PromptPreset.defaults(in: .english)
+        presets.append(PromptPreset(id: "eli5", title: "Explain Simply", symbol: "lightbulb", text: "Explain this as you would to a curious twelve-year-old, in a short paragraph:"))
+        let changed = [PromptPreset.key: try JSONEncoder().encode(presets)]
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            try await Self.settings(on: stage, pane: .prompt, defaults: changed) { window in
+                Self.scroll(window, to: 835)
+                try await stage.captureWindow(window, as: "prompt-presets")
             }
             stage.close()
         }
