@@ -1,7 +1,8 @@
-import Foundation
+import AppKit
 
 /// Text selected in another app, brought along as context for the next question. The shortcut reads it from
-/// the app in front (see `SelectionReader`); the Services menu and `meraline://ask?selection=…` hand it over.
+/// the app in front (see `SelectionReader`); a drag onto the window, the Services menu, and
+/// `meraline://ask?selection=…` hand it over.
 /// It waits in the draft, in a card above the row under the input, and goes with the question when it is
 /// sent: the model reads it in a `<selected_text>` block before the question. It lives only in memory, like
 /// the rest of the chat.
@@ -38,6 +39,17 @@ nonisolated struct SelectedText: Identifiable, Equatable, Sendable {
     /// Text from the clipboard, for the clipboard button.
     static func clipboard(_ text: String) -> SelectedText? {
         SelectedText(text, appName: "Clipboard", fromClipboard: true)
+    }
+
+    /// Text another app handed over, dragged onto the window or sent through the Services menu, named after the
+    /// app in front: the one it came from, since the panel never brings Meraline to the front. While Meraline
+    /// itself is in front, it names none.
+    @MainActor
+    static func handedOver(_ text: String) -> SelectedText? {
+        let app = NSWorkspace.shared.frontmostApplication.flatMap {
+            $0.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : $0
+        }
+        return SelectedText(text, appName: app?.localizedName, appURL: app?.bundleURL)
     }
 
     var wordCount: Int {

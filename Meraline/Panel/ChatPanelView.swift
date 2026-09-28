@@ -221,7 +221,7 @@ struct ChatPanelView: View {
                 fitWindow()
             }
         }
-        .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted, perform: acceptDrop)
+        .onDrop(of: [.fileURL, .image, .plainText], isTargeted: $isDropTargeted, perform: acceptDrop)
         .onChange(of: layout.focusRequest) {
             isInputFocused = true
             if !Calendar.current.isDate(today, inSameDayAs: .now) { today = .now }
@@ -449,17 +449,20 @@ struct ChatPanelView: View {
         .animation(.smooth(duration: 0.2), value: layout.answerZoom.isActualSize)
     }
 
+    /// Files and pictures attach, and text dragged out of another app waits in a card of its own, as a
+    /// selection does, named after that app. A game takes no text.
     private func acceptDrop(_ providers: [NSItemProvider]) -> Bool {
         defer { takeKeyboard() }
         var accepted = false
         for provider in providers {
-            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            switch ClipboardContent.drop(of: provider.registeredTypeIdentifiers) {
+            case .file:
                 accepted = true
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     guard let url else { return }
                     Task { @MainActor in session.attach(fileAt: url) }
                 }
-            } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+            case .image:
                 accepted = true
                 provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
                     guard let data else { return }
@@ -467,6 +470,18 @@ struct ChatPanelView: View {
                         if let image = NSImage(data: data) { session.attach(image) }
                     }
                 }
+            case .text where !session.isPlaying:
+                accepted = true
+                _ = provider.loadObject(ofClass: String.self) { text, _ in
+                    guard let text else { return }
+                    Task { @MainActor in
+                        guard let selection = SelectedText.handedOver(text) else { return }
+                        Log.panel.info("Text dropped, \(selection.text.count) characters")
+                        session.bring(selection)
+                    }
+                }
+            case .text, nil:
+                continue
             }
         }
         return accepted

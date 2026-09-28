@@ -4,7 +4,8 @@ import UniformTypeIdentifiers
 /// What the clipboard button above the window finds on the clipboard: files copied in Finder, a picture, or
 /// text. When the clipboard holds both a picture and text, as copying from a document or a web page often
 /// does, the kind the copying app put first wins, so a copied image stays a picture and a copied paragraph
-/// stays words. A password copied from a password manager, which marks it concealed, is never read.
+/// stays words. A password copied from a password manager, which marks it concealed, is never read. What is
+/// dropped on the window is judged the same way (`drop(of:)`).
 /// Services › Ask Meraline reads what an app hands it the same way, but with text first (`readSelection`).
 enum ClipboardContent {
     case files([URL])
@@ -53,6 +54,32 @@ enum ClipboardContent {
             return .image(image)
         }
         return text.map(ClipboardContent.text)
+    }
+
+    /// What one item dropped on the window brings.
+    enum Drop: Equatable {
+        case file
+        case image
+        /// Text dragged out of another app, for a card of its own, like a selection.
+        case text
+    }
+
+    /// What an item dropped on the window brings, judged by its kinds, which the app it came from lists best
+    /// first: a file, a picture, or text. A picture that brings text too comes as the picture when it is a web
+    /// page's, which drags its address along as text, or when the app listed it first, as on the clipboard;
+    /// otherwise as the text, since a word processor's drag carries a picture of the words. A password
+    /// manager's drag, marked concealed, brings nothing.
+    static func drop(of typeIdentifiers: [String]) -> Drop? {
+        let types = typeIdentifiers.map { NSPasteboard.PasteboardType($0) }
+        guard !isConcealed(types) else { return nil }
+        let kinds = typeIdentifiers.compactMap { UTType($0) }
+        if kinds.contains(where: { $0.conforms(to: .fileURL) }) { return .file }
+        let hasText = kinds.contains { $0.conforms(to: .plainText) }
+        if kinds.contains(where: { $0.conforms(to: .image) }),
+           !hasText || kinds.contains(where: { $0.conforms(to: .url) }) || picturesFirst(types) {
+            return .image
+        }
+        return hasText ? .text : nil
     }
 
     /// Whether a picture comes before any text among the kinds an app copied, which it lists best first.

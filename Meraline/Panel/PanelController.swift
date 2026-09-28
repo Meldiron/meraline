@@ -12,6 +12,28 @@ final class FloatingPanel: EditingPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
+    /// The field being edited takes no drops, so what is dropped on the input falls through to the card, as
+    /// anywhere else on it: text lands in a card of its own, as a selection does, and files and pictures attach.
+    /// Otherwise the input would take them as typed, and dropped text with line breaks would show only its last
+    /// line. SwiftUI's field editor signs up for drops each time a field starts editing, and again a moment
+    /// after the first time, so this runs after each focus and when the window gives up the keyboard, which it
+    /// does before anything can be dragged in from another app.
+    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        let made = super.makeFirstResponder(responder)
+        leaveDropsToTheCard()
+        return made
+    }
+
+    override func resignKey() {
+        super.resignKey()
+        leaveDropsToTheCard()
+    }
+
+    private func leaveDropsToTheCard() {
+        guard let editor = firstResponder as? NSTextView, editor.isFieldEditor else { return }
+        editor.unregisterDraggedTypes()
+    }
+
     override func cancelOperation(_ sender: Any?) {
         onEscape?()
     }

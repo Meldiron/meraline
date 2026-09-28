@@ -152,8 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Log.app.info("Services: Ask Meraline, an image")
             session.bring(image)
         case .text(let text):
-            let app = NSWorkspace.shared.frontmostApplication.flatMap { $0.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : $0 }
-            guard let selection = SelectedText(text, appName: app?.localizedName, appURL: app?.bundleURL) else { return }
+            guard let selection = SelectedText.handedOver(text) else { return }
             Log.app.info("Services: Ask Meraline, \(selection.text.count) characters")
             session.bring(selection)
         case nil:
