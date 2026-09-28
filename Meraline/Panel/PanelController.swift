@@ -72,6 +72,9 @@ final class PanelLayout {
     var actionPanel: ActionPanelRequest?
     /// Counts the copies the actions made, for the footer to say Copied.
     var copyNotice = 0
+    /// The answers that show what they changed in the text their question was about, in their place, by turn
+    /// (see `TextChanges`).
+    var answersShowingChanges: Set<ChatSession.Turn.ID> = []
     /// The last time the recent chats were forgotten, for the clock under the input to react to.
     var lastForgetting: Forgetting?
     /// Counts the drafts stashed in Recent Chats, for the clock under the input to say Stashed.
@@ -114,6 +117,11 @@ final class PanelLayout {
         Log.panel.info("Answers zoomed to \(self.answerZoom.percent)")
     }
 
+    /// Show What Changed under an answer, or Show Answer once the changes show.
+    func toggleChanges(of turn: ChatSession.Turn.ID) {
+        if answersShowingChanges.remove(turn) == nil { answersShowingChanges.insert(turn) }
+    }
+
     func noteForgotten(_ count: Int) {
         lastForgetting = Forgetting(number: (lastForgetting?.number ?? 0) + 1, count: count)
     }
@@ -131,7 +139,7 @@ final class PanelController: NSObject {
     private let updater: Updater
     private let updateNotice: UpdateNotice
     private let shortcutSetup: ShortcutSetup
-    private let layout = PanelLayout()
+    let layout = PanelLayout()
     private let openSettings: (SettingsPane?) -> Void
     private var keyMonitor: Any?
     private var isApplyingFrame = false

@@ -376,6 +376,9 @@ struct ChatPanelView: View {
                         TurnView(
                             turn: turn,
                             isAnswering: session.isStreaming && turn.id == session.turns.last?.id,
+                            showsChanges: layout.answersShowingChanges.contains(turn.id),
+                            toggleChanges: { layout.toggleChanges(of: turn.id) },
+                            isLastAnswer: turn.id == session.turns.last(where: { !$0.answer.isEmpty })?.id,
                             agent: agentName,
                             answer: { session.answer($0, with: $1) },
                             explain: explain,
@@ -519,6 +522,11 @@ private struct SparkleButton: View {
 private struct TurnView: View {
     let turn: ChatSession.Turn
     let isAnswering: Bool
+    /// Whether the answer shows what it changed in the text its question was about, in its place.
+    let showsChanges: Bool
+    let toggleChanges: () -> Void
+    /// Whether this is the last answer, whose changes ⌘D shows.
+    var isLastAnswer = false
     let agent: String
     let answer: (AgentPrompt.ID, AgentAnswer) -> Void
     var explain: ((AgentPrompt) async throws -> String)?
@@ -551,7 +559,14 @@ private struct TurnView: View {
                 .foregroundStyle(.secondary)
             }
             if !turn.answer.isEmpty {
-                MarkdownView(markdown: turn.answer)
+                if showsChanges, let changes = turn.changes {
+                    ChangesView(changes: changes)
+                } else {
+                    MarkdownView(markdown: turn.answer)
+                }
+            }
+            if let changes = turn.changes {
+                ChangesToggle(changes: changes, isShowingChanges: showsChanges, hasShortcut: isLastAnswer, toggle: toggleChanges)
             }
             if !turn.presentedFiles.isEmpty {
                 VStack(spacing: 8) {

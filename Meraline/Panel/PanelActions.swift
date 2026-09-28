@@ -330,6 +330,7 @@ struct PanelContext {
             title: session.turns.first.map { $0.question.isEmpty ? "This Chat" : $0.question.onOneLine } ?? "This Chat",
             sections: [
                 ActionSection(id: "primary", actions: primary),
+                ActionSection(id: "changes", actions: changesActions),
                 ActionSection(id: "copy", actions: copy),
                 ActionSection(id: "files", actions: files),
                 ActionSection(id: "answer", actions: answer),
@@ -364,6 +365,23 @@ struct PanelContext {
                 layout.zoomAnswers(step)
             }
         }
+    }
+
+    /// Show What Changed (⌘D) when the last answer changed the text its question was about, and Show Answer once
+    /// the changes show in its place (see `TextChanges`).
+    private var changesActions: [PanelAction] {
+        guard !session.isStreaming, let turn = session.turns.last(where: { !$0.answer.isEmpty }), turn.changes != nil else { return [] }
+        let layout = layout
+        let isShowing = layout.answersShowingChanges.contains(turn.id)
+        return [PanelAction(
+            id: "showChanges",
+            title: isShowing ? "Show Answer" : "Show What Changed",
+            icon: .symbol(isShowing ? "text.alignleft" : "plus.forwardslash.minus"),
+            shortcut: .command("d"),
+            keywords: ["diff", "changes", "compare", "edits", "corrections", "grammar"]
+        ) {
+            layout.toggleChanges(of: turn.id)
+        }]
     }
 
     /// Copy Code Block for each block of code in the last answer, up to nine, with its language and first line.

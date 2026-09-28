@@ -46,7 +46,7 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
 
 ⚡ **Keeps your everyday asks a click away.** The presets above the window's right put a prompt in the input: Fix Grammar, Anti-Slop, Anonymize, and Translate, or your own from **Settings › Prompt**, each with an icon. Select the text first, click one, and ask, or Shift-click to send it at once. They're for starting a chat, so they step aside once it starts.
 
-✍️ **Puts the answer to work.** **Actions** (<kbd>⌘</kbd> <kbd>K</kbd>) under an answer make it shorter, longer, simpler, more concrete, or a bullet list, in place, so the next rewrite or follow-up builds on what you see. <kbd>⌘</kbd> <kbd>↩</kbd> closes the window and pastes the answer at the cursor of the app you were in: select a paragraph, ask for it friendlier, press <kbd>⌘</kbd> <kbd>↩</kbd>, and the new text replaces the old. <kbd>⌘</kbd> <kbd>T</kbd> tears the answer off into a small floating note that stays on screen while you follow it in another app.
+✍️ **Puts the answer to work.** **Actions** (<kbd>⌘</kbd> <kbd>K</kbd>) under an answer make it shorter, longer, simpler, more concrete, or a bullet list, in place, so the next rewrite or follow-up builds on what you see. <kbd>⌘</kbd> <kbd>↩</kbd> closes the window and pastes the answer at the cursor of the app you were in: select a paragraph, ask for it friendlier, press <kbd>⌘</kbd> <kbd>↩</kbd>, and the new text replaces the old. Ask to fix the grammar of text you selected or copied, and **Show What Changed** (<kbd>⌘</kbd> <kbd>D</kbd>) under the answer shows your text with each word it took out struck through in red and each it put in green, so a fix is quick to check before you paste it; **Show Answer** goes back. <kbd>⌘</kbd> <kbd>T</kbd> tears the answer off into a small floating note that stays on screen while you follow it in another app.
 
 🖼️ **Understands images and files.** Paste a screenshot or drop an image into the window and ask about it, or use the two buttons above the window: one adds whatever you copied, the other a screenshot of your screen without Meraline in it. Agents take PDFs, spreadsheets, and any other file too, and whole folders: drop a project and ask about it, and the agent works on a copy of it, never on your own. When an agent makes a file for you, it hands it over: the file shows under the answer, ready to open in its app, show in Finder, copy, save to Downloads, or drag anywhere.
 
@@ -215,6 +215,7 @@ That's it. Press <kbd>⌥</kbd> <kbd>Space</kbd> whenever you have a question.
 | <kbd>⌘</kbd> <kbd>P</kbd> | Pin or unpin the window |
 | <kbd>⌘</kbd> <kbd>K</kbd> | Actions for the chat: search them, pick one with the arrows and <kbd>↩</kbd> (the sparkle's panel when no chat is open) |
 | <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>C</kbd> | Copy the last answer |
+| <kbd>⌘</kbd> <kbd>D</kbd> | Show what the last answer changed in the text you asked about, or the answer again |
 | <kbd>⌘</kbd> <kbd>↩</kbd> | Close the window and paste the last answer into the app you were in |
 | <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>C</kbd> | Copy the whole conversation as Markdown |
 | <kbd>⌘</kbd> <kbd>T</kbd> | Tear the last answer off into a floating note |

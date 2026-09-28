@@ -8,6 +8,7 @@ import Testing
 ///
 ///   opening       Rhyme Duel waiting for its first move: the invitation card with Random Rhyme
 ///   longest-word  Longest Word once the model has picked its word: the nine letters in glass bubbles
+///   what-changed  a grammar fix of text selected in Mail, showing what it changed
 ///   usage         Settings › Usage over the last 30 days, from `DemoUsage`
 ///   usage-games   further down the same page: the games played, and a section for each
 ///   prompt        Settings › Prompt: the language, and the LLMs' and the agents' instructions
@@ -46,6 +47,26 @@ struct ShowcaseTests {
             await GameTestSupport.settle(scene.session)
             await Showcase.settle(1.5)
             try await stage.capturePanel(scene.panel, as: "longest-word")
+            stage.close(scene.panel)
+        }
+    }
+
+    @Test func whatChanged() async throws {
+        guard Showcase.wants("what-changed") else { return }
+        let email = "Hi Anna, thank you for you're email. I has attached the report you asked for, its a bit longer then last time. Let me know if their are any questions."
+        let fixed = "Hi Anna, thank you for your email. I have attached the report you asked for; it's a bit longer than last time. Let me know if there are any questions."
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage, replies: [fixed])
+            scene.session.bring(try #require(SelectedText(email, appName: "Mail", appURL: URL(fileURLWithPath: "/System/Applications/Mail.app"))))
+            scene.session.draft = "Fix the grammar"
+            scene.session.send()
+            await GameTestSupport.settle(scene.session)
+            await scene.session.changesSearch?.value
+            let turn = try #require(scene.session.turns.first)
+            scene.controller.layout.toggleChanges(of: turn.id)
+            await Showcase.settle(1.5)
+            try await stage.capturePanel(scene.panel, as: "what-changed")
             stage.close(scene.panel)
         }
     }

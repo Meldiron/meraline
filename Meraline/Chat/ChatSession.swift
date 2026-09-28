@@ -46,6 +46,9 @@ final class ChatSession {
         var estimatedInput = 0
         /// What the provider said the answer took, as it came; nil when it said nothing.
         var usage: TokenUsage?
+        /// What the answer changed in the text its question was about, found when it ended, for Show What Changed;
+        /// nil when it isn't that text changed (see `TextChanges`).
+        var changes: TextChanges?
 
         /// The ask the agent is waiting on, if any.
         var pendingPrompt: AgentPrompt? { prompts.last(where: \.isPending) }
@@ -170,6 +173,8 @@ final class ChatSession {
     @ObservationIgnored private var responders: [String: AgentPromptResponder] = [:]
     /// Lets go of the chats whose time is up, at the next deadline.
     @ObservationIgnored private var expiryTask: Task<Void, Never>?
+    /// Working out what the last answer changed in the text its question was about, for tests to wait on.
+    @ObservationIgnored private(set) var changesSearch: Task<Void, Never>?
     /// The chat's workspace was gone and was made again, for the next question to say so.
     @ObservationIgnored private var remadeWorkspace = false
     /// The most memory the chat may take; `chatByteLimit`, lower in tests.
@@ -1283,6 +1288,7 @@ final class ChatSession {
                 takeBackQuestion(restoring: replaced)
             } else {
                 Log.chat.info("Answer \(error == nil ? "complete" : "stopped"), \(turns[last].answer.count) characters")
+                if error == nil { findChanges(at: last) }
             }
             return
         }
@@ -1294,6 +1300,24 @@ final class ChatSession {
             turns[last].isComplete = true
         }
         fail(with: error.localizedDescription, needsSettings: Self.needsSettings(error))
+    }
+
+    /// Looks for what the finished answer at `index` changed in the text its question was about, or, for a
+    /// follow-up about none, in the texts of the last question before it that had some, all of them together too.
+    /// A stopped or failed answer is cut short, so it has none. A long text rearranged throughout takes a moment to
+    /// compare, so it happens off the main actor, and a turn that has gone meanwhile is left be.
+    private func findChanges(at index: Int) {
+        guard let selections = turns[...index].last(where: { !$0.selections.isEmpty })?.selections else { return }
+        let texts = selections.map(\.text)
+        let originals = texts.count > 1 ? texts + [texts.joined(separator: "\n\n")] : texts
+        let id = turns[index].id
+        let answer = turns[index].answer
+        changesSearch = Task { [weak self] in
+            let changes = await Task.detached(priority: .userInitiated) { TextChanges.find(in: answer, against: originals) }.value
+            guard let self, let changes, let index = self.turns.firstIndex(where: { $0.id == id }) else { return }
+            self.turns[index].changes = changes
+            Log.chat.info("The answer changes the text in \(changes.count) place(s)")
+        }
     }
 
     /// An answer that brought no text goes: its question returns to the input, or, when Ask Again asked it,
