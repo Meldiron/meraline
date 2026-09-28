@@ -13,6 +13,7 @@
 #   usage-games   further down the same page: the games played, and a section for each
 #   prompt        Settings › Prompt: the language, and the LLMs' and the agents' instructions
 #   prompt-games  further down the same page: the games, one of them changed, and Why?
+#   follow-ups    an answer about DNS with three follow-ups under it
 #   presets       the presets above an empty chat, Fix Grammar put in the input for a text selected in Mail
 #   prompt-presets  Settings › Prompt › Presets: the four defaults and one of your own
 #   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
@@ -37,7 +38,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         dark|light|both) APPEARANCE="$1"; shift ;;
         --out) OUT="$(mkdir -p "$2" && cd "$2" && pwd)"; shift 2 ;;
-        -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) echo "error: unknown option $1" >&2; exit 2 ;;
         *) ONLY+=("$1"); shift ;;
     esac

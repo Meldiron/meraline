@@ -24,7 +24,7 @@ enum MeralineApp {
     }
 
     /// Whether xcodebuild launched this process to host the test bundle.
-    static var isHostingTests: Bool {
+    nonisolated static var isHostingTests: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
 }

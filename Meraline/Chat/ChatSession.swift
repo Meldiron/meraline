@@ -146,6 +146,10 @@ final class ChatSession {
     /// A friendly line from a game: its invitation, why a move came back, or that the round is over.
     /// Unlike `failure`, nothing went wrong.
     private(set) var nudge: String?
+    /// Two or three questions to ask next, suggested on this Mac under the last answer (see `FollowUps`). In memory
+    /// only and in no turn, so Recent Chats never keeps them; every request clears them, and a reopened chat gets
+    /// new ones.
+    private(set) var followUps: [String] = []
     /// How each game has gone against the model since Meraline opened, for the rematch tray. In memory
     /// only, like Recent Chats, so quitting forgets it.
     private(set) var versus: [Game: Versus] = [:]
@@ -181,6 +185,9 @@ final class ChatSession {
     @ObservationIgnored var byteLimit = ChatSession.chatByteLimit
     /// What the games draw with before a move goes to the model; seeded in tests.
     @ObservationIgnored var dice = GameDice()
+    /// Works out the follow-ups for an answer; tests pass their own.
+    @ObservationIgnored var followUpSuggester: (FollowUps.Request) async -> [String] = FollowUps.suggest
+    @ObservationIgnored private var followUpTask: Task<Void, Never>?
     @ObservationIgnored private let preferences: Preferences
     @ObservationIgnored private let workspaceRoot: URL
     @ObservationIgnored private let streamReplies: @MainActor (ChatRequest) -> AsyncThrowingStream<StreamOutput, Error>
@@ -573,6 +580,7 @@ final class ChatSession {
 
     private func stream(_ request: ChatRequest, for id: Turn.ID) {
         restartClock()
+        clearFollowUps()
         if remadeWorkspace, let index = turns.firstIndex(where: { $0.id == id }) {
             remadeWorkspace = false
             turns[index].notice = Self.remadeWorkspaceNotice
@@ -708,6 +716,7 @@ final class ChatSession {
         nudge = nil
         insistedInput = nil
         deadline = .distantFuture
+        clearFollowUps()
     }
 
     /// Deletes the open chat or game: it skips Recent Chats, and its workspace goes with it. A game's score
@@ -806,6 +815,7 @@ final class ChatSession {
         turns = chat.turns
         mode = chat.mode
         workspace = chat.workspace
+        suggestFollowUps(after: turns.last)
         if let parked = chat.draft {
             (draft, draftImages, draftFiles, draftSelections) = (parked.text, parked.images, parked.files, parked.selections)
             Log.chat.info("A stashed draft is back in the input")
@@ -1249,6 +1259,27 @@ final class ChatSession {
         tools.append(activity)
     }
 
+    /// Works out what to ask after `turn`, the last one, in place of what was suggested before. Only a chat's
+    /// finished answer gets any: not a game's move, nor an answer still coming.
+    private func suggestFollowUps(after turn: Turn?) {
+        clearFollowUps()
+        guard let turn, !isPlaying, !isStreaming, turn.isComplete, !turn.answer.trimmed.isEmpty else { return }
+        let request = FollowUps.Request(question: turn.question, answer: turn.answer, asked: turns.map(\.question), language: preferences.language)
+        let suggest = followUpSuggester
+        followUpTask = Task { [weak self] in
+            let questions = await suggest(request)
+            guard let self, !Task.isCancelled, !isStreaming, turns.last?.id == turn.id else { return }
+            followUps = questions
+            if !questions.isEmpty { Log.chat.info("\(questions.count) follow-ups suggested") }
+        }
+    }
+
+    private func clearFollowUps() {
+        followUpTask?.cancel()
+        followUpTask = nil
+        if !followUps.isEmpty { followUps = [] }
+    }
+
     private func finishStreaming(_ id: Turn.ID, error: Error?) {
         guard isStreaming, turns.last?.id == id else { return }
         isStreaming = false
@@ -1272,6 +1303,7 @@ final class ChatSession {
         // A rewrite stopped or failed partway gives the old answer back rather than keep half of the new one.
         if wasRewriting, let error, let replaced {
             turns[last] = replaced
+            suggestFollowUps(after: replaced)
             if error is CancellationError || (error as? URLError)?.code == .cancelled {
                 Log.chat.info("Rewrite stopped; the old answer is back")
             } else {
@@ -1288,6 +1320,8 @@ final class ChatSession {
                 takeBackQuestion(restoring: replaced)
             } else {
                 Log.chat.info("Answer \(error == nil ? "complete" : "stopped"), \(turns[last].answer.count) characters")
+                // A stopped answer is cut short, so nothing follows on from it.
+                if error == nil { suggestFollowUps(after: turns[last]) }
                 if error == nil { findChanges(at: last) }
             }
             return
@@ -1326,6 +1360,7 @@ final class ChatSession {
         let turn = turns.removeLast()
         if let replaced {
             turns.append(replaced)
+            suggestFollowUps(after: replaced)
         } else {
             restoreDraft(from: turn)
         }

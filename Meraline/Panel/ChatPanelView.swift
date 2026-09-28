@@ -48,6 +48,10 @@ struct ChatPanelView: View {
 
     /// A game has its footer from the start; its transcript waits for the first move.
     private var hasConversation: Bool { !session.turns.isEmpty || session.isPlaying }
+    /// The follow-ups under the last answer show while the input is empty: typing or asking puts them away.
+    private var showsFollowUps: Bool {
+        !session.followUps.isEmpty && !session.isStreaming && !session.isPlaying && session.draft.trimmed.isEmpty
+    }
     private var context: PanelContext {
         PanelContext(session: session, preferences: preferences, layout: layout, openSettings: openSettings, insertion: inserter?.insertion, copyDiagnostics: copyDiagnostics)
     }
@@ -240,6 +244,7 @@ struct ChatPanelView: View {
         .animation(.smooth(duration: Self.cardAnimation), value: session.failure)
         .animation(.smooth(duration: Self.cardAnimation), value: session.nudge)
         .animation(.smooth(duration: Self.cardAnimation), value: session.rematch)
+        .animation(.smooth(duration: Self.cardAnimation), value: showsFollowUps)
         .animation(.smooth(duration: Self.cardAnimation), value: whatsNew.isExpanded)
         .animation(.smooth(duration: Self.cardAnimation), value: whatsNew.update)
         .animation(.smooth(duration: Self.cardAnimation), value: offeredUpdate)
@@ -386,6 +391,14 @@ struct ChatPanelView: View {
                         )
                     }
                     .environment(\.answerWorkspace, session.workspace?.url)
+                    if showsFollowUps {
+                        FollowUpChips(questions: session.followUps) { question, sends in
+                            session.followUp(question, sending: sends)
+                            if !sends { isInputFocused = true }
+                        }
+                        .padding(.top, -6)
+                        .transition(FollowUpChips.transition)
+                    }
                 }
             }
             .padding(.horizontal, 22)

@@ -14,6 +14,7 @@ import WebKit
 ///   usage-games   further down the same page: the games played, and a section for each
 ///   prompt        Settings › Prompt: the language, and the LLMs' and the agents' instructions
 ///   prompt-games  further down the same page: the games, one of them changed, and Why?
+///   follow-ups    an answer about DNS with three follow-ups under it
 ///   presets       the presets above an empty chat, Fix Grammar put in the input for a text selected in Mail
 ///   prompt-presets  Settings › Prompt › Presets: the four defaults and one of your own
 ///   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
@@ -191,6 +192,33 @@ struct ShowcaseTests {
             }
             await Showcase.settle(2)
             try await stage.capturePanel(scene.panel, as: "preview")
+            stage.close(scene.panel)
+        }
+    }
+
+    @Test func followUps() async throws {
+        guard Showcase.wants("follow-ups") else { return }
+        let answer = """
+        DNS, the Domain Name System, turns names like example.com into the IP addresses computers use to reach \
+        each other.
+
+        When you open a site, your Mac asks a **resolver**, usually your router or your internet provider. The \
+        resolver asks the **root servers** where .com lives, then the **.com servers** where example.com lives, and \
+        last the domain's own **authoritative server** for its address. It keeps the answer for the record's \
+        **TTL**, so the next visit skips the whole trip.
+        """
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage, replies: [answer])
+            // As the on-device model suggested them for this answer.
+            scene.session.followUpSuggester = { _ in
+                ["Who runs the root servers?", "How long does a TTL usually last?", "Can I use a faster resolver?"]
+            }
+            scene.session.draft = "What is DNS?"
+            scene.session.send()
+            await GameTestSupport.settle(scene.session)
+            await Showcase.settle(1.5)
+            try await stage.capturePanel(scene.panel, as: "follow-ups")
             stage.close(scene.panel)
         }
     }
