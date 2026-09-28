@@ -5,6 +5,7 @@ import SwiftUI
 /// from Finder goes. Once the file has left the workspace, the card says so and offers nothing. Neutral glass, with
 /// the panel's faint pink on Open. A picture shows itself above its name instead of its icon, and a click on it
 /// shows it larger, inside the window: the window closes when another one, such as Quick Look's, takes the keyboard.
+/// A page or a Markdown file shows a preview there instead (`FilePreviewStrip`), which a click shows more of.
 struct PresentedFileCard: View {
     /// How tall a picture shows, and how tall once clicked. Never taller than its own pixels.
     static let pictureHeight: CGFloat = 200
@@ -17,6 +18,9 @@ struct PresentedFileCard: View {
     @State private var opener: URL?
     /// The file's picture, when it is one ImageIO can read.
     @State private var picture: NSImage?
+    /// The file's preview, when it is a page or Markdown, and whether the page turned out not to show.
+    @State private var preview: FilePreview?
+    @State private var previewFailed = false
     @State private var isEnlarged = false
     /// The card's width inside its padding, which a wide picture fills.
     @State private var width: CGFloat = 0
@@ -26,11 +30,14 @@ struct PresentedFileCard: View {
     var body: some View {
         let exists = file.exists
         let shown = exists ? picture : nil
+        let previewed = exists && shown == nil && !previewFailed ? preview : nil
         VStack(alignment: .leading, spacing: 10) {
             if let shown {
                 pictureButton(shown)
+            } else if let previewed {
+                FilePreviewStrip(file: file, preview: previewed) { previewFailed = true }
             }
-            row(exists: exists, showsIcon: shown == nil)
+            row(exists: exists, showsIcon: shown == nil && previewed == nil)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .padding(10)
@@ -45,10 +52,13 @@ struct PresentedFileCard: View {
         .animation(.smooth(duration: 0.2), value: notice)
         .task(id: file.id) {
             opener = file.opener
-            guard file.isImage else { return }
             let url = file.url
-            let image = await Task.detached(priority: .userInitiated) { PresentedFile.picture(at: url) }.value
-            picture = image.map { NSImage(cgImage: $0, size: .zero) }
+            if file.isImage {
+                let image = await Task.detached(priority: .userInitiated) { PresentedFile.picture(at: url) }.value
+                picture = image.map { NSImage(cgImage: $0, size: .zero) }
+            } else if !file.isFolder {
+                preview = await Task.detached(priority: .userInitiated) { FilePreview.preview(at: url) }.value
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(file.name), handed over by the agent")
