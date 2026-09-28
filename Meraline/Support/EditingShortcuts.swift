@@ -23,10 +23,24 @@ enum EditingShortcuts {
     /// Sends the command to the window's first responder, or whatever takes it after it. False when the press is
     /// no editing command or nothing there takes it, so the rest of the app can have it.
     static func perform(_ event: NSEvent, in window: NSWindow) -> Bool {
-        guard window.isKeyWindow, let action = action(for: event), NSApp.target(forAction: action, to: nil, from: window) != nil else {
+        guard window.isKeyWindow, let action = action(for: event), let target = target(for: action, in: window) else {
             return false
         }
-        return NSApp.sendAction(action, to: nil, from: window)
+        return NSApp.sendAction(action, to: target, from: window)
+    }
+
+    /// What in the window takes `action`: its first responder or one after it, up to the window and its delegate,
+    /// asking each for a supplemental target as AppKit's own lookup does. Never another window's: a lookup without a
+    /// target goes on to the main window, which can be Settings while the panel has the keyboard.
+    static func target(for action: Selector, in window: NSWindow) -> Any? {
+        var responder = window.firstResponder
+        while let current = responder {
+            if current.responds(to: action) { return current }
+            if let supplemental = current.supplementalTarget(forAction: action, sender: window) { return supplemental }
+            responder = current.nextResponder
+        }
+        if let delegate = window.delegate as? NSObject, delegate.responds(to: action) { return delegate }
+        return nil
     }
 }
 

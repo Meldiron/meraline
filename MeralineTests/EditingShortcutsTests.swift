@@ -33,26 +33,48 @@ struct EditingShortcutsTests {
         #expect(EditingShortcuts.action(for: press("c", [], keyCode: kVK_ANSI_C)) == nil)
     }
 
-    @Test func commandCReachesTheTextInThePanel() throws {
-        let panel = FloatingPanel(
-            contentRect: NSRect(x: -20_000, y: -20_000, width: 200, height: 100),
-            styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView], backing: .buffered, defer: false
-        )
+    /// A panel that has the keyboard, as Meraline's do once they open. A real one can't be made key reliably in a
+    /// test: while another app, test run, or person holds the keyboard, macOS may turn the request down.
+    final class KeyPanel: EditingPanel {
+        override var isKeyWindow: Bool { true }
+    }
+
+    /// `panel`, off every screen and never shown, with `text` in it holding the keyboard.
+    private func put(_ text: NSTextView, in panel: EditingPanel) {
+        panel.setFrame(NSRect(x: -20_000, y: -20_000, width: 200, height: 100), display: false)
+        panel.contentView = text
+        panel.makeFirstResponder(text)
+    }
+
+    private static let style: NSWindow.StyleMask = [.nonactivatingPanel, .borderless, .fullSizeContentView]
+
+    @Test func commandCReachesTheTextInThePanel() {
         let text = RecordingTextView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
         text.string = "Copy me"
-        panel.contentView = text
-        panel.orderFrontRegardless()
-        panel.makeKey()
-        defer { panel.orderOut(nil) }
-        try #require(panel.isKeyWindow)
-        panel.makeFirstResponder(text)
-        text.selectAll(nil)
-        text.received = []
+        let panel = KeyPanel(contentRect: .zero, styleMask: Self.style, backing: .buffered, defer: false)
+        put(text, in: panel)
 
         #expect(panel.performKeyEquivalent(with: press("c", .command, keyCode: kVK_ANSI_C)))
         #expect(panel.performKeyEquivalent(with: press("x", .command, keyCode: kVK_ANSI_X)))
         #expect(panel.performKeyEquivalent(with: press("a", .command, keyCode: kVK_ANSI_A)))
         #expect(text.received == [#selector(NSText.copy(_:)), #selector(NSText.cut(_:)), #selector(NSText.selectAll(_:))])
         #expect(!panel.performKeyEquivalent(with: press("k", .command, keyCode: kVK_ANSI_K)), "other shortcuts go on to the app")
+    }
+
+    @Test func aWindowWithoutTheKeyboardLeavesTheTextAlone() {
+        let text = RecordingTextView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+        let panel = EditingPanel(contentRect: .zero, styleMask: Self.style, backing: .buffered, defer: false)
+        put(text, in: panel)
+
+        #expect(!panel.isKeyWindow)
+        #expect(!panel.performKeyEquivalent(with: press("c", .command, keyCode: kVK_ANSI_C)))
+        #expect(text.received.isEmpty)
+    }
+
+    @Test func aCommandNothingInTheWindowTakesGoesNowhereElse() {
+        let panel = KeyPanel(contentRect: .zero, styleMask: Self.style, backing: .buffered, defer: false)
+        panel.contentView = NSView()
+        #expect(EditingShortcuts.target(for: #selector(NSText.copy(_:)), in: panel) == nil)
+        #expect(!panel.performKeyEquivalent(with: press("c", .command, keyCode: kVK_ANSI_C)))
     }
 }
