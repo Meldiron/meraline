@@ -385,6 +385,7 @@ struct ChatPanelView: View {
                             explainTool: explainTool(for: turn)
                         )
                     }
+                    .environment(\.answerWorkspace, session.workspace?.url)
                 }
             }
             .padding(.horizontal, 22)

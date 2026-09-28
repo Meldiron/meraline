@@ -330,6 +330,8 @@ struct MarkdownView: View {
 
     var body: some View {
         MarkdownBlocksView(blocks: MarkdownBlock.blocks(in: markdown), fontSize: fontSize)
+            // Paths and meraline:// links open here (see `AnswerLinks`); web links go to the browser.
+            .environment(\.openURL, OpenURLAction(handler: AnswerLinks.open))
     }
 }
 
@@ -395,18 +397,21 @@ private struct InlineText: View {
     var weight: Font.Weight = .regular
 
     @Environment(\.answerZoom) private var zoom
+    @Environment(\.answerWorkspace) private var workspace
 
     var body: some View {
-        Text(Self.render(text))
+        Text(Self.render(text, workspace: workspace))
             .font(.system(size: fontSize * zoom, weight: weight))
             .lineSpacing(3 * zoom)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// `MarkdownText`'s rendering, with a faint box behind code spans.
-    static func render(_ text: String) -> AttributedString {
+    /// `MarkdownText`'s rendering, with paths and meraline:// URLs linked (`AnswerLinks`, which `workspace`
+    /// is for) and a faint box behind code spans.
+    static func render(_ text: String, workspace: URL?) -> AttributedString {
         var rendered = MarkdownText.render(text)
+        AnswerLinks.linkify(&rendered, workspace: workspace)
         for run in rendered.runs where run.inlinePresentationIntent?.contains(.code) == true {
             rendered[run.range].backgroundColor = Color.primary.opacity(0.07)
         }
@@ -521,6 +526,7 @@ private struct MarkdownTableView: View {
     let fontSize: CGFloat
 
     @Environment(\.answerZoom) private var zoom
+    @Environment(\.answerWorkspace) private var workspace
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -550,7 +556,7 @@ private struct MarkdownTableView: View {
 
     private func cell(_ text: String, column: Int, weight: Font.Weight) -> some View {
         let alignment = table.alignments.indices.contains(column) ? table.alignments[column] : .leading
-        return Text(InlineText.render(text))
+        return Text(InlineText.render(text, workspace: workspace))
             .font(.system(size: (fontSize - 1) * zoom, weight: weight))
             .multilineTextAlignment(alignment.text)
             .textSelection(.enabled)

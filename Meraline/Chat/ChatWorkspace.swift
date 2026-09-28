@@ -43,6 +43,11 @@ nonisolated struct ChatWorkspace: Equatable, Sendable {
         Task.detached(priority: .background) { try? FileManager.default.removeItem(at: leaving) }
     }
 
+    /// Whether `url` is inside a chat's workspace, symlinks followed: this process's or another Meraline's.
+    static func holds(_ url: URL, parent: URL = parent) -> Bool {
+        url.resolvingSymlinksInPath().path.hasPrefix(parent.resolvingSymlinksInPath().path + "/")
+    }
+
     /// Removes every workspace of this process, at quit.
     static func removeAll(in root: URL = defaultRoot) {
         try? FileManager.default.removeItem(at: root)

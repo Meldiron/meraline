@@ -73,6 +73,17 @@ nonisolated enum AutomationRoute: Equatable, Sendable {
         }
     }
 
+    /// `url` without its `send=`, as a link in an answer runs it: the question it fills in waits for Return,
+    /// since the model wrote the link, not you. The rest of the query stays as it was written.
+    static func withoutSending(_ url: URL) -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let items = components.percentEncodedQueryItems else { return url }
+        let kept = items.filter { $0.name.lowercased() != "send" }
+        guard kept.count < items.count else { return url }
+        components.percentEncodedQueryItems = kept.isEmpty ? nil : kept
+        return components.url ?? url
+    }
+
     /// A switch in a query: 1, true, yes, or on; 0, false, no, or off; nil for anything else.
     private static func flag(_ value: String?) -> Bool? {
         switch value?.trimmed.lowercased() {

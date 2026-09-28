@@ -111,18 +111,24 @@ nonisolated struct PresentedFile: Identifiable, Equatable, Sendable {
         return .inDefaultApp
     }
 
-    var opening: Opening {
+    var opening: Opening { Self.opening(of: url, isFolder: isFolder) }
+
+    /// How Open treats the file or folder at `url`: this file's, or a path's linked in an answer (`AnswerLinks`).
+    static func opening(of url: URL, isFolder: Bool) -> Opening {
         if isFolder { return .inDefaultApp }
         let values = try? url.resourceValues(forKeys: [.contentTypeKey, .isRegularFileKey])
         let type = values?.contentType ?? UTType(filenameExtension: url.pathExtension)
         let isExecutable = values?.isRegularFile == true && FileManager.default.isExecutableFile(atPath: url.path)
-        return Self.opening(for: type, pathExtension: url.pathExtension, isExecutable: isExecutable)
+        return opening(for: type, pathExtension: url.pathExtension, isExecutable: isExecutable)
     }
 
     var exists: Bool { FileManager.default.fileExists(atPath: url.path) }
 
     /// The app Open uses, or nil when it would use none.
-    @MainActor var opener: URL? {
+    @MainActor var opener: URL? { Self.opener(for: url, opening: opening) }
+
+    /// The app that opens `url` as `opening` says, or nil when it would use none.
+    @MainActor static func opener(for url: URL, opening: Opening) -> URL? {
         switch opening {
         case .inDefaultApp: NSWorkspace.shared.urlForApplication(toOpen: url)
         case .asText: NSWorkspace.shared.urlForApplication(toOpen: .plainText)
@@ -144,7 +150,10 @@ nonisolated struct PresentedFile: Identifiable, Equatable, Sendable {
     /// Marks the file as downloaded, as a browser marks what it saves, before it goes to another app: an app or a
     /// program in it then has to pass macOS's checks before it first runs, the way anything from the internet
     /// does, since what an agent makes may come from a page it read. A mark already there stays as it is.
-    func markAsDownloaded() {
+    func markAsDownloaded() { Self.markAsDownloaded(url) }
+
+    /// Marks the file at `url` as downloaded, as `markAsDownloaded()` does.
+    static func markAsDownloaded(_ url: URL) {
         guard (try? url.resourceValues(forKeys: [.quarantinePropertiesKey]))?.quarantineProperties == nil else { return }
         var values = URLResourceValues()
         values.quarantineProperties = [

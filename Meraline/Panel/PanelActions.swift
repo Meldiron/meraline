@@ -277,7 +277,7 @@ struct PanelContext {
         if !session.isStreaming, let answer = session.lastAnswer {
             let question = session.turns.last { !$0.answer.isEmpty }?.question ?? ""
             copy.append(PanelAction(id: "tearOff", title: "Tear Off Answer", icon: .symbol("macwindow.on.rectangle"), shortcut: .command("t"), keywords: ["note", "float", "keep", "pin"]) { [layout] in
-                AnswerNotes.shared.open(answer: answer, question: question, zoom: layout.answerZoom)
+                AnswerNotes.shared.open(answer: answer, question: question, zoom: layout.answerZoom, workspace: session.workspace?.url)
                 session.usage.record { $0.answersTornOff += 1 }
             })
         }

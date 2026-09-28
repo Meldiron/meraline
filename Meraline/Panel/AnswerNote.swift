@@ -46,13 +46,15 @@ final class AnswerNotes {
         observeScreenSharingPreference()
     }
 
-    /// Opens an answer in a note of its own, headed by the question it answers, at the window's zoom. `level` and
-    /// `origin` are for pictures of a note taken where nobody sees it; a note floats beside the window otherwise.
-    func open(answer: String, question: String, zoom: AnswerZoom = .actualSize, level: NSWindow.Level = .floating, at origin: NSPoint? = nil) {
+    /// Opens an answer in a note of its own, headed by the question it answers, at the window's zoom, with an
+    /// agent's paths in it leading into `workspace` as they do in the window. `level` and `origin` are for pictures
+    /// of a note taken where nobody sees it; a note floats beside the window otherwise.
+    func open(answer: String, question: String, zoom: AnswerZoom = .actualSize, workspace: URL? = nil, level: NSWindow.Level = .floating, at origin: NSPoint? = nil) {
         let note = AnswerNoteWindow(
             answer: answer,
             question: question,
             zoom: zoom,
+            workspace: workspace,
             showsQuestion: showsQuestion,
             hidesFromScreenSharing: preferences?.hidesFromScreenSharing ?? false,
             level: level
@@ -147,6 +149,7 @@ private final class AnswerNoteWindow: NSObject, NSWindowDelegate {
         answer: String,
         question: String,
         zoom: AnswerZoom,
+        workspace: URL?,
         showsQuestion: Bool,
         hidesFromScreenSharing: Bool,
         level: NSWindow.Level,
@@ -185,6 +188,7 @@ private final class AnswerNoteWindow: NSObject, NSWindowDelegate {
         let hostingView = NSHostingView(rootView: AnswerNoteView(
             answer: answer,
             question: question,
+            workspace: workspace,
             layout: layout,
             actions: NoteActions(
                 close: { [weak self] in self?.close() },
@@ -345,6 +349,8 @@ private struct NoteActions {
 private struct AnswerNoteView: View {
     let answer: String
     let question: String
+    /// The chat's workspace, which an agent's relative paths in the answer start from; nil for an LLM's.
+    let workspace: URL?
     let layout: NoteLayout
     let actions: NoteActions
 
@@ -410,6 +416,7 @@ private struct AnswerNoteView: View {
                     .padding(.bottom, 14)
                     .onGeometryChange(for: CGFloat.self, of: \.size.height) { answerHeight = $0 }
                     .environment(\.answerZoom, layout.zoom.scale)
+                    .environment(\.answerWorkspace, workspace)
             }
             .frame(height: layout.fitsAnswer ? min(answerHeight, maximumHeight) : nil)
             .frame(maxHeight: layout.fitsAnswer ? nil : .infinity)
