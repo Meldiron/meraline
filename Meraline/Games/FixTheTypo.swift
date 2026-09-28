@@ -273,3 +273,18 @@ nonisolated enum FixTheTypo: GameRules {
         return rounds.isEmpty ? nil : rounds.joined(separator: "\n\n")
     }
 }
+
+nonisolated extension FixTheTypo {
+    /// A game's numbers for Settings › Usage: the model's sentences and the typos you fixed, yours and how many
+    /// fooled it.
+    static func figures(ofRoundEndingIn turns: [ChatSession.Turn]) -> GameFigures {
+        var figures = GameFigures()
+        guard let game = turns.since(gameCues) else { return figures }
+        let score = Score(of: game)
+        figures.add(score.fixed + score.unfixed, to: .theirPuzzles)
+        figures.add(score.fixed, to: .fixed)
+        figures.add(score.fooled + score.found, to: .yourPuzzles)
+        figures.add(score.fooled, to: .fooled)
+        return figures
+    }
+}

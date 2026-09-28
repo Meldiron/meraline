@@ -3,7 +3,8 @@ import SwiftUI
 
 /// Settings › Usage: how Meraline has been used over the last hour, day, week, month, or year, from the usage
 /// ledger. A chart of tokens along the span, tiles with the headline numbers, and rows for asking, models and
-/// what they cost, agents, games, what went with questions, habits, and what was done with answers. Every
+/// what they cost, and agents, tiles for each game played, then rows for what went with questions, habits, and
+/// what was done with answers. Every
 /// number is a count; nothing here ever says what was asked or answered.
 struct UsagePane: View {
     let ledger: UsageLedger
@@ -236,44 +237,34 @@ struct UsagePane: View {
         }
     }
 
-    private var games: some View {
-        Section {
-            ForEach(insights.games, id: \.game) { entry in
-                LabeledContent {
-                    Text(entry.tally.rounds > 0 ? "You \(entry.tally.roundsWon) – \(entry.tally.roundsLost) Model" : "no rounds yet")
-                        .monospacedDigit()
-                } label: {
-                    HStack(spacing: 10) {
-                        SettingsIcon(symbol: entry.game.symbol, tint: .gray, size: 22)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.game.title)
-                            Text(gameDetail(entry.tally))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+    /// Every game together when there was more than one, then a section for each.
+    @ViewBuilder private var games: some View {
+        let games = insights.games
+        if games.count > 1 {
+            Section("Games") {
+                if let favorite = insights.favoriteGame {
+                    row("Played most", favorite.game.title, UsageInsights.count(favorite.rounds, "round"))
+                }
+                if let best = insights.bestGame {
+                    row("Best record", best.game.title, "\(UsageInsights.percent(best.winRate)) of decided rounds won")
+                }
+                if let rate = insights.winRate {
+                    row("Win rate", UsageInsights.percent(rate), "of rounds someone won")
                 }
             }
-            if let favorite = insights.favoriteGame {
-                row("Played most", favorite.game.title, UsageInsights.count(favorite.rounds, "round"))
-            }
-            if let best = insights.bestGame {
-                row("Best record", best.game.title, "\(UsageInsights.percent(best.winRate)) of decided rounds won")
-            }
-            if let rate = insights.winRate {
-                row("Win rate", UsageInsights.percent(rate), "of rounds someone won")
-            }
-        } header: {
-            Text("Games")
         }
-    }
-
-    private func gameDetail(_ scores: UsageTally.GameTally) -> String {
-        var parts = [UsageInsights.count(scores.rounds, "round")]
-        if scores.roundsDrawn > 0 { parts.append(UsageInsights.count(scores.roundsDrawn, "draw")) }
-        if scores.hints > 0 { parts.append(UsageInsights.count(scores.hints, "hint")) }
-        if scores.rejectedMoves > 0 { parts.append("\(UsageInsights.count(scores.rejectedMoves, "move")) came back") }
-        return parts.joined(separator: " · ")
+        ForEach(games, id: \.game) { game in
+            Section {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 12)], spacing: 12) {
+                    ForEach(game.figures) { StatTile(label: $0.label, value: $0.value, detail: $0.detail) }
+                }
+                .padding(.vertical, 4)
+            } header: {
+                Label(game.game.title, systemImage: game.game.symbol)
+            } footer: {
+                if let footnote = game.footnote { Text(footnote) }
+            }
+        }
     }
 
     private var context: some View {

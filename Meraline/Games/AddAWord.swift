@@ -226,3 +226,19 @@ nonisolated enum AddAWord: GameRules {
         "Grandpa", "Aliens", "Ghosts", "Everybody", "Nine", "Midnight", "Sunday", "Spaghetti"
     ]
 }
+
+nonisolated extension AddAWord {
+    /// A sentence's numbers for Settings › Usage: whether you started it, its words, and its score for sense.
+    static func figures(ofRoundEndingIn turns: [ChatSession.Turn]) -> GameFigures {
+        var figures = GameFigures()
+        guard let round = turns.rounds(cues).last else { return figures }
+        if round.first?.cue == yourOpening || round.first?.cue == yourNextSentence { figures.add(1, to: .opened) }
+        let sentence = sentence(from: round)
+        figures.record(sentence.words.count, as: .words)
+        if let score = sentence.score {
+            figures.add(1, to: .rated)
+            figures.record(score, as: .score)
+        }
+        return figures
+    }
+}

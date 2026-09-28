@@ -240,3 +240,14 @@ nonisolated enum Categories: GameRules {
         turns.first.flatMap(category(of:))
     }
 }
+
+nonisolated extension Categories {
+    /// A round's numbers for Settings › Usage: whether you named its category, and how many things you named in it.
+    static func figures(ofRoundEndingIn turns: [ChatSession.Turn]) -> GameFigures {
+        var figures = GameFigures()
+        guard let current = turns.since(cues) else { return figures }
+        if current.first?.cue == yourCategory { figures.add(1, to: .opened) }
+        figures.record(review(current).named.filter(\.byYou).count, as: .named)
+        return figures
+    }
+}

@@ -222,3 +222,15 @@ nonisolated enum WordFootball: GameRules {
         turns.rounds(cues).first.flatMap { review($0).words.first?.text }
     }
 }
+
+nonisolated extension WordFootball {
+    /// A match's numbers for Settings › Usage: the words you played, and how long the chain ran after the kickoff.
+    static func figures(ofRoundEndingIn turns: [ChatSession.Turn]) -> GameFigures {
+        var figures = GameFigures()
+        guard let current = turns.since(cues) else { return figures }
+        let match = review(current)
+        figures.add(match.words.filter(\.byYou).count, to: .words)
+        figures.record(match.played, as: .chain)
+        return figures
+    }
+}

@@ -630,3 +630,17 @@ nonisolated enum RhymeDuel: GameRules {
         "funny", "spooky", "heroic", "gentle", "dramatic", "silly", "mysterious", "cozy", "sad but hopeful", "grand", "cheeky"
     ]
 }
+
+nonisolated extension RhymeDuel {
+    /// A duel's numbers for Settings › Usage: whether you set its rhymes, and the model's score for your lines.
+    static func figures(ofRoundEndingIn turns: [ChatSession.Turn]) -> GameFigures {
+        var figures = GameFigures()
+        guard let duel = turns.since(cues) else { return figures }
+        if youSetRhymes(in: duel) { figures.add(1, to: .opened) }
+        if let rating = rating(of: duel) {
+            figures.add(1, to: .rated)
+            figures.record(rating.score, as: .score)
+        }
+        return figures
+    }
+}

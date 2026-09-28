@@ -442,3 +442,26 @@ nonisolated enum SpeedDefinitions: GameRules {
         return youGive(first) ? first.first?.question : review(first).first?.word.word
     }
 }
+
+nonisolated extension SpeedDefinitions {
+    /// A game's numbers for Settings › Usage: the model's words, your definitions' grades and how many landed, or
+    /// the words you gave and how many stumped the model.
+    static func figures(ofRoundEndingIn turns: [ChatSession.Turn]) -> GameFigures {
+        var figures = GameFigures()
+        guard let game = turns.since(gameCues) else { return figures }
+        if youGive(game) {
+            let settled = game.compactMap(\.outcome)
+            figures.add(settled.count, to: .yourPuzzles)
+            figures.add(settled.filter { $0.youWon == true }.count, to: .fooled)
+            return figures
+        }
+        let rounds = review(game)
+        let grades = rounds.compactMap(\.grade)
+        figures.add(rounds.count, to: .theirPuzzles)
+        figures.add(grades.filter(\.landed).count, to: .landed)
+        figures.add(grades.count, to: .rated)
+        figures.add(grades.map(\.score).reduce(0, +), to: .score)
+        figures.record(grades.map(\.score).reduce(0, +), as: .points)
+        return figures
+    }
+}

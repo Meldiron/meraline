@@ -445,15 +445,8 @@ final class ChatSession {
         case .over(let outcome, _):
             Log.chat.info("\(game.title): round over")
             versus[game, default: Versus()].record(outcome)
-            usage.record { tally in
-                var scores = tally.games[game.rawValue] ?? .init()
-                switch outcome.youWon {
-                case true?: scores.roundsWon += 1
-                case false?: scores.roundsLost += 1
-                case nil: scores.roundsDrawn += 1
-                }
-                tally.games[game.rawValue] = scores
-            }
+            let figures = game.figures(ofRoundEndingIn: turns)
+            usage.record { $0.games[game.rawValue, default: .init()].count(round: outcome.youWon, with: figures) }
             nudge = outcome.text
         default:
             break

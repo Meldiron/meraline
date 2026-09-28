@@ -333,3 +333,28 @@ nonisolated enum LongestWord: GameRules {
         return words.isEmpty ? nil : words.prefix(3).map { $0.uppercased() }.joined(separator: " · ")
     }
 }
+
+nonisolated extension LongestWord {
+    /// A round's numbers for Settings › Usage: the letters of your word and the model's, and whether yours was as
+    /// long as the longest this Mac knows in the letters.
+    static func figures(ofRoundEndingIn turns: [ChatSession.Turn]) -> GameFigures {
+        var figures = GameFigures()
+        guard let round = turns.rounds(cues).last, let letters = letters(of: round) else { return figures }
+        let language = language(of: round)
+        var yours = 0
+        if let word = round.dropFirst().first?.question, case .counts(let length) = yourVerdict(word) {
+            yours = length
+            figures.add(1, to: .words)
+            figures.record(length, as: .letters)
+        }
+        if case .counts(let length) = verdict(of: modelWord(in: round), letters: letters, in: language) {
+            figures.add(1, to: .modelWords)
+            figures.add(length, to: .modelLetters)
+        }
+        if language == .english, let best = WordCheck.longestWords(from: letters).first {
+            figures.add(1, to: .compared)
+            if yours >= best.count { figures.add(1, to: .bestFound) }
+        }
+        return figures
+    }
+}

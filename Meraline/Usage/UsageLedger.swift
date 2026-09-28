@@ -146,18 +146,19 @@ final class UsageLedger {
         summary(from: now.addingTimeInterval(-window.length), to: now)
     }
 
-    /// Everything counted from `start` up to `end`.
+    /// Everything counted from `start` up to `end`, summed slot by slot from the earliest, so games' runs of wins
+    /// carry on from one slot into the next.
     func summary(from start: Date, to end: Date) -> UsageTally {
         let first = Self.slot(of: start)
         let last = Self.slot(of: end)
-        return slots.reduce(UsageTally()) { sum, entry in
-            (first...last).contains(entry.key) ? sum + entry.value : sum
+        return slots.keys.filter { (first...last).contains($0) }.sorted().reduce(UsageTally()) { sum, slot in
+            sum + (slots[slot] ?? UsageTally())
         }
     }
 
     /// Everything ever counted.
     var allTime: UsageTally {
-        slots.values.reduce(UsageTally(), +)
+        slots.keys.sorted().reduce(UsageTally()) { $0 + (slots[$1] ?? UsageTally()) }
     }
 
     /// The window's chart, one point a bar, the last bar ending at `now`. Bars of days and months follow the

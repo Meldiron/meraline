@@ -135,10 +135,10 @@ nonisolated struct UsageInsights: Equatable, Sendable {
             }
     }
 
-    /// The games by rounds, most first.
-    var games: [(game: Game, tally: UsageTally.GameTally)] {
-        tally.games.compactMap { key, scores in Game(rawValue: key).map { ($0, scores) } }
-            .sorted { $0.1.rounds != $1.1.rounds ? $0.1.rounds > $1.1.rounds : $0.0.rawValue < $1.0.rawValue }
+    /// The games by rounds, most first, each with the numbers of its own.
+    var games: [GameInsights] {
+        tally.games.compactMap { key, scores in Game(rawValue: key).map { GameInsights(game: $0, tally: scores) } }
+            .sorted { $0.tally.rounds != $1.tally.rounds ? $0.tally.rounds > $1.tally.rounds : $0.game.rawValue < $1.game.rawValue }
     }
 
     // MARK: Spelling numbers
@@ -189,6 +189,12 @@ nonisolated struct UsageInsights: Equatable, Sendable {
     static func weekday(_ weekday: Int, calendar: Calendar = .current) -> String {
         let symbols = calendar.weekdaySymbols
         return (1...symbols.count).contains(weekday) ? symbols[weekday - 1] : ""
+    }
+
+    /// "4.5", "6", an average to one decimal place at most.
+    static func average(_ total: Int, over count: Int, locale: Locale = .current) -> String {
+        guard count > 0 else { return "0" }
+        return (Double(total) / Double(count)).formatted(.number.precision(.fractionLength(0...1)).locale(locale))
     }
 
     /// "12%" of a share.

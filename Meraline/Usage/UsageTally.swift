@@ -100,7 +100,7 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
     /// Files an agent handed over with `present_files`.
     var filesHandedOver = 0
 
-    /// Games by `Game.rawValue`.
+    /// Games by `Game.rawValue`. Their runs of wins add up in order, so tallies are summed earliest first.
     var games: [String: GameTally] = [:]
 
     // What was done with the answers.
@@ -223,7 +223,7 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
         }
     }
 
-    /// One game's rounds.
+    /// One game's rounds, and the numbers of its own that each round adds (`GameFigures`).
     struct GameTally: Codable, Equatable, Sendable {
         var started = 0
         var roundsWon = 0
@@ -233,10 +233,41 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
         var moves = 0
         var rejectedMoves = 0
         var hints = 0
+        /// Rounds won in a row: at the start of the tally, at its end, and the most anywhere in it. A draw or a
+        /// loss ends a run. They add up in order, earlier tally first, so a span is summed from its earliest slot.
+        var winsAtStart = 0
+        var winsAtEnd = 0
+        var winStreak = 0
+        /// The game's own numbers, summed over its rounds, by `GameStat.rawValue`: scores, words, letters, puzzles.
+        var counts: [String: Int] = [:]
+        /// The most one round has had of them: the best score, the longest word.
+        var bests: [String: Int] = [:]
 
         var rounds: Int { roundsWon + roundsLost + roundsDrawn }
 
-        init(started: Int = 0, roundsWon: Int = 0, roundsLost: Int = 0, roundsDrawn: Int = 0, moves: Int = 0, rejectedMoves: Int = 0, hints: Int = 0) {
+        subscript(stat: GameStat) -> Int { counts[stat.rawValue] ?? 0 }
+
+        func best(_ stat: GameStat) -> Int? { bests[stat.rawValue] }
+
+        /// Counts a round that ended, won when `youWon`, with what the game makes of it.
+        mutating func count(round youWon: Bool?, with figures: GameFigures = GameFigures()) {
+            var round = GameTally()
+            switch youWon {
+            case true?:
+                round.roundsWon = 1
+                round.winsAtStart = 1
+                round.winsAtEnd = 1
+                round.winStreak = 1
+            case false?: round.roundsLost = 1
+            case nil: round.roundsDrawn = 1
+            }
+            round.counts = Dictionary(uniqueKeysWithValues: figures.counts.map { ($0.key.rawValue, $0.value) })
+            round.bests = Dictionary(uniqueKeysWithValues: figures.bests.map { ($0.key.rawValue, $0.value) })
+            self = self + round
+        }
+
+        init(started: Int = 0, roundsWon: Int = 0, roundsLost: Int = 0, roundsDrawn: Int = 0, moves: Int = 0, rejectedMoves: Int = 0, hints: Int = 0,
+             winsAtStart: Int = 0, winsAtEnd: Int = 0, winStreak: Int = 0, counts: [String: Int] = [:], bests: [String: Int] = [:]) {
             self.started = started
             self.roundsWon = roundsWon
             self.roundsLost = roundsLost
@@ -244,6 +275,11 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
             self.moves = moves
             self.rejectedMoves = rejectedMoves
             self.hints = hints
+            self.winsAtStart = winsAtStart
+            self.winsAtEnd = winsAtEnd
+            self.winStreak = winStreak
+            self.counts = counts
+            self.bests = bests
         }
 
         init(from decoder: Decoder) throws {
@@ -255,8 +291,14 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
             moves = try values.decodeIfPresent(Int.self, forKey: .moves) ?? 0
             rejectedMoves = try values.decodeIfPresent(Int.self, forKey: .rejectedMoves) ?? 0
             hints = try values.decodeIfPresent(Int.self, forKey: .hints) ?? 0
+            winsAtStart = try values.decodeIfPresent(Int.self, forKey: .winsAtStart) ?? 0
+            winsAtEnd = try values.decodeIfPresent(Int.self, forKey: .winsAtEnd) ?? 0
+            winStreak = try values.decodeIfPresent(Int.self, forKey: .winStreak) ?? 0
+            counts = try values.decodeIfPresent([String: Int].self, forKey: .counts) ?? [:]
+            bests = try values.decodeIfPresent([String: Int].self, forKey: .bests) ?? [:]
         }
 
+        /// `b` counted after `a`: a run of wins at the end of `a` carries on into `b`'s.
         static func + (a: GameTally, b: GameTally) -> GameTally {
             GameTally(
                 started: a.started + b.started,
@@ -265,7 +307,12 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
                 roundsDrawn: a.roundsDrawn + b.roundsDrawn,
                 moves: a.moves + b.moves,
                 rejectedMoves: a.rejectedMoves + b.rejectedMoves,
-                hints: a.hints + b.hints
+                hints: a.hints + b.hints,
+                winsAtStart: a.winsAtStart == a.rounds ? a.rounds + b.winsAtStart : a.winsAtStart,
+                winsAtEnd: b.winsAtEnd == b.rounds ? b.rounds + a.winsAtEnd : b.winsAtEnd,
+                winStreak: max(a.winStreak, b.winStreak, a.winsAtEnd + b.winsAtStart),
+                counts: a.counts.merging(b.counts, uniquingKeysWith: +),
+                bests: a.bests.merging(b.bests, uniquingKeysWith: max)
             )
         }
     }

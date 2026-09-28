@@ -301,3 +301,23 @@ nonisolated enum OddOneOut: GameRules {
         return text.isEmpty ? nil : text.joined(separator: "\n")
     }
 }
+
+nonisolated extension OddOneOut {
+    /// A game's numbers for Settings › Usage: the model's puzzles and how many you spotted, yours and how many
+    /// fooled it.
+    static func figures(ofRoundEndingIn turns: [ChatSession.Turn]) -> GameFigures {
+        var figures = GameFigures()
+        for turn in turns.since(gameCues) ?? [] {
+            guard let outcome = turn.outcome else { continue }
+            let won = outcome.youWon == true ? 1 : 0
+            if isModels(turn) {
+                figures.add(1, to: .theirPuzzles)
+                figures.add(won, to: .spotted)
+            } else {
+                figures.add(1, to: .yourPuzzles)
+                figures.add(won, to: .fooled)
+            }
+        }
+        return figures
+    }
+}
