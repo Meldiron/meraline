@@ -148,7 +148,7 @@ nonisolated enum WordFootball: GameRules {
 
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let current = turns.since(cues) else {
-            let opening = GameOpening(placeholder: "Kick off with a word, or press Return for a random one…", button: randomButton)
+            let opening = GameOpening(placeholder: "Kick off, or press Return for a random word…", button: randomButton)
             return GameState(phase: .opening(opening), status: title)
         }
         let match = review(current)
@@ -156,7 +156,7 @@ nonisolated enum WordFootball: GameRules {
         if current.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if let ending = match.ending {
             return GameState(
-                phase: .over(outcome: ending, next: GameOpening(placeholder: "Kick off a new match with a word, or press Return for a random one…", button: randomButton)),
+                phase: .over(outcome: ending, next: GameOpening(placeholder: "Kick off again, or press Return for a random word…", button: randomButton)),
                 status: status
             )
         }

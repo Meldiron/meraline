@@ -124,7 +124,7 @@ nonisolated enum AddAWord: GameRules {
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         let sentences = turns.rounds(cues)
         guard let current = sentences.last else {
-            let opening = GameOpening(placeholder: "Type the first word, or press Return for a random one…", button: randomButton)
+            let opening = GameOpening(placeholder: "Type a first word, or press Return for a random one…", button: randomButton)
             return GameState(phase: .opening(opening), status: "Sentence 1")
         }
         let number = sentences.count
@@ -133,7 +133,7 @@ nonisolated enum AddAWord: GameRules {
         let status = "Sentence \(number) · \(count) \(count == 1 ? "word" : "words")"
         if current.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if sentence.isFinished {
-            let next = GameOpening(placeholder: "Type the next sentence’s first word, or press Return for a random one…", button: randomButton)
+            let next = GameOpening(placeholder: "Start a sentence, or press Return for a random word…", button: randomButton)
             guard let score = sentence.score else {
                 return GameState(phase: .over(outcome: GameOutcome(text: "Sentence done. The story carries on in the next one.", youWon: nil), next: next), status: "Sentence \(number) done")
             }

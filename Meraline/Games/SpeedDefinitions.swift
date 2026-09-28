@@ -293,10 +293,10 @@ nonisolated enum SpeedDefinitions: GameRules {
 
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let game = turns.since(gameCues), let last = game.last else {
-            let opening = GameOpening(placeholder: "Type a word for the model to define, or press Return for a random one…", button: randomButton)
+            let opening = GameOpening(placeholder: "Give a word, or press Return for a random one…", button: randomButton)
             return GameState(phase: .opening(opening), status: title)
         }
-        let next = GameOpening(placeholder: "Type a word for a new game, or press Return for a random one…", button: randomButton)
+        let next = GameOpening(placeholder: "Give a new word, or press Return for a random one…", button: randomButton)
         if youGive(game) { return stateOfYourWords(game, last: last, next: next) }
         let rounds = review(game)
         let points = rounds.compactMap(\.grade?.score).reduce(0, +)

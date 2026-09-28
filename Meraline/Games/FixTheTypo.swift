@@ -163,7 +163,7 @@ nonisolated enum FixTheTypo: GameRules {
     /// Between sentences the next one waits for you to choose: type one of yours, or leave it to the model.
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let game = turns.since(gameCues), let last = game.last else {
-            let opening = GameOpening(placeholder: "Type a sentence with one misspelled word, or press Return for a random sentence…", button: randomButton)
+            let opening = GameOpening(placeholder: "Hide a typo, or press Return for a random sentence…", button: randomButton)
             return GameState(phase: .opening(opening), status: title)
         }
         let score = Score(of: game)
@@ -174,10 +174,10 @@ nonisolated enum FixTheTypo: GameRules {
             return GameState(phase: .yourMove(placeholder: "Did the model find it?", choices: [foundIt, missedIt]), status: current)
         }
         if game.count >= roundLimit {
-            let next = GameOpening(placeholder: "Type a sentence with a typo for a new game, or press Return for a random sentence…", button: randomButton)
+            let next = GameOpening(placeholder: "Hide a typo for a new game, or press Return…", button: randomButton)
             return GameState(phase: .over(outcome: score.outcome, next: next), status: score.summary)
         }
-        let next = GameOpening(placeholder: "Type your next sentence with a typo, or press Return for a random one…", button: randomButton)
+        let next = GameOpening(placeholder: "Hide another typo, or press Return for a random one…", button: randomButton)
         return GameState(phase: .opening(next), status: "Sentence \(game.count + 1) of \(roundLimit) · \(score.count)")
     }
 

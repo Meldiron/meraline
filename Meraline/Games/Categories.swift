@@ -164,7 +164,7 @@ nonisolated enum Categories: GameRules {
         let status = round.category.isEmpty ? title : "\(round.category) · \(round.named.count) of \(limit)"
         if current.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         if let ending = round.ending {
-            let next = GameOpening(placeholder: "Name a new category, or press Return for a random one…", button: randomButton)
+            let next = GameOpening(placeholder: "A new category, or press Return for a random one…", button: randomButton)
             return GameState(phase: .over(outcome: ending, next: next), status: status)
         }
         return GameState(phase: .yourMove(placeholder: "Name one for “\(round.category)”…"), status: status)

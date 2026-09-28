@@ -495,7 +495,7 @@ struct GamePlayTests {
 
         session.choose(FixTheTypo.foundIt)
         #expect(session.turns.first?.outcome == GameOutcome(text: "The model found it.", youWon: false))
-        #expect(session.gameState?.opening == GameOpening(placeholder: "Type your next sentence with a typo, or press Return for a random one…", button: FixTheTypo.randomButton), "you choose again for the next sentence")
+        #expect(session.gameState?.opening == GameOpening(placeholder: "Hide another typo, or press Return for a random one…", button: FixTheTypo.randomButton), "you choose again for the next sentence")
         #expect(session.gameState?.status == "Sentence 2 of 5 · Model found 1")
         #expect(model.requests.count == 1)
 

@@ -211,7 +211,7 @@ nonisolated enum RhymeDuel: GameRules {
 
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let duel = turns.since(cues) else {
-            let opening = GameOpening(placeholder: "Write the first line of a story, or press Return for a random one…", button: randomButton)
+            let opening = GameOpening(placeholder: "Write a first line, or press Return for a random one…", button: randomButton)
             return GameState(phase: .opening(opening), status: status(linesPlayed: 0))
         }
         let played = linesPlayed(in: duel)
@@ -219,7 +219,7 @@ nonisolated enum RhymeDuel: GameRules {
         if duel.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         let youSet = youSetRhymes(in: duel)
         if played >= lineLimit {
-            let next = GameOpening(placeholder: "Write the first line of a new duel, or press Return for a random one…", button: randomButton)
+            let next = GameOpening(placeholder: "Start a new duel, or press Return for a random one…", button: randomButton)
             let rating = rating(of: duel)
             return GameState(
                 phase: .over(outcome: GameOutcome(text: ending(youSetRhymes: youSet, rating: rating), youWon: nil), next: next),

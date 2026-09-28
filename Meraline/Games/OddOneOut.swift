@@ -192,7 +192,7 @@ nonisolated enum OddOneOut: GameRules {
 
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let game = turns.since(gameCues), let last = game.last else {
-            let opening = GameOpening(placeholder: "Set three words, one that doesn’t belong, or press Return for a random puzzle…", button: randomButton)
+            let opening = GameOpening(placeholder: "Set a puzzle, or press Return for a random one…", button: randomButton)
             return GameState(phase: .opening(opening), status: title)
         }
         let score = score(of: game)
@@ -217,7 +217,7 @@ nonisolated enum OddOneOut: GameRules {
                 outcome = GameOutcome(text: "Game done: a draw, \(score.you) all.", youWon: nil)
             }
             return GameState(
-                phase: .over(outcome: outcome, next: GameOpening(placeholder: "Set three words for a new game, or press Return for a random puzzle…", button: randomButton)),
+                phase: .over(outcome: outcome, next: GameOpening(placeholder: "Set a new puzzle, or press Return for a random one…", button: randomButton)),
                 status: "Game done · \(tally)"
             )
         }
