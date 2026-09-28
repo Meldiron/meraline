@@ -71,8 +71,9 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
     /// The most turns a chat has had, and the most words an answer has.
     var longestChat = 0
     var longestAnswer = 0
-    /// Seconds spent waiting for answers, from a question's sending to its answer's end.
+    /// Seconds spent waiting for answers, from a question's sending to its answer's end, and how many waits.
     var secondsWaited = 0.0
+    var waits = 0
     /// Questions by `Provider.rawValue`.
     var providers: [String: Int] = [:]
     /// Tokens and cost by model, keyed as `ModelTally.key(provider:model:)`.
@@ -122,6 +123,8 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
         var cost = 0.0
         /// Answers whose cost the provider reported.
         var costedAnswers = 0
+        /// Answers costed from their tokens at the prices known when they came.
+        var pricedAnswers = 0
         var unpriced = Tokens()
 
         struct Tokens: Codable, Equatable, Sendable {
@@ -130,9 +133,34 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
             var cacheRead = 0
             var cacheWrite = 0
 
+            var isEmpty: Bool { self == Tokens() }
+
             static func + (a: Tokens, b: Tokens) -> Tokens {
                 Tokens(input: a.input + b.input, output: a.output + b.output, cacheRead: a.cacheRead + b.cacheRead, cacheWrite: a.cacheWrite + b.cacheWrite)
             }
+
+            init(input: Int = 0, output: Int = 0, cacheRead: Int = 0, cacheWrite: Int = 0) {
+                self.input = input
+                self.output = output
+                self.cacheRead = cacheRead
+                self.cacheWrite = cacheWrite
+            }
+
+            init(from decoder: Decoder) throws {
+                let values = try decoder.container(keyedBy: CodingKeys.self)
+                input = try values.decodeIfPresent(Int.self, forKey: .input) ?? 0
+                output = try values.decodeIfPresent(Int.self, forKey: .output) ?? 0
+                cacheRead = try values.decodeIfPresent(Int.self, forKey: .cacheRead) ?? 0
+                cacheWrite = try values.decodeIfPresent(Int.self, forKey: .cacheWrite) ?? 0
+            }
+        }
+
+        /// Answers priced by nobody yet: neither the provider nor the table known when they came.
+        var unpricedAnswers: Int { answers - costedAnswers - pricedAnswers }
+
+        /// What the answers cost, with what `price` says for the tokens no one has priced.
+        func cost(pricedAt price: ModelPrice?) -> Double {
+            cost + (price.map { $0.cost(of: unpriced) } ?? 0)
         }
 
         static func + (a: ModelTally, b: ModelTally) -> ModelTally {
@@ -145,8 +173,37 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
                 cacheWrite: a.cacheWrite + b.cacheWrite,
                 cost: a.cost + b.cost,
                 costedAnswers: a.costedAnswers + b.costedAnswers,
+                pricedAnswers: a.pricedAnswers + b.pricedAnswers,
                 unpriced: a.unpriced + b.unpriced
             )
+        }
+
+        init(answers: Int = 0, reportedAnswers: Int = 0, input: Int = 0, output: Int = 0, cacheRead: Int = 0, cacheWrite: Int = 0, cost: Double = 0, costedAnswers: Int = 0, pricedAnswers: Int = 0, unpriced: Tokens = Tokens()) {
+            self.answers = answers
+            self.reportedAnswers = reportedAnswers
+            self.input = input
+            self.output = output
+            self.cacheRead = cacheRead
+            self.cacheWrite = cacheWrite
+            self.cost = cost
+            self.costedAnswers = costedAnswers
+            self.pricedAnswers = pricedAnswers
+            self.unpriced = unpriced
+        }
+
+        /// A field a later version adds reads as zero from an older file.
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            answers = try values.decodeIfPresent(Int.self, forKey: .answers) ?? 0
+            reportedAnswers = try values.decodeIfPresent(Int.self, forKey: .reportedAnswers) ?? 0
+            input = try values.decodeIfPresent(Int.self, forKey: .input) ?? 0
+            output = try values.decodeIfPresent(Int.self, forKey: .output) ?? 0
+            cacheRead = try values.decodeIfPresent(Int.self, forKey: .cacheRead) ?? 0
+            cacheWrite = try values.decodeIfPresent(Int.self, forKey: .cacheWrite) ?? 0
+            cost = try values.decodeIfPresent(Double.self, forKey: .cost) ?? 0
+            costedAnswers = try values.decodeIfPresent(Int.self, forKey: .costedAnswers) ?? 0
+            pricedAnswers = try values.decodeIfPresent(Int.self, forKey: .pricedAnswers) ?? 0
+            unpriced = try values.decodeIfPresent(Tokens.self, forKey: .unpriced) ?? Tokens()
         }
 
         /// How a model is keyed: the provider and the model's name, or the provider alone for an agent that
@@ -179,6 +236,27 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
 
         var rounds: Int { roundsWon + roundsLost + roundsDrawn }
 
+        init(started: Int = 0, roundsWon: Int = 0, roundsLost: Int = 0, roundsDrawn: Int = 0, moves: Int = 0, rejectedMoves: Int = 0, hints: Int = 0) {
+            self.started = started
+            self.roundsWon = roundsWon
+            self.roundsLost = roundsLost
+            self.roundsDrawn = roundsDrawn
+            self.moves = moves
+            self.rejectedMoves = rejectedMoves
+            self.hints = hints
+        }
+
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            started = try values.decodeIfPresent(Int.self, forKey: .started) ?? 0
+            roundsWon = try values.decodeIfPresent(Int.self, forKey: .roundsWon) ?? 0
+            roundsLost = try values.decodeIfPresent(Int.self, forKey: .roundsLost) ?? 0
+            roundsDrawn = try values.decodeIfPresent(Int.self, forKey: .roundsDrawn) ?? 0
+            moves = try values.decodeIfPresent(Int.self, forKey: .moves) ?? 0
+            rejectedMoves = try values.decodeIfPresent(Int.self, forKey: .rejectedMoves) ?? 0
+            hints = try values.decodeIfPresent(Int.self, forKey: .hints) ?? 0
+        }
+
         static func + (a: GameTally, b: GameTally) -> GameTally {
             GameTally(
                 started: a.started + b.started,
@@ -206,6 +284,7 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
         sum.longestChat = max(a.longestChat, b.longestChat)
         sum.longestAnswer = max(a.longestAnswer, b.longestAnswer)
         sum.secondsWaited = a.secondsWaited + b.secondsWaited
+        sum.waits = a.waits + b.waits
         sum.providers = a.providers.merging(b.providers, uniquingKeysWith: +)
         sum.models = a.models.merging(b.models, uniquingKeysWith: +)
         sum.images = a.images + b.images
@@ -228,8 +307,9 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
         return sum
     }
 
-    /// Counts an answer's tokens and cost under its model, as the provider reported them or as estimated.
-    mutating func count(answer usage: TokenUsage, reported: Bool, for key: String) {
+    /// Counts an answer's tokens and cost under its model, as the provider reported them or as estimated: the
+    /// provider's cost when it gave one, else the tokens at `price`, else the tokens wait unpriced.
+    mutating func count(answer usage: TokenUsage, reported: Bool, for key: String, price: ModelPrice? = nil) {
         var model = models[key] ?? ModelTally()
         model.answers += 1
         if reported { model.reportedAnswers += 1 }
@@ -241,14 +321,66 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
         if let cost = usage.cost {
             model.cost += cost
             model.costedAnswers += 1
+        } else if let price {
+            model.cost += price.cost(of: tokens)
+            model.pricedAnswers += 1
         } else {
             model.unpriced = model.unpriced + tokens
         }
         models[key] = model
     }
 
+    /// What every model's answers cost, with `price` for the tokens no one has priced, and how many answers
+    /// still have no price at all.
+    func cost(pricedBy price: (String) -> ModelPrice?) -> (total: Double, unpricedAnswers: Int) {
+        models.reduce((0.0, 0)) { sum, entry in
+            let price = price(entry.key)
+            return (sum.0 + entry.value.cost(pricedAt: price), sum.1 + (price == nil ? entry.value.unpricedAnswers : 0))
+        }
+    }
+
     /// Whether anything at all was counted.
     var isEmpty: Bool { self == UsageTally() }
+
+    /// A field a later version adds reads as zero from an older file, so the ledger outlives its versions.
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        func int(_ key: CodingKeys) throws -> Int { try values.decodeIfPresent(Int.self, forKey: key) ?? 0 }
+        questions = try int(.questions)
+        chats = try int(.chats)
+        answers = try int(.answers)
+        failures = try int(.failures)
+        stops = try int(.stops)
+        askAgains = try int(.askAgains)
+        rewrites = try values.decodeIfPresent([String: Int].self, forKey: .rewrites) ?? [:]
+        wordsAsked = try int(.wordsAsked)
+        wordsRead = try int(.wordsRead)
+        longestChat = try int(.longestChat)
+        longestAnswer = try int(.longestAnswer)
+        secondsWaited = try values.decodeIfPresent(Double.self, forKey: .secondsWaited) ?? 0
+        waits = try int(.waits)
+        providers = try values.decodeIfPresent([String: Int].self, forKey: .providers) ?? [:]
+        models = try values.decodeIfPresent([String: ModelTally].self, forKey: .models) ?? [:]
+        images = try int(.images)
+        screenshots = try int(.screenshots)
+        files = try int(.files)
+        folders = try int(.folders)
+        selections = try int(.selections)
+        clipboards = try int(.clipboards)
+        agentRuns = try int(.agentRuns)
+        toolUses = try int(.toolUses)
+        mcpUses = try int(.mcpUses)
+        asksAllowed = try int(.asksAllowed)
+        asksDenied = try int(.asksDenied)
+        questionsAnswered = try int(.questionsAnswered)
+        filesHandedOver = try int(.filesHandedOver)
+        games = try values.decodeIfPresent([String: GameTally].self, forKey: .games) ?? [:]
+        answersCopied = try int(.answersCopied)
+        answersInserted = try int(.answersInserted)
+        answersTornOff = try int(.answersTornOff)
+    }
+
+    init() {}
 
     /// Every model's tokens together.
     var inputTokens: Int { models.values.reduce(0) { $0 + $1.input + $1.cacheRead + $1.cacheWrite } }

@@ -502,7 +502,9 @@ final class ChatSession {
     /// the old answer's tools and asks, so `tools` is false for it; a game's move counts only what it took.
     private func count(_ end: AnswerEnd, of turn: Turn, tools: Bool = true, inGame: Bool = false, now: Date = .now) {
         let provider = turn.provider ?? preferences.activeProvider ?? .custom
-        let key = UsageTally.ModelTally.key(provider: provider, model: turn.usage?.model ?? preferences[provider].model)
+        let model = turn.usage?.model ?? preferences[provider].model
+        let key = UsageTally.ModelTally.key(provider: provider, model: model)
+        let price = usage.price(for: provider, model: model)
         let turnCount = turns.count
         usage.record(at: now) { tally in
             switch end {
@@ -515,13 +517,14 @@ final class ChatSession {
                 if !inGame { tally.answers += 1 }
             }
             tally.secondsWaited += max(0, now.timeIntervalSince(turn.sentAt))
+            tally.waits += 1
             let reported = turn.usage?.hasTokens == true
             var took = turn.usage ?? TokenUsage()
             if !reported {
                 took.input = turn.estimatedInput
                 took.output = UsageTally.estimatedTokens(in: turn.answer)
             }
-            tally.count(answer: took, reported: reported, for: key)
+            tally.count(answer: took, reported: reported, for: key, price: price)
             guard !inGame else { return }
             let words = UsageTally.words(in: turn.answer)
             tally.wordsRead += words

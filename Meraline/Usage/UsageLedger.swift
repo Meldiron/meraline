@@ -101,6 +101,11 @@ final class UsageLedger {
     private(set) var slots: [Int: UsageTally] = [:]
     /// When the ledger was last written, for Settings to say.
     private(set) var savedAt: Date?
+    /// OpenRouter's prices, as last fetched (see `PriceTable`), for costing answers whose provider names no cost.
+    private(set) var prices: PriceTable?
+    private(set) var isFetchingPrices = false
+    /// Why the last fetch of prices failed, until one succeeds.
+    private(set) var pricesFailure: String?
 
     @ObservationIgnored private let file: URL?
     @ObservationIgnored private var pendingSave: Task<Void, Never>?
@@ -113,7 +118,8 @@ final class UsageLedger {
             let stored = try JSONDecoder().decode(StoredLedger.self, from: data)
             slots = Dictionary(uniqueKeysWithValues: stored.slots.compactMap { key, tally in Int(key).map { ($0, tally) } })
             savedAt = stored.savedAt
-            Log.usage.info("Usage ledger read: \(self.slots.count) slots")
+            prices = stored.prices
+            Log.usage.info("Usage ledger read: \(self.slots.count) slots, \(stored.prices?.prices.count ?? 0) prices")
         } catch {
             Log.usage.error("Couldn’t read the usage ledger: \(error.localizedDescription)")
         }
@@ -227,7 +233,35 @@ final class UsageLedger {
         return counts.max { $0.value < $1.value || ($0.value == $1.value && $0.key > $1.key) }?.key
     }
 
-    /// Forgets everything and deletes the file.
+    /// The price of `model` at `provider`, as the table has it; a model on this Mac is free, table or none.
+    func price(for provider: Provider, model: String) -> ModelPrice? {
+        prices?.price(for: provider, model: model) ?? ((provider.isOnDevice || provider == .ollama) ? .free : nil)
+    }
+
+    /// The price of the model a tally is keyed by.
+    func price(forKey key: String) -> ModelPrice? {
+        guard let provider = UsageTally.ModelTally.provider(of: key) else { return nil }
+        return price(for: provider, model: UsageTally.ModelTally.model(of: key))
+    }
+
+    /// Fetches OpenRouter's prices when the table is missing or a day old, or when `force`d, and keeps them.
+    func refreshPrices(force: Bool = false, fetch: () async throws -> PriceTable = { try await PriceTable.fetch() }) async {
+        guard force || prices == nil || prices?.isStale == true, !isFetchingPrices else { return }
+        isFetchingPrices = true
+        defer { isFetchingPrices = false }
+        do {
+            let table = try await fetch()
+            prices = table
+            pricesFailure = nil
+            Log.usage.info("Prices fetched for \(table.prices.count) models")
+            scheduleSave()
+        } catch {
+            pricesFailure = error.localizedDescription
+            Log.usage.error("Couldn’t fetch prices: \(error.localizedDescription)")
+        }
+    }
+
+    /// Forgets everything and deletes the file. The prices stay, as they are nobody's usage.
     func clear() {
         slots = [:]
         savedAt = nil
@@ -252,7 +286,7 @@ final class UsageLedger {
     /// Writes the ledger now.
     func save() async {
         guard let file else { return }
-        let stored = StoredLedger(slots: Dictionary(uniqueKeysWithValues: slots.map { (String($0.key), $0.value) }), savedAt: .now)
+        let stored = StoredLedger(slots: Dictionary(uniqueKeysWithValues: slots.map { (String($0.key), $0.value) }), savedAt: .now, prices: prices)
         do {
             let data = try JSONEncoder().encode(stored)
             try await Task.detached(priority: .utility) {
@@ -270,5 +304,6 @@ final class UsageLedger {
         var version = 1
         var slots: [String: UsageTally]
         var savedAt: Date
+        var prices: PriceTable?
     }
 }

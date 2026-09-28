@@ -190,6 +190,7 @@ struct UsageCountingTests {
         let key = "custom/games"
         let counted = try #require(tally.models[key])
         #expect(counted.answers == 1 && counted.reportedAnswers == 0, "the scripted model reports no tokens, so they are estimated")
+        #expect(counted.unpricedAnswers == 1, "and no table prices them yet")
         #expect(counted.input > 0, "the prompt and the question, at four characters a token")
         #expect(counted.output == 5, "“Hello there, friend” is 19 characters")
         #expect(counted.unpriced.output == 5 && counted.cost == 0)
