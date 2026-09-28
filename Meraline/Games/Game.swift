@@ -175,6 +175,8 @@ nonisolated struct GameLine: Identifiable, Equatable, Sendable {
     enum Kind: Equatable, Sendable {
         case heading
         case verse
+        /// Letters in bubbles, one piece each, which you can shuffle while `shuffles`.
+        case tiles(shuffles: Bool)
         case verdict(youWon: Bool?)
         case note
     }
@@ -213,6 +215,9 @@ nonisolated struct GameLines {
     mutating func you(_ text: String) { add(.verse, [.init(text: text, voice: .you)]) }
     mutating func model(_ text: String) { add(.verse, [.init(text: text, voice: .model)]) }
     mutating func verse(_ pieces: [GameLine.Piece]) { add(.verse, pieces) }
+    mutating func tiles(_ letters: [String], shuffles: Bool) {
+        add(.tiles(shuffles: shuffles), Self.chain(letters.map { ($0, .model) }, separator: " "))
+    }
     mutating func verdict(_ outcome: GameOutcome) { add(.verdict(youWon: outcome.youWon), [.init(text: outcome.text, voice: .plain)]) }
 
     /// Words in a row with `separator` between them. A word in `marked` is underlined.

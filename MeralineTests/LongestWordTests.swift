@@ -154,6 +154,19 @@ struct LongestWordSessionTests {
         #expect(LongestWord.lines(for: session.turns).map(\.text).contains("Round 2"))
     }
 
+    @Test func theLettersShuffleOnlyUntilYourWordIsIn() async throws {
+        let session = Support.session(ScriptedModel(["DRAPE"]))
+        session.dice = GameDice(seed: 2)
+        session.startGame(.longestWord)
+        let letters = try #require(LongestWord.letters(of: session.turns))
+        #expect(LongestWord.lines(for: session.turns)[1].kind == .tiles(shuffles: true), "you can shuffle while the model picks")
+        #expect(LongestWord.lines(for: session.turns)[1].pieces.filter { $0.voice == .model }.map(\.text) == letters.map { $0.uppercased() })
+
+        await Support.settle(session)
+        await Support.play(try #require(WordCheck.longestWords(from: letters).first), in: session)
+        #expect(LongestWord.lines(for: session.turns)[1].kind == .tiles(shuffles: false), "the round is over")
+    }
+
     @Test func aModelThatFailsToPickIsAskedAgain() async {
         let session = Support.session(ScriptedModel())
         session.startGame(.longestWord)

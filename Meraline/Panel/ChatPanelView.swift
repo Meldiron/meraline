@@ -874,6 +874,9 @@ private struct GameLineView: View {
                 .lineSpacing(3)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
+        case .tiles(let shuffles):
+            LetterTiles(letters: line.pieces.filter { $0.voice != .plain }.map(\.text), shuffles: shuffles)
+                .padding(.vertical, 2)
         case .verdict(let youWon):
             Label {
                 Text(line.text)

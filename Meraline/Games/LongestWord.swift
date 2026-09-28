@@ -291,8 +291,9 @@ nonisolated enum LongestWord: GameRules {
         for (number, round) in turns.rounds(cues).enumerated() {
             guard let letters = letters(of: round) else { continue }
             lines.heading("Round \(number + 1)")
-            lines.verse([.init(text: spaced(letters), voice: .model)])
-            guard let yours = round.dropFirst().first, let outcome = yours.outcome else {
+            let yours = round.dropFirst().first
+            lines.tiles(letters.map { $0.uppercased() }, shuffles: yours?.outcome == nil)
+            guard let yours, let outcome = yours.outcome else {
                 if round.first?.reply != nil { lines.note("The model has picked its word.") }
                 continue
             }
