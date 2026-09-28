@@ -51,6 +51,8 @@ struct AutomationRouteTests {
         #expect(AutomationRoute(url: URL(string: "meraline://play?game=oddOneOut")!) == .play(game: .oddOneOut))
         #expect(AutomationRoute(url: URL(string: "meraline://play?game=rhyme-duel")!) == .play(game: .rhymeDuel))
         #expect(AutomationRoute(url: URL(string: "meraline://play?game=Fix%20the%20Typo")!) == .play(game: .fixTheTypo))
+        #expect(AutomationRoute(url: URL(string: "meraline://play?game=letterAuction")!) == .play(game: .longestWord), "a link to the game it replaced")
+        #expect(AutomationRoute(url: URL(string: "meraline://play?game=longest-word")!) == .play(game: .longestWord))
         #expect(AutomationRoute(url: URL(string: "meraline://play")!) == .play(game: nil))
         #expect(AutomationRoute(url: URL(string: "meraline://play?game=chess")!) == .play(game: nil))
     }

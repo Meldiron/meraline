@@ -98,15 +98,19 @@ struct GameLanguageTests {
         #expect(SpeedDefinitions.Difficulty(of: turn) != nil, "the heading still says how hard")
     }
 
-    @Test func letterAuctionSpendsAccentedLettersAsPlainOnes() {
-        #expect(LetterAuction.cleanWord("Kůň") == "kun")
-        #expect(LetterAuction.deal(from: "Č A R O D Ě J N I K Ů S T E L | čaroděj")?.letters.map(String.init).joined() == "carodejnikustel")
-        #expect(LetterAuction.systemPrompt.contains("a letter with an accent is spent as the same letter without it"))
+    @Test func longestWordSpendsAccentedLettersAsPlainOnesAndChecksTheRoundsLanguage() {
+        #expect(LongestWord.spelled("Kůň") == "kun")
+        #expect(LongestWord.spending(LongestWord.spelled("Kůň"), from: Array("kunabcdef")) != nil)
+        #expect(LongestWord.systemPrompt.contains("A letter with an accent counts as the same letter without it"))
+        let round = LongestWordRulesTests.round("kunabcdef", model: "KŮŇ", in: .czech)
+        #expect(LongestWord.language(of: round) == .czech)
+        #expect(LongestWord.hints(for: Array("kunabcdef"), in: .czech).isEmpty)
+        #expect(WordCheck.isWord("parked", in: .czech) != true || WordCheck.spellChecker(for: .czech) == nil, "a Czech round asks the Czech dictionary")
     }
 
     @Test func aGameInAnotherLanguageReadsEnglishInItsRulesAsThatLanguage() throws {
-        let line = try #require(AnswerLanguage.slovak.instruction(for: .game(.letterAuction)))
+        let line = try #require(AnswerLanguage.slovak.instruction(for: .game(.longestWord)))
         #expect(line.contains("where the rules above say English, read Slovak"))
-        #expect(AnswerLanguage.english.instruction(for: .game(.letterAuction)) == nil)
+        #expect(AnswerLanguage.english.instruction(for: .game(.longestWord)) == nil)
     }
 }

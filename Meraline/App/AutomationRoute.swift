@@ -85,14 +85,22 @@ nonisolated enum AutomationRoute: Equatable, Sendable {
 
 nonisolated extension Game {
     /// A game by the name `meraline://play?game=` uses: its id, such as oddOneOut, or its title, such as
-    /// Odd One Out or odd-one-out. Case, spaces, and punctuation don't matter.
+    /// Odd One Out or odd-one-out. Case, spaces, and punctuation don't matter. A game's old name finds the game
+    /// that took its place, so a link made for Letter Auction starts Longest Word.
     init?(named name: String) {
         func key(_ name: String) -> String {
             String(name.lowercased().unicodeScalars.filter(CharacterSet.alphanumerics.contains).map(Character.init))
         }
         let wanted = key(name)
+        if let game = Self.formerNames[wanted] {
+            self = game
+            return
+        }
         guard !wanted.isEmpty,
               let game = Game.allCases.first(where: { key($0.rawValue) == wanted || key($0.title) == wanted }) else { return nil }
         self = game
     }
+
+    /// Games that were once called something else, by the old name's key.
+    private static let formerNames: [String: Game] = ["letterauction": .longestWord]
 }

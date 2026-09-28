@@ -12,7 +12,7 @@ nonisolated enum Game: String, CaseIterable, Identifiable, Sendable {
     case oddOneOut
     case fixTheTypo
     case speedDefinitions
-    case letterAuction
+    case longestWord
 
     var id: Self { self }
 
@@ -25,7 +25,7 @@ nonisolated enum Game: String, CaseIterable, Identifiable, Sendable {
         case .oddOneOut: OddOneOut.self
         case .fixTheTypo: FixTheTypo.self
         case .speedDefinitions: SpeedDefinitions.self
-        case .letterAuction: LetterAuction.self
+        case .longestWord: LongestWord.self
         }
     }
 

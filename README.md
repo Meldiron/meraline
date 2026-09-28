@@ -48,7 +48,7 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
 
 🖼️ **Understands images and files.** Paste a screenshot or drop an image into the window and ask about it, or use the two buttons above the window: one adds whatever you copied, the other a screenshot of your screen without Meraline in it. Agents take PDFs, spreadsheets, and any other file too, and whole folders: drop a project and ask about it, and the agent works on a copy of it, never on your own. When an agent makes a file for you, it hands it over: the file shows under the answer, ready to open in its app, show in Finder, copy, save to Downloads, or drag anywhere.
 
-🎲 **Plays word games.** The controller under the input opens eight quick games against the model: Rhyme Duel, Add-a-Word, Categories, Word Football, Odd One Out, Fix the Typo, Speed Definitions, and Letter Auction. Open a round yourself or leave it to the model or the dice, a move that breaks the rules comes back to you instead of costing a turn, and <kbd>Esc</kbd> forgets the game like any other chat. When a round ends, Play Again and your tally against the model stay close at hand until you quit.
+🎲 **Plays word games.** The controller under the input opens eight quick games against the model: Rhyme Duel, Add-a-Word, Categories, Word Football, Odd One Out, Fix the Typo, Speed Definitions, and Longest Word. Open a round yourself or leave it to the model or the dice, a move that breaks the rules comes back to you instead of costing a turn, and <kbd>Esc</kbd> forgets the game like any other chat. When a round ends, Play Again and your tally against the model stay close at hand until you quit.
 
 🍎 **Works out of the box.** On a Mac with Apple Intelligence, the on-device model built into macOS answers the moment you install. No key, no account, and nothing leaves your Mac.
 
@@ -230,7 +230,7 @@ Other apps and scripts can open Meraline through the `meraline://` URL scheme, w
 | `meraline://ask?agent=1` | Asks an agent; `agent=0` asks an LLM. Works with everything above |
 | `meraline://new` | Starts a new chat and opens the window |
 | `meraline://play` | Opens the window with the games showing |
-| `meraline://play?game=oddOneOut` | Starts a game: `rhymeDuel`, `addAWord`, `categories`, `wordFootball`, `oddOneOut`, `fixTheTypo`, `speedDefinitions`, or `letterAuction`. Its title works too, as in `odd-one-out` |
+| `meraline://play?game=oddOneOut` | Starts a game: `rhymeDuel`, `addAWord`, `categories`, `wordFootball`, `oddOneOut`, `fixTheTypo`, `speedDefinitions`, or `longestWord`. Its title works too, as in `odd-one-out` |
 | `meraline://mode?agent=1` | Switches to Agent and opens the window; `agent=0` switches to LLM, and `meraline://mode` alone to the other mode |
 | `meraline://settings` | Opens Settings |
 | `meraline://settings?pane=claudeCode` | Opens Settings on a page: `general`, `prompt`, `updates`, `about`, or a provider such as `anthropic`, `apple`, or `codex` |
