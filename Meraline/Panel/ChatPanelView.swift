@@ -43,7 +43,7 @@ struct ChatPanelView: View {
     @State private var actionPanelSpan: ActionPanelSpan?
     @State private var roomAbove: CGFloat = 0
 
-    /// A game shows its transcript and footer from the start, with the button that lets the other side open.
+    /// A game has its footer from the start; its transcript waits for the first move.
     private var hasConversation: Bool { !session.turns.isEmpty || session.isPlaying }
     private var context: PanelContext {
         PanelContext(session: session, preferences: preferences, layout: layout, openSettings: openSettings, insertion: inserter?.insertion)
@@ -98,7 +98,7 @@ struct ChatPanelView: View {
                         .padding(.bottom, 12)
                         .transition(.opacity)
                 }
-                if hasConversation {
+                if !session.turns.isEmpty {
                     Divider().padding(.horizontal, 18)
                     conversation
                 }
@@ -119,8 +119,8 @@ struct ChatPanelView: View {
                         .padding(.bottom, 12)
                 } else if let rematch = session.rematch, !rematch.isAfterGame {
                     rematchTray(rematch)
-                } else if let nudge = session.nudge {
-                    NudgeRow(message: nudge, symbol: session.game?.symbol ?? "sparkle")
+                } else if let nudge = nudgeMessage {
+                    NudgeRow(message: nudge, symbol: session.game?.symbol ?? "sparkle", button: openingButton)
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
                 } else if showsSelectionHint {
@@ -236,6 +236,21 @@ struct ChatPanelView: View {
         } else {
             onClose()
             updater.checkForUpdates()
+        }
+    }
+
+    /// The card under the input: a game's nudge, or its invitation while a round waits to be opened.
+    private var nudgeMessage: String? {
+        session.nudge ?? (session.gameState?.isOpening == true ? session.game?.rules.invitation : nil)
+    }
+
+    /// The other side's opening of a round that waits for one, on the invitation card: Random Rhyme, Random
+    /// Word, Random Category. The same as Return with nothing typed.
+    private var openingButton: NudgeRow.Button? {
+        guard !session.isStreaming, let opening = session.gameState?.opening else { return nil }
+        return NudgeRow.Button(title: opening.button) {
+            session.choose(opening.button)
+            isInputFocused = true
         }
     }
 
@@ -356,7 +371,7 @@ struct ChatPanelView: View {
             if let game = session.game, let state = session.gameState {
                 Label(state.status, systemImage: game.symbol)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(session.isYourMove || state.isOpening ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             } else if let provider = preferences.activeProvider {
                 Label(preferences[provider].model.isEmpty ? provider.name : preferences[provider].model, systemImage: provider.symbol)
@@ -905,8 +920,15 @@ private struct GameLineView: View {
 /// A line from a game: its invitation, why a move came back, or that the round is over. Nothing went
 /// wrong, so it is plain glass rather than the orange of `FailureRow`.
 private struct NudgeRow: View {
+    /// A button at the card's right, such as a game's Random Word.
+    struct Button {
+        let title: String
+        let action: () -> Void
+    }
+
     let message: String
     let symbol: String
+    var button: Button?
 
     var body: some View {
         HStack(spacing: 10) {
@@ -916,6 +938,11 @@ private struct NudgeRow: View {
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
+            if let button {
+                SwiftUI.Button(button.title, action: button.action)
+                    .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
+                    .help("\(button.title), or press Return with nothing typed")
+            }
         }
         .padding(12)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))

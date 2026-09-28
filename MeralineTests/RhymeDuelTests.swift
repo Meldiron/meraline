@@ -224,11 +224,11 @@ struct RhymeDuelSessionTests {
         #expect(!session.isStreaming, "nobody has opened yet")
         #expect(model.requests.isEmpty)
         #expect(session.gameState?.isOpening == true)
-        #expect(session.gameState?.choices == [RhymeDuel.modelStarts])
+        #expect(session.gameState?.opening?.button == RhymeDuel.randomButton)
         #expect(session.canSend, "Return with nothing typed lets the model open")
         #expect(session.nudge == RhymeDuel.invitation)
 
-        session.choose(RhymeDuel.modelStarts)
+        session.choose(RhymeDuel.randomButton)
         #expect(session.isStreaming)
         #expect(session.turns.first?.cue == RhymeDuel.opening)
         #expect(model.requests.first?.systemPrompt == RhymeDuel.systemPrompt)

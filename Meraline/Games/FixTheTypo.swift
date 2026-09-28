@@ -19,7 +19,7 @@ nonisolated enum FixTheTypo: GameRules {
     static let yourGame = "The user writes the sentences this game, each with one misspelled word for you to find. Here is the first."
     private static let gameCues: Set<String> = [opening, newGame, yourGame]
 
-    static let modelsSentence = "Model’s Sentence"
+    static let randomButton = "Random Sentence"
     static let foundIt = "It found it"
     static let missedIt = "It missed"
     /// What the model writes when it finds nothing misspelled.
@@ -100,10 +100,10 @@ nonisolated enum FixTheTypo: GameRules {
 
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let game = turns.since(gameCues), let last = game.last else {
-            let opening = GameOpening(placeholder: "Type a sentence with one misspelled word, or press Return for the model’s…", button: modelsSentence)
+            let opening = GameOpening(placeholder: "Type a sentence with one misspelled word, or press Return for a random sentence…", button: randomButton)
             return GameState(phase: .opening(opening), status: title)
         }
-        let next = GameOpening(placeholder: "Type a sentence with a typo for a new game, or press Return for the model’s…", button: modelsSentence)
+        let next = GameOpening(placeholder: "Type a sentence with a typo for a new game, or press Return for a random sentence…", button: randomButton)
         return youWrite(game) ? stateOfYourSentences(game, last: last, next: next) : stateOfTheModels(game, last: last, next: next)
     }
 

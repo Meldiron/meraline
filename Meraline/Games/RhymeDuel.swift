@@ -48,7 +48,7 @@ nonisolated enum RhymeDuel: GameRules {
     static let invitation = "Write the first line of a story, or let the model start. Whoever starts sets each rhyme and the other answers it; four lines each. Stuck? Hint shows a rhyme."
     static let done = "Duel done, and the last word was yours."
     static let doneByModel = "Duel done, and the model had the last word."
-    static let modelStarts = "Model Starts"
+    static let randomButton = "Random Rhyme"
     /// The nudge when the model's reply has no line in it: the opening is asked for again, your line comes back.
     static let noOpening = "The model had no line to open with. Press Return to ask again."
     static let lostTheThread = "The model lost the thread. Press Return to send your line again."
@@ -168,7 +168,7 @@ nonisolated enum RhymeDuel: GameRules {
 
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let duel = turns.since(cues) else {
-            let opening = GameOpening(placeholder: "Write the first line of a story, or press Return for the model’s…", button: modelStarts)
+            let opening = GameOpening(placeholder: "Write the first line of a story, or press Return for a random one…", button: randomButton)
             return GameState(phase: .opening(opening), status: status(linesPlayed: 0))
         }
         let played = linesPlayed(in: duel)
@@ -176,7 +176,7 @@ nonisolated enum RhymeDuel: GameRules {
         if duel.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
         let youSet = youSetRhymes(in: duel)
         if played >= lineLimit {
-            let next = GameOpening(placeholder: "Write the first line of a new duel, or press Return for the model’s…", button: modelStarts)
+            let next = GameOpening(placeholder: "Write the first line of a new duel, or press Return for a random one…", button: randomButton)
             return GameState(phase: .over(outcome: GameOutcome(text: youSet ? doneByModel : done, youWon: nil), next: next), status: status)
         }
         if youSet { return GameState(phase: .yourMove(placeholder: "Carry the story on, ending on a new sound…"), status: status) }

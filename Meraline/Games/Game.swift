@@ -108,18 +108,17 @@ nonisolated struct GameState: Equatable, Sendable {
         if case .yourMove = phase { true } else { false }
     }
 
-    /// Whether the round waits for someone to open it.
-    var isOpening: Bool {
-        if case .opening = phase { true } else { false }
+    /// How the round waits to be opened, while it does. Its button sits in the invitation card.
+    var opening: GameOpening? {
+        if case .opening(let opening) = phase { opening } else { nil }
     }
 
-    /// The buttons under the transcript: your move's choices, or the other side's opening.
+    /// Whether the round waits for someone to open it.
+    var isOpening: Bool { opening != nil }
+
+    /// Your move's choices, shown as buttons under the transcript that play themselves.
     var choices: [String] {
-        switch phase {
-        case .yourMove(_, let choices, _): choices
-        case .opening(let opening): [opening.button]
-        default: []
-        }
+        if case .yourMove(_, let choices, _) = phase { choices } else { [] }
     }
 
     var hints: [String] {
@@ -128,11 +127,11 @@ nonisolated struct GameState: Equatable, Sendable {
 }
 
 /// How a round opens: with what you type, when `takesYourMove`, or from the other side, when Return finds
-/// nothing typed or `button` is pressed (`GameRules.opener(after:dice:)`).
+/// nothing typed or `button`, in the invitation card, is pressed (`GameRules.opener(after:in:dice:)`).
 nonisolated struct GameOpening: Equatable, Sendable {
     /// The input's placeholder, which says both ways.
     let placeholder: String
-    /// The other side's opening, such as “Model Starts” or “Random Word”.
+    /// The other side's opening, always a random one: “Random Rhyme”, “Random Word”, “Random Category”.
     let button: String
     var takesYourMove = true
 }

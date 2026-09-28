@@ -119,7 +119,7 @@ struct SpeedDefinitionsTests {
         ])
         let session = Support.session(model)
         session.startGame(.speedDefinitions)
-        #expect(session.gameState?.choices == [SpeedDefinitions.randomButton])
+        #expect(session.gameState?.opening?.button == SpeedDefinitions.randomButton)
         session.send()
         await Support.settle(session)
         #expect(model.requests.first?.systemPrompt == SpeedDefinitions.systemPrompt)

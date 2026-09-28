@@ -6,6 +6,10 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ## Unreleased
 
+### Ask
+
+- **Quoted text opens in full.** The text a question went with, quoted above it, now says how many words it is, and when its two lines cut it short, a click on its header shows all of it and folds it back. Handy after copying a few long messages to ask about together. The card under the input offers its chevron only when its three lines really leave something out.
+
 ### Settings
 
 - **Instructions for LLMs and for agents.** Settings › Prompt now keeps one set of instructions for LLMs and another for Claude Code, Codex, and OpenCode, so quick answers can stay short while an agent says what it did. Agents start from instructions of their own that lead with what they did and what came of it. If you had changed the prompt, your version carries over to both.
@@ -28,18 +32,20 @@ When a version has an entry here, the Release workflow uses it as the release no
 - **Games play out differently every time.** Asked the same thing, a model answers the same way, so Meraline now rolls the dice itself. Each Rhyme Duel gets a story drawn on your Mac, such as a retired pirate in a laundromat who loses a bet, and each of the model's lines ends on one of three words of a sound no line has used yet. Hint knows the other words of that sound, so it always has a rhyme to offer. In Word Football, each word the model plays leans toward a kind drawn for it, an animal, a tool, a feeling, so no two matches run alike. Categories draws its category from more than a hundred, never one you've played in that chat until they run out. Each Odd One Out puzzle the model sets gets a theme, from gemstones to pirates, and a way to link the two that belong, such as what they're made of or a word hidden inside them. Speed Definitions deals the model three of more than 300 words to pick from, so serendipity no longer opens every game.
 - **Speed Definitions mixes easy, medium, and hard words.** Most words are medium, one in five is easy, like umbrella, and one in five is hard, like ephemeral. Each word's heading says which.
 - **Restart a game with ⌘R.** Restart in a game's actions (⌘K) starts it over from the beginning while you're still playing; the game so far goes to Recent Chats. Once a round is over, ⌘R is still Play Again.
-- **Start a Rhyme Duel yourself.** Write the first line of a story, or press Return (or Model Starts) to let the model open. Whoever opens sets each rhyme and the other answers it, so when you start, you pick the sounds and the model rhymes with you. Once a duel is over, type a line to open the next one.
+- **Start a Rhyme Duel yourself.** Write the first line of a story, or press Return (or Random Rhyme) to let the model open a story drawn at random. Whoever opens sets each rhyme and the other answers it, so when you start, you pick the sounds and the model rhymes with you. Once a duel is over, type a line to open the next one.
 - **Pick the category yourself.** Categories starts with your category, or press Return (or Random Category) for one drawn at random. Either way the model names the first thing in it, and a category it won't play comes back to you.
 - **Start an Add-a-Word sentence yourself.** Type its first word, or press Return (or Random Word) for one drawn at random, and add the next word yourself. Each new sentence of the story starts the same way.
 - **Kick off Word Football yourself.** Play the first word, or press Return (or Random Word) to kick off from one drawn at random, never one of that chat's earlier matches while others are left.
-- **Set the first Odd One Out puzzle.** Type three words for the model, or press Return (or Model's Puzzle) to have it set one. You and the model still take turns, so whoever starts sets rounds one, three, and five.
-- **Stump the model in Fix the Typo.** Type a sentence with one misspelled word, and the model hunts for it; tap It found it or It missed. Start that way and you write all five sentences, or press Return (or Model's Sentence) to fix the model's as before.
+- **Set the first Odd One Out puzzle.** Type three words for the model, or press Return (or Random Puzzle) to have it set one. You and the model still take turns, so whoever starts sets rounds one, three, and five.
+- **Stump the model in Fix the Typo.** Type a sentence with one misspelled word, and the model hunts for it; tap It found it or It missed. Start that way and you write all five sentences, or press Return (or Random Sentence) to fix the model's as before.
 - **Games in your language.** With another language than English in Settings › Prompt, every game is played in it: the model's lines, words, categories, and reasons, with the drawn stories and topics still keeping games fresh. Rhymes don't mind accents (“rád” answers “hrad”), Word Football chains “kůň” to a word starting with N, and Letter Auction spends č as c.
+- **The Random button sits in the game's card.** While a game waits for its first move, the card that explains it holds the button for a random start: Random Rhyme, Random Word, Random Category, Random Puzzle, or Random Sentence. Return with nothing typed does the same.
 - **Give the words in Speed Definitions.** Type a word, and the model defines it in ten words or fewer; tap It got it or It missed. Start that way and you give all five words, or press Return (or Random Word) to define the model's as before.
 
 ### Fixes
 
 - ⌘C copies again in the window, a torn-off answer, and Settings, and ⌘X, ⌘A, and ⌘Z work there too. The window takes the keyboard without making Meraline the app in front, and the shortcuts never reached the text.
+- A game's name in the footer stays gray, as the provider's does, instead of turning pink on your move. The clock's Forgotten capsule now reads like the mode toggle's chosen segment, a pink clock with the word in black.
 
 ## v1.6.0 - 2026-09-27
 

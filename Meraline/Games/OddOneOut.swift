@@ -24,7 +24,7 @@ nonisolated enum OddOneOut: GameRules {
     /// The cues the model sets a puzzle with.
     private static let puzzleCues: Set<String> = [opening, nextPuzzle, newGame]
 
-    static let modelsPuzzle = "Model’s Puzzle"
+    static let randomButton = "Random Puzzle"
 
     static let gotIt = "It got it"
     static let missedIt = "It missed"
@@ -192,7 +192,7 @@ nonisolated enum OddOneOut: GameRules {
 
     static func state(of turns: [ChatSession.Turn]) -> GameState {
         guard let game = turns.since(gameCues), let last = game.last else {
-            let opening = GameOpening(placeholder: "Set three words, one that doesn’t belong, or press Return for the model’s…", button: modelsPuzzle)
+            let opening = GameOpening(placeholder: "Set three words, one that doesn’t belong, or press Return for a random puzzle…", button: randomButton)
             return GameState(phase: .opening(opening), status: title)
         }
         let score = score(of: game)
@@ -217,7 +217,7 @@ nonisolated enum OddOneOut: GameRules {
                 outcome = GameOutcome(text: "Game done: a draw, \(score.you) all.", youWon: nil)
             }
             return GameState(
-                phase: .over(outcome: outcome, next: GameOpening(placeholder: "Set three words for a new game, or press Return for the model’s…", button: modelsPuzzle)),
+                phase: .over(outcome: outcome, next: GameOpening(placeholder: "Set three words for a new game, or press Return for a random puzzle…", button: randomButton)),
                 status: "Game done · \(tally)"
             )
         }
