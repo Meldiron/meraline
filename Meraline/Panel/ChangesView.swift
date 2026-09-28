@@ -24,7 +24,15 @@ struct ChangesView: View {
     static func text(of changes: TextChanges, fontSize: CGFloat) -> AttributedString {
         let font = Font.system(size: fontSize, design: changes.isCode ? .monospaced : .default)
         var text = AttributedString()
+        var follows: TextChanges.Segment?
         for segment in changes.segments {
+            // A thin space, unmarked, between what went and what came in its place, so the two don't run together.
+            if case .removed? = follows, case .added = segment {
+                var gap = AttributedString("\u{2009}")
+                gap.font = font
+                text += gap
+            }
+            follows = segment
             var run: AttributedString
             switch segment {
             case .same(let same):

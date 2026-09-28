@@ -62,6 +62,8 @@ struct ShowcaseTests {
         for appearance in Showcase.appearances {
             let stage = ShowcaseStage(appearance)
             let scene = try Self.panel(on: stage, replies: [fixed])
+            // The window opens on an empty panel, and then the question goes, as when you ask one.
+            await Showcase.settle(1)
             scene.session.bring(try #require(SelectedText(email, appName: "Mail", appURL: URL(fileURLWithPath: "/System/Applications/Mail.app"))))
             scene.session.draft = "Fix the grammar"
             scene.session.send()
@@ -69,7 +71,7 @@ struct ShowcaseTests {
             await scene.session.changesSearch?.value
             let turn = try #require(scene.session.turns.first)
             scene.controller.layout.toggleChanges(of: turn.id)
-            await Showcase.settle(1.5)
+            await Showcase.settle(2)
             try await stage.capturePanel(scene.panel, as: "what-changed")
             stage.close(scene.panel)
         }
