@@ -170,8 +170,9 @@ struct DecisionAnswersBadge: View {
     }
 }
 
-/// Under the mode row while a decision has no text to decide about: what to add, and a button that opens a card to
-/// write it in (see `TypedStateCard`). Glass like the setup row, with the faint pink of the panel's buttons.
+/// Between the input and the mode row while a decision has no text to decide about: what to add, and a button
+/// that puts a card to write it in where the row was (see `TypedStateCard`). Glass like the setup row, with the
+/// faint pink of the panel's buttons.
 struct DecisionStateRow: View {
     let write: () -> Void
 
@@ -196,9 +197,10 @@ struct DecisionStateRow: View {
     }
 }
 
-/// Text written in the window itself for a decision, between the input and the row under it, like a selected
-/// text's card: a header that counts its words, a field of a few lines that grows with the text, and a cross.
-/// It goes with the question as a text of its own, quoted in the conversation like a selection.
+/// Text written in the window itself as the context of a decision, between the input and the row under it,
+/// where the row asking for it was, like a selected text's card: a header that counts its words, a field of a
+/// few lines that grows with the text, and a cross. It goes with the question as a text of its own, quoted in
+/// the conversation as Context, like a selection.
 struct TypedStateCard: View {
     @Binding var text: String
     let remove: () -> Void
@@ -207,6 +209,8 @@ struct TypedStateCard: View {
     @State private var textHeight: CGFloat = 0
 
     private static let font = Font.system(size: 13)
+    /// The field's height past which it scrolls.
+    private static let tallest: CGFloat = 160
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -214,14 +218,14 @@ struct TypedStateCard: View {
                 Image(systemName: "keyboard")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
-                Text("Written here")
+                Text("Context")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Text("· \(words) \(words == 1 ? "word" : "words")")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
-                CardButton(symbol: "xmark", label: "Leave out the written text", action: remove)
+                CardButton(symbol: "xmark", label: "Leave out the context", action: remove)
                     .help("Leave it out")
             }
             .lineLimit(1)
@@ -243,13 +247,16 @@ struct TypedStateCard: View {
                         .padding(.vertical, 8)
                         .allowsHitTesting(false)
                 }
+                // The field fits its text, with a little room to spare, and scrolls only past its tallest, so no
+                // scroll bar shows beside a line or two.
                 TextEditor(text: $text)
                     .font(Self.font)
                     .lineSpacing(2)
                     .scrollContentBackground(.hidden)
+                    .scrollDisabled(textHeight + 8 <= Self.tallest)
                     .tint(.meralinePink)
                     .focused($isFocused)
-                    .frame(height: min(max(textHeight, 36), 160))
+                    .frame(height: min(max(textHeight + 8, 40), Self.tallest))
             }
             .padding(.horizontal, 4)
             .background(.primary.opacity(0.04), in: .rect(cornerRadius: 10))
@@ -261,7 +268,7 @@ struct TypedStateCard: View {
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
         .onAppear { isFocused = true }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Text written for the decision")
+        .accessibilityLabel("Context written for the decision")
     }
 
     private var words: Int {

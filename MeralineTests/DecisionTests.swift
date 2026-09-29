@@ -193,6 +193,10 @@ struct DecisionTests {
         #expect(session.isDeciding)
         #expect(!session.canSend, "nothing to decide about")
         #expect(session.needsDecisionState)
+        session.writeState()
+        #expect(!session.needsDecisionState, "the card to write it in stands in the row's place")
+        session.removeTypedState()
+        #expect(session.needsDecisionState, "and the row is back once the card goes")
         let mail = try #require(SelectedText("Please send the report by noon.", appName: "Mail"))
         session.bring(mail)
         #expect(session.canSend)
@@ -234,10 +238,11 @@ struct DecisionTests {
         let model = ScriptedModel(decisions: [unsure])
         let (session, _) = Self.decisionSession(model)
         session.draft = "Is this spam?"
+        #expect(session.needsDecisionState)
         session.writeState()
         #expect(session.typedState == "")
         #expect(!session.canSend, "an empty card is no text")
-        #expect(session.needsDecisionState)
+        #expect(!session.needsDecisionState, "the card stands in the row's place")
         session.typedState = "You won a prize, click here."
         #expect(session.canSend)
         #expect(!session.needsDecisionState)
@@ -246,7 +251,7 @@ struct DecisionTests {
         #expect(session.typedState == nil, "the card goes with the question")
         let turn = try #require(session.turns.last)
         #expect(turn.selections.map(\.isTyped) == [true])
-        #expect(turn.selections.first?.sourceLabel == "Written here")
+        #expect(turn.selections.first?.sourceLabel == "Context")
         #expect(model.requests.last?.decision?.state.first?.text == "You won a prize, click here.")
         #expect(turn.answer == "Not sure, leaning No (40% confident)")
         #expect(turn.decision?.verdict(unsureBelow: 0.5) == .unsure)
@@ -257,6 +262,7 @@ struct DecisionTests {
         session.typedState = "Later"
         session.removeTypedState()
         #expect(session.typedState == nil)
+        #expect(!session.needsDecisionState, "the chat keeps the text of its first question")
         session.writeState()
         session.typedState = "Stashed"
         session.reset()

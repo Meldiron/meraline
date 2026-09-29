@@ -297,8 +297,9 @@ final class ChatSession {
 
     var hasDecisionState: Bool { !decisionState.isEmpty }
 
-    /// Whether a decision waits for text to decide about, for the row under the mode row that says so.
-    var needsDecisionState: Bool { isDeciding && !hasDecisionState }
+    /// Whether a decision waits for text to decide about, for the row beside the input that says so. The card for
+    /// writing it stands in the row's place, so the row goes as soon as the card opens.
+    var needsDecisionState: Bool { isDeciding && !hasDecisionState && typedState == nil }
 
     /// The text written in the window as a text of its own, or nil while there is none.
     var typedSelection: SelectedText? { typedState.flatMap(SelectedText.typed) }

@@ -100,6 +100,14 @@ struct ChatPanelView: View {
                     .padding(.bottom, 10)
                     .transition(Self.cardRowTransition)
                 }
+                // A decision's context: the row that asks for it, which Write It swaps for the card to write it in,
+                // in the same place. Not while the mode has nothing ready, when the setup row below says what to do.
+                if session.needsDecisionState, preferences.activeProvider != nil {
+                    DecisionStateRow { session.writeState() }
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
+                        .transition(Self.cardRowTransition)
+                }
                 if session.typedState != nil, !session.isPlaying {
                     TypedStateCard(text: typedState) {
                         session.removeTypedState()
@@ -158,11 +166,6 @@ struct ChatPanelView: View {
                     SetupRow(kind: preferences.mode) { openSettings(.provider(preferences.mode.providers[0])) }
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
-                } else if session.needsDecisionState {
-                    DecisionStateRow { session.writeState() }
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 12)
-                        .transition(.opacity)
                 } else if let rematch = session.rematch, !rematch.isAfterGame {
                     rematchTray(rematch)
                 } else if let nudge = nudgeMessage {

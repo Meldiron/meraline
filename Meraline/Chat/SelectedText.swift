@@ -50,9 +50,10 @@ nonisolated struct SelectedText: Identifiable, Equatable, Sendable {
         SelectedText(text, typed: true)
     }
 
-    /// Where the text came from, as its card and its quote say: the app, the clipboard, or the window itself.
+    /// Where the text came from, as its card and its quote say: the app, the clipboard, or, for text written in
+    /// the window as context for a decision, Context.
     var sourceLabel: String {
-        appName ?? (isTyped ? "Written here" : "Selected text")
+        appName ?? (isTyped ? "Context" : "Selected text")
     }
 
     /// Text another app handed over, dragged onto the window or sent through the Services menu, named after the
