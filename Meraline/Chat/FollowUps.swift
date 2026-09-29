@@ -16,6 +16,9 @@ nonisolated enum FollowUps {
     /// the instructions and its reply included, and a character can be a token in Chinese or Japanese.
     static let questionLimit = 400
     static let answerLimit = 2_000
+    /// How long the suggestions may take before a capsule under the answer says they are coming. The ones drawn
+    /// from the answer come in far less; the on-device model takes a second or more.
+    static let loadingDelay: Duration = .milliseconds(250)
 
     /// What the suggestions are worked out from.
     struct Request: Equatable, Sendable {

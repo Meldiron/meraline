@@ -261,6 +261,86 @@ struct FollowUpsTests {
         #expect(!controller.isVisible)
     }
 
+    /// Waits until `condition` holds, for at most `seconds`.
+    private func waitUntil(_ seconds: Double = 3, _ condition: () -> Bool) async {
+        let deadline = Date.now.addingTimeInterval(seconds)
+        while !condition() && Date.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    /// A suggester that answers only once the test lets it.
+    private func gated(_ questions: [String]) -> (suggest: (FollowUps.Request) async -> [String], open: () -> Void) {
+        let (gate, opener) = AsyncStream<Void>.makeStream()
+        let suggest: (FollowUps.Request) async -> [String] = { _ in
+            for await _ in gate { break }
+            return questions
+        }
+        return (suggest, { opener.yield() })
+    }
+
+    @Test func slowFollowUpsSayTheyAreComingAndQuickOnesNever() async {
+        let model = ScriptedModel(["DNS turns names into addresses.", "Like a phone book.", "The root servers."])
+        let session = Support.session(model)
+        let slow = gated(["Who runs DNS?", "What is a resolver?"])
+        session.followUpSuggester = slow.suggest
+        await Support.play("What is DNS?", in: session)
+        await waitUntil { session.isSuggestingFollowUps }
+        #expect(session.isSuggestingFollowUps, "they have taken longer than the loading delay")
+        #expect(session.followUps.isEmpty)
+
+        // A question asked meanwhile takes the capsule away, and the old answer's follow-ups never come.
+        let next = gated(["Why a phone book?", "Who keeps it?"])
+        session.followUpSuggester = next.suggest
+        session.draft = "Give me an analogy"
+        session.send()
+        #expect(!session.isSuggestingFollowUps)
+        slow.open()
+        await Support.settle(session)
+        await waitUntil { session.isSuggestingFollowUps }
+        #expect(session.followUps.isEmpty)
+        next.open()
+        await settleFollowUps(session)
+        #expect(session.followUps == ["Why a phone book?", "Who keeps it?"])
+        #expect(!session.isSuggestingFollowUps)
+
+        session.followUpSuggester = { _ in ["Who runs them?", "How many are there?"] }
+        await Support.play("Who answers first?", in: session)
+        await settleFollowUps(session)
+        try? await Task.sleep(for: FollowUps.loadingDelay * 2)
+        #expect(!session.isSuggestingFollowUps, "follow-ups that come at once never say they are coming")
+        #expect(session.followUps == ["Who runs them?", "How many are there?"])
+    }
+
+    /// The capsule that says follow-ups are coming becomes the first of them in the hidden panel, as when the
+    /// on-device model finishes after the window was put away.
+    @Test func theComingCapsuleBecomesTheFirstFollowUpInTheHiddenPanel() async {
+        let suite = "MeralineTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(true, forKey: ShortcutSetup.chosenKey)
+        let preferences = Support.preferences()
+        let model = ScriptedModel(["DNS turns names into addresses."])
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { model.stream($0) }
+        let slow = gated(["Who runs DNS?", "What is a resolver?", "Why?"])
+        session.followUpSuggester = slow.suggest
+        let controller = PanelController(
+            session: session, preferences: preferences,
+            whatsNew: WhatsNew(defaults: defaults, currentVersion: "1.0.0"),
+            updater: Updater(preferences: preferences, defaults: defaults), updateNotice: UpdateNotice(defaults: defaults),
+            shortcutSetup: ShortcutSetup(defaults: defaults), openSettings: { _ in }
+        )
+        layOut("the panel is made")
+        await Support.play("What is DNS?", in: session)
+        await waitUntil { session.isSuggestingFollowUps }
+        layOut("a capsule says follow-ups are coming")
+        layOut("they come") { slow.open() }
+        await settleFollowUps(session)
+        layOut("they show")
+        #expect(session.followUps.count == 3)
+        #expect(!controller.isVisible)
+    }
+
     @Test func theTestHostDrawsThemFromTheAnswer() async {
         let model = ScriptedModel(["Your Mac asks a **resolver**, which finds the address and keeps it for a while so the next visit is quicker than the first one was."])
         let session = Support.session(model)

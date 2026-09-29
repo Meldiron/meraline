@@ -4,9 +4,12 @@ import SwiftUI
 /// What to ask next, under the last answer: two or three glass capsules, one under another, each a question
 /// suggested on this Mac (see `FollowUps`). A click puts the question in the input without sending it, so it can be
 /// changed first; a Shift-click asks it at once, and while Shift is down the capsule under the pointer shows an
-/// arrow and turns the pink of the panel's other chosen states, as the presets above the card do. They show only
-/// while the input is empty and nothing streams. They fade in, but go at once rather than fading out, so a new set
-/// never lies over the old one while it fades (two buttons on one spot hung the hidden window, see `Announcements`).
+/// arrow and turns the pink of the panel's other chosen states, as the presets above the card do. While they are
+/// still being worked out (no `questions` yet), one capsule says so, and it becomes the first question when they
+/// come, the others fading in under it. They show only while the input is empty and nothing streams. They fade
+/// in, but go at once rather than fading out, so a new set never lies over the old one while it fades (two buttons
+/// on one spot hung the hidden window, see `Announcements`). Each capsule is a glass container of its own, so its
+/// fade reaches its glass.
 struct FollowUpChips: View {
     let questions: [String]
     let choose: (_ question: String, _ sends: Bool) -> Void
@@ -16,10 +19,15 @@ struct FollowUpChips: View {
     @State private var flagsMonitor: Any?
 
     static let transition: AnyTransition = .asymmetric(insertion: .opacity, removal: .identity)
+    static let loadingText = "Thinking of follow-ups…"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(questions, id: \.self, content: chip)
+            // By place, so the capsule that said they were coming is the one that becomes the first question.
+            ForEach(Array(shown.enumerated()), id: \.offset) { _, question in
+                chip(question)
+                    .transition(Self.transition)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
@@ -31,16 +39,25 @@ struct FollowUpChips: View {
         }
     }
 
-    private func chip(_ question: String) -> some View {
-        let sends = isShiftDown && hovered == question
-        return Button { click(question) } label: {
-            ChipLabel(question: question, sends: sends)
-                .glassEffect(sends ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(), in: .capsule)
-                .contentShape(.capsule)
+    /// The questions, or nil for the one capsule that says they are coming.
+    private var shown: [String?] {
+        questions.isEmpty ? [nil] : questions
+    }
+
+    private func chip(_ question: String?) -> some View {
+        let sends = question != nil && isShiftDown && hovered == question
+        return GlassEffectContainer {
+            Button { if let question { click(question) } } label: {
+                ChipLabel(question: question, sends: sends)
+                    .glassEffect(sends ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(), in: .capsule)
+                    .contentShape(.capsule)
+            }
+            .buttonStyle(.plain)
+            .allowsHitTesting(question != nil)
         }
-        .buttonStyle(.plain)
         .animation(.smooth(duration: 0.2), value: sends)
         .onHover { isOver in
+            guard let question else { return }
             if isOver {
                 hovered = question
                 isShiftDown = NSEvent.modifierFlags.contains(.shift)
@@ -48,9 +65,9 @@ struct FollowUpChips: View {
                 hovered = nil
             }
         }
-        .help("Put it in the input, or Shift-click to ask it now")
-        .accessibilityLabel(question)
-        .accessibilityHint("Puts the question in the input. Shift-click asks it.")
+        .help(question == nil ? "" : "Put it in the input, or Shift-click to ask it now")
+        .accessibilityLabel(question ?? "Thinking of follow-ups")
+        .accessibilityHint(question == nil ? "" : "Puts the question in the input. Shift-click asks it.")
     }
 
     private func click(_ question: String) {
@@ -68,21 +85,28 @@ struct FollowUpChips: View {
     }
 }
 
-/// A follow-up's arrow and question. While a Shift-click would send it, the arrow points up in pink over a semibold
-/// question, like the mode toggle's chosen segment.
+/// A follow-up's arrow and question, or the dots and words that say they are coming. While a Shift-click would send
+/// it, the arrow points up in pink over a semibold question, like the mode toggle's chosen segment.
 private struct ChipLabel: View {
-    let question: String
+    let question: String?
     let sends: Bool
+
+    private var symbol: String {
+        guard question != nil else { return "ellipsis" }
+        return sends ? "arrow.up" : "arrow.turn.down.right"
+    }
 
     var body: some View {
         HStack(spacing: 7) {
-            Image(systemName: sends ? "arrow.up" : "arrow.turn.down.right")
+            Image(systemName: symbol)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(sends ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
+                .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating, isActive: question == nil)
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 14)
-            Text(question)
+            Text(question ?? FollowUpChips.loadingText)
                 .font(.system(size: 12, weight: sends ? .semibold : .medium))
+                .foregroundStyle(question == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                 .lineLimit(1)
                 .truncationMode(.tail)
         }

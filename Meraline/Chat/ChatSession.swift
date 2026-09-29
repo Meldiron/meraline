@@ -150,6 +150,9 @@ final class ChatSession {
     /// only and in no turn, so Recent Chats never keeps them; every request clears them, and a reopened chat gets
     /// new ones.
     private(set) var followUps: [String] = []
+    /// Whether the follow-ups for the last answer are still being worked out, for the capsule that says so. It turns
+    /// on only once they have taken `FollowUps.loadingDelay`, so the ones drawn from the answer at once never flash it.
+    private(set) var isSuggestingFollowUps = false
     /// How each game has gone against the model since Meraline opened, for the rematch tray. In memory
     /// only, like Recent Chats, so quitting forgets it.
     private(set) var versus: [Game: Versus] = [:]
@@ -188,6 +191,7 @@ final class ChatSession {
     /// Works out the follow-ups for an answer; tests pass their own.
     @ObservationIgnored var followUpSuggester: (FollowUps.Request) async -> [String] = FollowUps.suggest
     @ObservationIgnored private var followUpTask: Task<Void, Never>?
+    @ObservationIgnored private var followUpLoadingTask: Task<Void, Never>?
     @ObservationIgnored private let preferences: Preferences
     @ObservationIgnored private let workspaceRoot: URL
     @ObservationIgnored private let streamReplies: @MainActor (ChatRequest) -> AsyncThrowingStream<StreamOutput, Error>
@@ -1279,14 +1283,26 @@ final class ChatSession {
         followUpTask = Task { [weak self] in
             let questions = await suggest(request)
             guard let self, !Task.isCancelled, !isStreaming, turns.last?.id == turn.id else { return }
+            followUpTask = nil
+            followUpLoadingTask?.cancel()
+            followUpLoadingTask = nil
+            isSuggestingFollowUps = false
             followUps = questions
             if !questions.isEmpty { Log.chat.info("\(questions.count) follow-ups suggested") }
+        }
+        followUpLoadingTask = Task { [weak self] in
+            try? await Task.sleep(for: FollowUps.loadingDelay)
+            guard let self, !Task.isCancelled, followUpTask != nil else { return }
+            isSuggestingFollowUps = true
         }
     }
 
     private func clearFollowUps() {
         followUpTask?.cancel()
         followUpTask = nil
+        followUpLoadingTask?.cancel()
+        followUpLoadingTask = nil
+        if isSuggestingFollowUps { isSuggestingFollowUps = false }
         if !followUps.isEmpty { followUps = [] }
     }
 
