@@ -241,8 +241,9 @@ struct DecisionTests {
         session.send()
         await Support.settle(session)
         let request = try #require(model.requests.last?.decision)
-        #expect(request.state.isEmpty, "no context was added")
+        #expect(request.state.map(\.text) == ["Is 17 a prime number?"], "with no context, the question itself is the state")
         #expect(request.question == "Is 17 a prime number?")
+        #expect(session.turns.last?.selections.isEmpty == true, "and nothing is quoted, since no context was added")
         #expect(session.turns.last?.decision == Self.yes)
     }
 

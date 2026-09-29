@@ -754,9 +754,11 @@ final class ChatSession {
     func makeDecisionRequest(asking question: String, about selections: [SelectedText], of provider: Provider) -> ChatRequest {
         var request = makeRequest(asking: SelectedText.message(question, about: selections), images: [], of: provider)
         let split = DecisionAnswers.split(question, fallback: defaultAnswers)
-        let state = turns.filter(\.isComplete).flatMap(\.selections) + selections
+        let context = turns.filter(\.isComplete).flatMap(\.selections) + selections
         let scope = preferences.decisionScope
-        let items = scope.items(in: state)
+        let items = scope.items(in: context)
+        // Context is optional: with none, the question itself is what Jev decides about, so it always has a state.
+        let state = context.isEmpty ? [SelectedText(split.question)].compactMap { $0 } : context
         request.decision = DecisionRequest(
             state: state,
             question: split.question,
