@@ -74,6 +74,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             announceUpdate()
         }
+
+        // Build and draw the panel once, off-screen, right after launch (`PanelController.warmUp`), so the first
+        // ⌥ Space is as quick as the ones after it instead of paying to construct and first-render the whole window.
+        DispatchQueue.main.async { [weak self] in self?.panel.warmUp() }
     }
 
     /// The `meraline://` scheme. See AutomationRoute for the routes. They run one after another, in the order

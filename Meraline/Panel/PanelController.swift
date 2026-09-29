@@ -307,6 +307,27 @@ final class PanelController: NSObject {
         return complete
     }
 
+    private var didWarmUp = false
+
+    /// Builds the window's content and draws it once, off every screen, so the first ⌥ Space doesn't pay to lay
+    /// out the whole panel and first-draw its glass. Deferred to just after launch; a no-op once it has run or
+    /// once the window has been shown for real.
+    func warmUp() {
+        guard !didWarmUp, !panel.isVisible else { return }
+        didWarmUp = true
+        let clock = ContinuousClock()
+        let start = clock.now
+        sizeContent()
+        hostingView.layoutSubtreeIfNeeded()
+        let origin = panel.frame.origin
+        panel.setFrameOrigin(NSPoint(x: -50_000, y: -50_000))
+        panel.orderFrontRegardless()
+        panel.displayIfNeeded()
+        panel.orderOut(nil)
+        panel.setFrameOrigin(origin)
+        Log.panel.info("Panel warmed up in \(Int((clock.now - start) / .milliseconds(1))) ms")
+    }
+
     func show() {
         guard !panel.isVisible else {
             panel.makeKeyAndOrderFront(nil)

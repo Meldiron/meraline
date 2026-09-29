@@ -6,6 +6,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ## Unreleased
 
+- **The first open is as quick as the rest.** Meraline now builds and draws its window once, off-screen, just after it launches, so the first ⌥ Space no longer pays to construct and first-render the whole panel.
 - **The window opens the moment you press the shortcut.** Reading what you'd selected no longer holds it up: the fast read runs first and the window appears at once, and when an app has to be asked to copy (browsers, editors — 150–250 ms), that now happens after the window is up, with the selection offered a moment later. Zed still reads before opening, since it needs the ⌘C to reach it first.
 - **Clearer, consistent input placeholders.** Each mode's empty input now reads the same way: “Ask to get answer…” for LLMs, “Ask to do work…” for agents, and “Ask to make decision…” for Jev. Selecting text or asking a follow-up still tailors it.
 - **Add Text in the sparkle's menu.** Writing a piece of context by hand is now an item in the sparkle's menu (the icon left of the input), so it's discoverable without knowing that Tab opens it.
