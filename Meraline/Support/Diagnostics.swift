@@ -32,7 +32,7 @@ enum Diagnostics {
             let next = nextExpiry.map { "the next goes in \(Int(($0 / 60).rounded(.up))) min" } ?? "none kept"
             return [
                 "- Chats in memory: \(open) and \(recentChats) recent (at most \(ChatSession.chatLimit.formatted()) in all), \(memory(chatBytes)) in all, the largest \(memory(largestChatBytes)) of \(memory(ChatSession.chatByteLimit))",
-                "- Chat lifetime: \(Int(ChatSession.chatLifetime / 60)) minutes after the last message, \(next)",
+                "- Chat lifetime: at least \(Int(ChatSession.chatLifetime / 60)) minutes after the last message, \(next)",
                 "- Workspaces: \(workspaces.folders) (at most \(ChatSession.chatLimit.formatted())), \(workspaces.items.formatted()) files and folders, \(Int64(workspaces.bytes).formatted(.byteCount(style: .file))), the fullest \(workspaces.mostItems.formatted()) of \(FileAttachment.folderLimit.formatted())",
                 "- Workspaces of other Meraline processes: \(workspaces.otherProcesses)",
                 "- Agents running: \(liveAgents) of \(LiveAgents.limit)"

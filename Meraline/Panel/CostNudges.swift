@@ -46,8 +46,8 @@ nonisolated struct CostNudge: Equatable, Identifiable, Sendable {
 /// The capsules under the card's bottom right, where the chat's timer shows while there is a chat: what LLMs and
 /// agents have cost today, each once past its amount. Only on an empty panel, a soft nudge before the next chat,
 /// never a stop: neutral glass, as the timer is until it runs low, with the pink only in the symbol. They take no
-/// click, so the timer, the one button that shows in their place, never lies on the same spot as another while
-/// one fades into the other, even in the hidden window (see `Announcements`).
+/// click, so the timer's buttons, the only ones that show in their place, never lie on the same spot as others
+/// while one row fades into the other, even in the hidden window (see `Announcements`).
 struct CostNudges: View {
     let nudges: [CostNudge]
 

@@ -92,37 +92,34 @@ struct ChatLifetimeTests {
         ChatWorkspace.removeAll(in: root)
     }
 
-    @Test func theTimerStartsTheTimeOverAndReopeningKeepsIt() async throws {
+    @Test func theTimersButtonsAddTimeAndReopeningKeepsIt() async throws {
         let session = GameTestSupport.session(ScriptedModel(["Hello"]))
+        session.addTime(minutes: 5)
+        #expect(session.expiresAt == nil, "no chat, no time to add to")
         await GameTestSupport.play("Hi", in: session)
         let first = try #require(session.expiresAt)
-        try await Task.sleep(for: .milliseconds(20))
-        session.keepChat()
-        let kept = try #require(session.expiresAt)
-        #expect(kept > first)
+        session.addTime(minutes: 5)
+        #expect(session.expiresAt == first.addingTimeInterval(5 * 60))
+        session.addTime(minutes: 30)
+        let added = try #require(session.expiresAt)
+        #expect(added == first.addingTimeInterval(35 * 60))
 
+        // Recent Chats keeps the time added, and so does reopening.
         session.reset()
+        #expect(session.history.first?.expiresAt == added)
         let id = try #require(session.history.first?.id)
         try await Task.sleep(for: .milliseconds(20))
         session.reopen(id)
-        #expect(session.expiresAt == kept)
+        #expect(session.expiresAt == added)
     }
 
-    @Test func aChatWhoseTimeIsUpGoesInsteadOfReopening() async throws {
-        let session = agentSession(ScriptedModel(["One", "Two"]))
+    @Test func aMessageNeverTakesAwayTimeAdded() async throws {
+        let session = GameTestSupport.session(ScriptedModel(["One", "Two"]))
         await GameTestSupport.play("First", in: session)
-        let workspace = try #require(session.workspace).url
-        session.reset()
+        session.addTime(minutes: 30)
+        let added = try #require(session.expiresAt)
         await GameTestSupport.play("Second", in: session)
-        // Its time ran out a moment ago, before the expiry that was due could run.
-        var past = try #require(session.history.first)
-        past.expiresAt = .now.addingTimeInterval(-1)
-
-        session.reopen(past)
-        #expect(session.turns.first?.question == "Second", "the open chat stays")
-        #expect(session.history.isEmpty)
-        #expect(!exists(workspace))
-        ChatWorkspace.removeAll(in: root)
+        #expect(session.expiresAt == added, "an hour left beats a fresh 30 minutes")
     }
 
     @Test func anAnswerStillComingKeepsItsChat() async throws {
@@ -289,7 +286,7 @@ struct ChatLifetimeTests {
         let report = Diagnostics.report(preferences: GameTestSupport.preferences(), updates: updates, entries: [], storage: storage)
         #expect(report.contains("### Storage"))
         #expect(report.contains("- Chats in memory: an open chat of 1 turn(s) and 0 recent"))
-        #expect(report.contains("- Chat lifetime: 30 minutes after the last message, the next goes in 30 min"))
+        #expect(report.contains("- Chat lifetime: at least 30 minutes after the last message, the next goes in 30 min"))
         #expect(!report.contains("Hello"))
         #expect(!Diagnostics.report(preferences: GameTestSupport.preferences(), updates: updates, entries: []).contains("### Storage"))
     }

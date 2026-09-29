@@ -108,8 +108,8 @@ final class ChatSession {
     }
 
     /// How long a chat lasts after its last message, open or in Recent Chats, before it goes with its workspace.
-    /// A message, the end of an answer, or a click on the timer under the card starts it over; reopening the chat
-    /// doesn't.
+    /// A message or the end of an answer starts it over, unless the buttons beside the timer under the card left
+    /// it more; reopening the chat doesn't.
     static let chatLifetime: TimeInterval = 30 * 60
     /// The most chats in memory, the open one included, and so the most workspaces on disk. Recent Chats lets go
     /// of its oldest to stay under it.
@@ -870,7 +870,7 @@ final class ChatSession {
     private func archiveCurrentChat(keeping: Bool = true) {
         let previous = history
         if keeping && !isAnonymous {
-            let expiresAt = min(deadline, Date.now.addingTimeInterval(Self.chatLifetime))
+            let expiresAt = deadline == .distantFuture ? Date.now.addingTimeInterval(Self.chatLifetime) : deadline
             history = Self.archiving(turns, into: history, mode: mode, workspace: workspace, expiresAt: expiresAt)
         }
         removeWorkspaces(leftFrom: previous)
@@ -929,11 +929,11 @@ final class ChatSession {
         return open + forgetHistory()
     }
 
-    /// The timer under the card: the open chat gets its 30 minutes again.
-    func keepChat() {
+    /// The buttons beside the timer under the card: the open chat gets `minutes` more, on top of what it has.
+    func addTime(minutes: Int) {
         guard expiresAt != nil else { return }
-        restartClock()
-        Log.chat.info("Chat given another \(Int(Self.chatLifetime / 60)) minutes")
+        deadline = max(deadline, .now).addingTimeInterval(TimeInterval(minutes * 60))
+        Log.chat.info("Chat given \(minutes) more minutes")
     }
 
     /// Lets go of every chat whose time is up, workspaces and all: those in Recent Chats, and the open one unless
@@ -962,8 +962,11 @@ final class ChatSession {
         Log.chat.info("\(kind) ran out of time")
     }
 
+    /// Gives the open chat its `chatLifetime` again, or leaves it the time it has when that is more, as after
+    /// `addTime(minutes:)`.
     private func restartClock(at now: Date = .now) {
-        deadline = now.addingTimeInterval(Self.chatLifetime)
+        let fresh = now.addingTimeInterval(Self.chatLifetime)
+        deadline = deadline == .distantFuture ? fresh : max(deadline, fresh)
     }
 
     /// Sleeps until the next chat's time is up. While an answer streams, the open chat's time waits for it.

@@ -198,7 +198,7 @@ struct ChatPanelView: View {
         .overlay(alignment: .bottomTrailing) {
             // Lined up with the footer's actions.
             if let expiresAt = session.expiresAt {
-                ChatTimer(expiresAt: expiresAt, keep: session.keepChat)
+                ChatTimer(expiresAt: expiresAt) { session.addTime(minutes: $0) }
                     .padding(.trailing, PanelController.margin + 12)
                     .padding(.bottom, Announcements.inset)
                     .transition(.opacity)
