@@ -6,17 +6,35 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ## Unreleased
 
-- **The cursor in the Context card sits on the first line.** The card Tab opens drew its blinking cursor a line's gap above “Paste or type…”, and what you typed started there too. Both now begin on the same line, and in LLM and Agent modes the hint reads “Paste or type text to send with your question…” instead of asking for text to decide about.
-- **The first open is as quick as the rest.** Meraline now builds and draws its window once, off-screen, just after it launches, so the first ⌥ Space no longer pays to construct and first-render the whole panel.
-- **The window opens the moment you press the shortcut.** Reading what you'd selected no longer holds it up: the fast read runs first and the window appears at once, and when an app has to be asked to copy (browsers, editors — 150–250 ms), that now happens after the window is up, with the selection offered a moment later. Zed still reads before opening, since it needs the ⌘C to reach it first.
-- **Clearer, consistent input placeholders.** Each mode's empty input now reads the same way: “Ask to get answer…” for LLMs, “Ask to do work…” for agents, and “Ask to make decision…” for Jev. Selecting text or asking a follow-up still tailors it.
-- **Add Text in the sparkle's menu.** Writing a piece of context by hand is now an item in the sparkle's menu (the icon left of the input), so it's discoverable without knowing that Tab opens it.
-- **New answers scroll into view again.** After a few answers the conversation stopped following along to the bottom; it now scrolls to the newest answer as it arrives.
-- **Ask a decision without context.** Decision mode no longer needs text to decide about — ask a question on its own (“Is 17 prime?”) and Jev answers. Adding the text you selected, copied, or wrote still sharpens the call, and the row under the input still suggests it, now clearly optional.
-- **A choice or a score is coloured by how sure Jev is.** When a Decision names its own answers — a set with `/` or levels in order with `<` — the disc, its ring, and a score's meter now follow Jev's confidence: green when it's very sure, amber when it's only moderately, so the answer reads at a glance. Yes and No keep their green and red.
-- **Press Tab to add text to your question.** Tab in the input now opens a card for a piece of context written by hand — a quote, an email, a snippet to work on — that goes with your question in LLM and Agent modes, the way selected or copied text does, and that Decision has always had. ⌘Return sends from the card, while plain Return makes a new line. Tab no longer sends, since Return already does.
-- **A scale for a decision between levels.** When a Decision question names its answers in order (“How high a priority is this? Low < Medium < High”), Jev's answer now shows on a scale: the levels laid out first to last with a marker where Jev placed the text, which sits between two levels when it isn't sure, and each level's share beneath it. A question that picks one of a set still shows its answers as before.
-- **Longer selections and clipboards come along whole.** The text you add from a selection, the clipboard, or the window in Decision mode used to stop at 20,000 characters; a whole document copied or selected now arrives in full, up to a million characters, so a long report or transcript comes along without being cut.
+## v1.9.0 - 2026-09-29
+
+### Ask
+
+- **Press Tab to add text to your question.** Tab in the input opens a card for context written by hand, such as a quote, an email, or a snippet to work on, and it goes with your question in LLM and Agent modes the way selected or copied text does. ⌘Return sends from the card, and Return makes a new line there. Tab no longer sends, since Return already does. Add Text in the sparkle's panel opens the same card.
+
+![The Context card under the input, holding a message written by hand, with a question above it asking for a friendly reply](https://raw.githubusercontent.com/Meldiron/meraline/v1.9.0/docs/screenshots/add-text-light.png)
+
+- **Whole documents come along.** Text you add from a selection, the clipboard, or the window used to stop at 20,000 characters. A long report or transcript now arrives in full, up to a million characters.
+- **Clearer placeholders.** Each mode's empty input reads the same way: “Ask to get answer…” for LLMs, “Ask to do work…” for agents, and “Ask to make decision…” for Jev. Selected text and follow-ups still tailor it.
+
+### Decision
+
+- **Ask without context.** A decision no longer needs text to decide about. Ask a question that stands on its own, such as “Is 17 prime?”, and Jev decides it as it is. The text you select, copy, or write still sharpens the call, and the row under the input suggests it, now as optional.
+- **A scale for levels in order.** When a question names its answers in order (“How high a priority is this? Low < Medium < High”), Jev's answer shows on a scale: the levels from first to last, a marker where Jev placed the text, between two levels when it isn't sure, and each level's share beneath it.
+
+![A message from Slack placed on a scale from Low to High, the marker just short of High, with each level's share beneath it](https://raw.githubusercontent.com/Meldiron/meraline/v1.9.0/docs/screenshots/decision-levels-light.png)
+
+- **Your own answers show how sure Jev is.** For answers you named, a set with `/` or levels with `<`, the disc, its ring, and the scale's meter turn green when Jev is very sure and amber when it's only moderately sure. Yes and No keep their green and red.
+
+### Speed
+
+- **The first open is as quick as the rest.** Meraline builds and draws its window once, off screen, right after it launches, so the first ⌥ Space no longer waits for it.
+- **The window opens the moment you press the shortcut.** Reading what you selected no longer holds it up. When an app has to be asked to copy, as browsers and editors do, that now happens after the window is up, and the selection is offered a moment later. Zed still reads first, since the ⌘C has to reach it.
+
+### Fixes
+
+- New answers scroll into view again. After a few answers, the conversation stopped following along to the newest one.
+- The cursor in the Context card sits on its first line. It blinked a line's gap above “Paste or type…”, and typing started there too. In LLM and Agent modes the hint now reads “Paste or type text to send with your question…” instead of asking for text to decide about.
 
 ## v1.8.0 - 2026-09-29
 
