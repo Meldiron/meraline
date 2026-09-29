@@ -8,8 +8,9 @@ import AppKit
 /// sent: the model reads it in a `<selected_text>` block before the question. It lives only in memory, like
 /// the rest of the chat.
 nonisolated struct SelectedText: Identifiable, Equatable, Sendable {
-    /// The most that comes along. A stray ⌘A on a long document is cut here rather than filling the question.
-    static let limit = 20_000
+    /// The most that comes along. A runaway selection is cut here rather than filling the question, but the
+    /// cap is high enough that ordinary documents pasted or selected whole still arrive in full.
+    static let limit = 1_000_000
 
     let id = UUID()
     let text: String

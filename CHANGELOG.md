@@ -4,6 +4,10 @@ Notable changes in each Meraline release, newest first.
 
 When a version has an entry here, the Release workflow uses it as the release notes on GitHub and in the in-app update window. A version without an entry gets the list of commits since the previous tag instead. Headings are `## vX.Y.Z - YYYY-MM-DD`.
 
+## Unreleased
+
+- **Longer selections and clipboards come along whole.** The text you add from a selection, the clipboard, or the window in Decision mode used to stop at 20,000 characters; a whole document copied or selected now arrives in full, up to a million characters, so a long report or transcript comes along without being cut.
+
 ## v1.8.0 - 2026-09-29
 
 ### Decision
