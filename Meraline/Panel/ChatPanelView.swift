@@ -418,57 +418,68 @@ struct ChatPanelView: View {
         .frame(minHeight: 60)
     }
 
+    /// The target pinned to the very bottom of the conversation, scrolled into view whenever it grows.
+    private static let bottomAnchor = "conversation-bottom"
+
     private var conversation: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                if let game = session.game {
-                    GameTranscript(
-                        lines: game.rules.lines(for: session.turns),
-                        choices: session.isStreaming ? [] : session.gameState?.choices ?? [],
-                        activity: session.isStreaming ? .some(session.turns.last?.activity) : nil,
-                        prompt: session.isStreaming ? session.turns.last?.pendingPrompt : nil,
-                        agent: agentName,
-                        answer: { session.answer($0, with: $1) },
-                        explain: explain
-                    ) { choice in
-                        session.choose(choice)
-                        isInputFocused = true
-                    }
-                } else {
-                    ForEach(session.turns) { turn in
-                        TurnView(
-                            turn: turn,
-                            isAnswering: session.isStreaming && turn.id == session.turns.last?.id,
-                            showsChanges: layout.answersShowingChanges.contains(turn.id),
-                            toggleChanges: { layout.toggleChanges(of: turn.id) },
-                            isLastAnswer: turn.id == session.turns.last(where: { !$0.answer.isEmpty })?.id,
-                            unsureBelow: preferences.unsureBelow,
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if let game = session.game {
+                        GameTranscript(
+                            lines: game.rules.lines(for: session.turns),
+                            choices: session.isStreaming ? [] : session.gameState?.choices ?? [],
+                            activity: session.isStreaming ? .some(session.turns.last?.activity) : nil,
+                            prompt: session.isStreaming ? session.turns.last?.pendingPrompt : nil,
                             agent: agentName,
                             answer: { session.answer($0, with: $1) },
-                            explain: explain,
-                            explainTool: explainTool(for: turn)
-                        )
-                    }
-                    .environment(\.answerWorkspace, session.workspace?.url)
-                    if showsFollowUps {
-                        FollowUpChips(questions: session.followUps) { question, sends in
-                            session.followUp(question, sending: sends)
-                            if !sends { isInputFocused = true }
+                            explain: explain
+                        ) { choice in
+                            session.choose(choice)
+                            isInputFocused = true
                         }
-                        .padding(.top, -6)
-                        .transition(FollowUpChips.transition)
+                    } else {
+                        ForEach(session.turns) { turn in
+                            TurnView(
+                                turn: turn,
+                                isAnswering: session.isStreaming && turn.id == session.turns.last?.id,
+                                showsChanges: layout.answersShowingChanges.contains(turn.id),
+                                toggleChanges: { layout.toggleChanges(of: turn.id) },
+                                isLastAnswer: turn.id == session.turns.last(where: { !$0.answer.isEmpty })?.id,
+                                unsureBelow: preferences.unsureBelow,
+                                agent: agentName,
+                                answer: { session.answer($0, with: $1) },
+                                explain: explain,
+                                explainTool: explainTool(for: turn)
+                            )
+                        }
+                        .environment(\.answerWorkspace, session.workspace?.url)
+                        if showsFollowUps {
+                            FollowUpChips(questions: session.followUps) { question, sends in
+                                session.followUp(question, sending: sends)
+                                if !sends { isInputFocused = true }
+                            }
+                            .padding(.top, -6)
+                            .transition(FollowUpChips.transition)
+                        }
                     }
+                    // Pinned to the bottom (its negative top padding cancels the stack's spacing, so it adds no gap),
+                    // the target the view scrolls to as the conversation grows, so a new answer always comes into view.
+                    Color.clear.frame(height: 1).padding(.top, -20).id(Self.bottomAnchor)
                 }
+                .padding(.horizontal, 22)
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onGeometryChange(for: CGFloat.self, of: \.size.height) { conversationHeight = $0 }
+                .environment(\.answerZoom, layout.answerZoom.scale)
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .onGeometryChange(for: CGFloat.self, of: \.size.height) { conversationHeight = $0 }
-            .environment(\.answerZoom, layout.answerZoom.scale)
+            .frame(height: min(conversationHeight, layout.maximumConversationHeight))
+            .defaultScrollAnchor(.bottom)
+            .scrollEdgeEffectStyle(.soft, for: .vertical)
+            // .defaultScrollAnchor(.bottom, for: .sizeChanges) drifted after a few answers; scroll the bottom marker
+            // into view on every height change instead, so the newest answer is always shown.
+            .onChange(of: conversationHeight) { proxy.scrollTo(Self.bottomAnchor, anchor: .bottom) }
         }
-        .frame(height: min(conversationHeight, layout.maximumConversationHeight))
-        .defaultScrollAnchor(.bottom, for: .sizeChanges)
-        .scrollEdgeEffectStyle(.soft, for: .vertical)
     }
 
     /// The Why? button on an agent's ask: the agent says in one line why it wants the tool (see `ToolReason`).

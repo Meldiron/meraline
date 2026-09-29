@@ -6,6 +6,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ## Unreleased
 
+- **New answers scroll into view again.** After a few answers the conversation stopped following along to the bottom; it now scrolls to the newest answer as it arrives.
 - **Ask a decision without context.** Decision mode no longer needs text to decide about — ask a question on its own (“Is 17 prime?”) and Jev answers. Adding the text you selected, copied, or wrote still sharpens the call, and the row under the input still suggests it, now clearly optional.
 - **A choice or a score is coloured by how sure Jev is.** When a Decision names its own answers — a set with `/` or levels in order with `<` — the disc, its ring, and a score's meter now follow Jev's confidence: green when it's very sure, amber when it's only moderately, so the answer reads at a glance. Yes and No keep their green and red.
 - **Press Tab to add text to your question.** Tab in the input now opens a card for a piece of context written by hand — a quote, an email, a snippet to work on — that goes with your question in LLM and Agent modes, the way selected or copied text does, and that Decision has always had. ⌘Return sends from the card, while plain Return makes a new line. Tab no longer sends, since Return already does.
