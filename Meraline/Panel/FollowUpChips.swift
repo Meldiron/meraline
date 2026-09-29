@@ -65,7 +65,7 @@ struct FollowUpChips: View {
                 hovered = nil
             }
         }
-        .hoverTip(question == nil ? "" : "Put it in the input, or Shift-click to ask it now")
+        .help(question == nil ? "" : "Put it in the input, or Shift-click to ask it now")
         .accessibilityLabel(question ?? "Thinking of follow-ups")
         .accessibilityHint(question == nil ? "" : "Puts the question in the input. Shift-click asks it.")
     }

@@ -512,7 +512,7 @@ struct ProviderPane: View {
         case .failed(let message):
             Label("Failed", systemImage: "xmark.octagon.fill")
                 .foregroundStyle(.red)
-                .hoverTip(message)
+                .help(message)
         }
     }
 

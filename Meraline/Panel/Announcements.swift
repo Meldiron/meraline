@@ -111,7 +111,7 @@ private struct AnnouncementCapsule: View {
                 .frame(maxHeight: .infinity)
                 .contentShape(.rect)
             }
-            .hoverTip(help)
+            .help(help)
 
             Button(action: dismiss) {
                 Image(systemName: "xmark")
@@ -121,7 +121,7 @@ private struct AnnouncementCapsule: View {
                     .frame(maxHeight: .infinity)
                     .contentShape(.rect)
             }
-            .hoverTip(dismissHelp)
+            .help(dismissHelp)
             .accessibilityLabel("Dismiss \(title)")
         }
         .buttonStyle(.plain)

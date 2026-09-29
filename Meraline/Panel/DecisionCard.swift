@@ -265,7 +265,7 @@ struct DecisionAnswersBadge: View {
         .frame(maxWidth: 260)
         .fixedSize(horizontal: true, vertical: false)
         .glassEffect(.regular, in: .capsule)
-        .hoverTip(answers.isOrdered
+        .help(answers.isOrdered
             ? "The levels Jev places the text along. Name your own after the question, from lowest to highest with < between them"
             : "The answers Jev picks from. Name your own after the question, with / between them, or < for levels in order")
         .accessibilityElement(children: .ignore)
@@ -330,7 +330,7 @@ struct TypedStateCard: View {
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
                 CardButton(symbol: "xmark", label: "Leave out the context", action: remove)
-                    .hoverTip("Leave it out")
+                    .help("Leave it out")
             }
             .lineLimit(1)
             ZStack(alignment: .topLeading) {
@@ -424,7 +424,7 @@ struct DecisionScopeToggle: View {
         .onHover { inside in
             if inside { hovered = candidate } else if hovered == candidate { hovered = nil }
         }
-        .hoverTip(candidate.help)
+        .help(candidate.help)
         .accessibilityLabel(candidate.title)
         .accessibilityAddTraits(isOn ? .isSelected : [])
     }
@@ -505,7 +505,7 @@ struct BulkDecisionCard: View {
                 .padding(.horizontal, 9)
                 .padding(.vertical, 4)
                 .background(fill(of: group.verdict), in: .capsule)
-                .hoverTip(help(for: item))
+                .help(help(for: item))
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(item.text), \(help(for: item))")
             }
@@ -530,7 +530,7 @@ struct BulkDecisionCard: View {
                 .padding(.vertical, 5)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(fill(of: group.verdict), in: .rect(cornerRadius: 8))
-                .hoverTip(help(for: item))
+                .help(help(for: item))
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(item.text), \(help(for: item))")
             }

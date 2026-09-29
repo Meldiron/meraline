@@ -37,7 +37,7 @@ struct ChatTimer: View {
                         }
                         .buttonStyle(.plain)
                         .glassEffect(.regular.interactive(), in: .capsule)
-                        .hoverTip("Give this chat \(minutes) more minutes")
+                        .help("Give this chat \(minutes) more minutes")
                         .accessibilityLabel("Add \(minutes) minutes")
                     }
                 }
@@ -141,7 +141,7 @@ private struct TimeLeft: View {
             .animation(.easeInOut(duration: 0.4), value: isRunningOut)
         }
         .scaleEffect(reduceMotion ? 1 : shine.scale)
-        .hoverTip("This chat and its files go when the time runs out, never sooner than \(Int(ChatSession.chatLifetime / 60)) minutes after its last message.")
+        .help("This chat and its files go when the time runs out, never sooner than \(Int(ChatSession.chatLifetime / 60)) minutes after its last message.")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Time left for this chat")
         .accessibilityValue(label)

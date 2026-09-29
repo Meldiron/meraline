@@ -529,7 +529,7 @@ private struct AnswerNoteView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .hoverTip(question)
+                    .help(question)
                     .opacity(layout.contentOpacity)
                     .transition(.opacity)
             }
@@ -568,7 +568,7 @@ private struct AnswerNoteView: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
-        .hoverTip(help ?? label)
+        .help(help ?? label)
         .accessibilityLabel(label)
     }
 

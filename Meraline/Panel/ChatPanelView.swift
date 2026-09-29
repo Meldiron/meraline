@@ -410,7 +410,7 @@ struct ChatPanelView: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(",")
-            .hoverTip("Settings (⌘,)", edge: .bottom)
+            .help("Settings (⌘,)")
             .accessibilityLabel("Settings")
         }
         .padding(.leading, 20)
@@ -505,7 +505,7 @@ struct ChatPanelView: View {
             if session.isStreaming {
                 ProgressView()
                     .controlSize(.mini)
-                    .hoverTip("Answering")
+                    .help("Answering")
             }
             if !layout.answerZoom.isActualSize, context.canZoomAnswers {
                 AnswerZoomBadge(zoom: layout.answerZoom) { layout.zoomAnswers(.actualSize) }
@@ -584,9 +584,9 @@ private struct SparkleButton: View {
         .buttonStyle(.plain)
         .fixedSize()
         .actionPanelAnchor(.providers)
-        .hoverTip(session.isAnonymous
+        .help(session.isAnonymous
             ? "Anonymous mode is on: this chat won’t go to Recent Chats (⇧⌘N to turn it off)"
-            : "Providers, modes, and settings", edge: .bottom)
+            : "Providers, modes, and settings")
         .accessibilityLabel("Provider")
         .accessibilityValue(session.isAnonymous ? "Anonymous mode on" : "")
     }
@@ -737,7 +737,7 @@ private struct PromptCard: View {
                 if explain != nil, why == nil || why?.isFailed == true {
                     Button("Why?") { why = .asking }
                         .buttonStyle(.glass)
-                        .hoverTip("Ask \(agent) why it wants this")
+                        .help("Ask \(agent) why it wants this")
                 }
                 Button("Deny") { answer(.deny) }
                     .buttonStyle(.glass)
@@ -784,7 +784,7 @@ private struct PromptCard: View {
                         let picked = picks[question.id, default: []].contains(option.label)
                         Button(option.label) { pick(option.label, for: question, of: questions) }
                             .buttonStyle(.glass(picked ? .regular.tint(.meralinePink.opacity(0.18)) : .regular))
-                            .hoverTip(option.detail ?? option.label)
+                            .help(option.detail ?? option.label)
                     }
                 }
             }
@@ -844,7 +844,7 @@ private struct PromptOutcomeRow: View {
         }
         .font(.system(size: 12))
         .foregroundStyle(.tertiary)
-        .hoverTip(text)
+        .help(text)
     }
 
     private var text: String {
@@ -1054,7 +1054,7 @@ private struct NudgeRow: View {
             if let button {
                 SwiftUI.Button(button.title, action: button.action)
                     .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
-                    .hoverTip("\(button.title), or press Return with nothing typed")
+                    .help("\(button.title), or press Return with nothing typed")
             }
         }
         .padding(12)
@@ -1202,7 +1202,7 @@ private struct FileChip: View {
         .frame(height: height)
         .background(.primary.opacity(0.04), in: .rect(cornerRadius: 10))
         .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(.separator) }
-        .hoverTip(file.name)
+        .help(file.name)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Attached file \(file.name)")
     }

@@ -115,7 +115,7 @@ struct FilePreviewStrip: View {
                 .overlay { Color.clear.contentShape(.rect(cornerRadius: Self.cornerRadius)) }
         }
         .buttonStyle(.plain)
-        .hoverTip(enlarges ? (isEnlarged ? "Show less" : "Show more") : file.name)
+        .help(enlarges ? (isEnlarged ? "Show less" : "Show more") : file.name)
         .accessibilityLabel("Preview of \(file.name)")
         .accessibilityHint(enlarges ? (isEnlarged ? "Shows less of it" : "Shows more of it") : "")
         .onScrollVisibilityChange(threshold: 0.01) { if $0 { hasShown = true } }

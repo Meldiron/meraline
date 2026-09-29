@@ -125,7 +125,7 @@ struct AnswerZoomBadge: View {
                 .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .hoverTip("Answers at \(zoom.percent). Click for Actual Size (⌘0)")
+        .help("Answers at \(zoom.percent). Click for Actual Size (⌘0)")
         .accessibilityLabel("Answers at \(zoom.percent)")
         .accessibilityHint("Goes back to actual size")
     }

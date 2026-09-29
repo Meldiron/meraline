@@ -161,7 +161,7 @@ private struct SymbolPicker: View {
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
             SymbolGrid(symbol: $symbol) { isOpen = false }
         }
-        .hoverTip("Choose an icon")
+        .help("Choose an icon")
         .accessibilityLabel("Icon")
         .accessibilityValue(symbol)
     }
@@ -191,7 +191,7 @@ private struct SymbolGrid: View {
                             .contentShape(.rect(cornerRadius: 7))
                     }
                     .buttonStyle(.plain)
-                    .hoverTip(candidate)
+                    .help(candidate)
                     .accessibilityLabel(candidate)
                 }
             }

@@ -59,7 +59,7 @@ struct ToolTrail: View {
                     if explain == nil {
                         label(for: tool, isShown: false)
                             .glassEffect(.regular, in: .capsule)
-                            .hoverTip(tool.title)
+                            .help(tool.title)
                     } else {
                         capsule(for: tool, at: index)
                     }
@@ -102,7 +102,7 @@ struct ToolTrail: View {
         }
         .buttonStyle(.plain)
         .glassEffect(isShown ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(), in: .capsule)
-        .hoverTip("\(tool.title). Click to ask \(agent) why.")
+        .help("\(tool.title). Click to ask \(agent) why.")
         .accessibilityLabel(tool.title)
         .accessibilityHint("Asks \(agent) why it did this")
         .accessibilityAddTraits(isShown ? .isSelected : [])

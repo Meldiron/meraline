@@ -80,7 +80,7 @@ struct CostNudges: View {
                     .frame(height: Announcements.size)
                     .glassEffect(.regular, in: .capsule)
                 }
-                .hoverTip(nudge.help)
+                .help(nudge.help)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(nudge.accessibilityLabel)
                 .transition(.opacity)

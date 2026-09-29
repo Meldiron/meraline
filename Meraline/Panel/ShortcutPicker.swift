@@ -216,7 +216,7 @@ private struct ShortcutChoices: View {
                         .buttonStyle(.plain)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
-                        .hoverTip(setup.conflict == nil ? "Keep the shortcut Meraline has" : "Keep it if you moved those apps to other shortcuts")
+                        .help(setup.conflict == nil ? "Keep the shortcut Meraline has" : "Keep it if you moved those apps to other shortcuts")
                 }
             }
             .animation(.smooth(duration: 0.2), value: isRecording)
@@ -241,7 +241,7 @@ private struct ShortcutChoices: View {
         .onHover { inside in
             if inside { hovered = suggestion } else if hovered == suggestion { hovered = nil }
         }
-        .hoverTip(suggestion.hint)
+        .help(suggestion.hint)
         .accessibilityLabel("Try \(suggestion.shortcut.spokenKeys)\(isRecommended ? ", recommended" : "")")
         .accessibilityHint(suggestion.hint)
     }
@@ -299,7 +299,7 @@ struct ShortcutNotice: View {
                 .frame(maxHeight: .infinity)
                 .contentShape(.rect)
             }
-            .hoverTip("\(shortcut) may belong to another app. Pick another in Settings › General.")
+            .help("\(shortcut) may belong to another app. Pick another in Settings › General.")
 
             Button(action: dismiss) {
                 Image(systemName: "xmark")
@@ -309,7 +309,7 @@ struct ShortcutNotice: View {
                     .frame(maxHeight: .infinity)
                     .contentShape(.rect)
             }
-            .hoverTip("Hide this")
+            .help("Hide this")
             .accessibilityLabel("Dismiss")
         }
         .buttonStyle(.plain)
