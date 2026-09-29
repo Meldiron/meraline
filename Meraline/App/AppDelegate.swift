@@ -93,7 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func open(_ route: AutomationRoute) async {
         switch route {
-        case .ask(let text, let selection, let clipboard, let screen, let mode, let send):
+        case .ask(let text, let selection, let clipboard, let screen, let mode, let scope, let send):
             var with: [String] = []
             if text != nil { with.append("text") }
             if selection != nil { with.append("a selection") }
@@ -101,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if screen { with.append("the screen") }
             Log.app.info("URL route: ask\(with.isEmpty ? "" : " with \(with.joined(separator: ", "))")\(mode.map { " in \($0.title)" } ?? "")\(send ? ", send" : "")")
             if let mode { switchMode(to: mode) }
+            if let scope { preferences.decisionScope = scope }
             panel.show()
             if let selection = selection.flatMap({ SelectedText($0) }) { session.bring(selection) }
             if let text { session.draft = text }

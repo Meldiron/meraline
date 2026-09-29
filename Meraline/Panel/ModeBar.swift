@@ -27,10 +27,10 @@ struct ModeBar: View {
             HStack(spacing: 8) {
                 let isOpen = layout.expandedTray == .games
                 let isDeciding = preferences.mode == .decision
-                // In Decision mode the games give way to the answers the next question picks from: a game is
-                // played against an LLM or an agent, never a decision model. Both stay in the view tree, each in
-                // a glass container of its own so its fade reaches its glass, and the capsule takes no click, so
-                // no button of its lies where the games' are.
+                // In Decision mode the games give way to what the next question decides about and the answers it
+                // picks from: a game is played against an LLM or an agent, never a decision model. Both stay in
+                // the view tree, each in a glass container of its own so its fade reaches its glass, and the
+                // hidden one is disabled, so no button of its takes a click where the other's are.
                 ZStack(alignment: .trailing) {
                     GlassEffectContainer {
                         GameTray(openness: isOpen ? 1 : 0, isOpen: isOpen, playing: session.game) {
@@ -44,9 +44,16 @@ struct ModeBar: View {
                     .disabled(isDeciding)
                     .accessibilityHidden(isDeciding)
                     GlassEffectContainer {
-                        DecisionAnswersBadge(answers: session.draftAnswers)
+                        HStack(spacing: 8) {
+                            DecisionScopeToggle(scope: preferences.decisionScope) { scope in
+                                preferences.decisionScope = scope
+                                focusInput()
+                            }
+                            DecisionAnswersBadge(answers: session.draftAnswers)
+                        }
                     }
                     .opacity(isDeciding ? 1 : 0)
+                    .disabled(!isDeciding)
                     .accessibilityHidden(!isDeciding)
                 }
                 .animation(.smooth(duration: 0.2), value: isDeciding)

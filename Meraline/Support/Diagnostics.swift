@@ -94,7 +94,7 @@ enum Diagnostics {
         let changedPresets = preferences.changedPresetKinds.map { "\($0.pluralTitle) (\(preferences[presets: $0].count))" }
         lines.append("- Prompts: \(changedPrompts.isEmpty ? "default" : "changed for \(changedPrompts.joined(separator: ", "))"), language \(preferences.language.name), presets \(changedPresets.isEmpty ? "default" : "changed for \(changedPresets.joined(separator: ", "))")")
         // The answers are text of yours, so only whether they changed.
-        lines.append("- Decisions: answers \(preferences.decisionAnswers == DecisionAnswers.defaultText ? "default" : "changed"), not sure below \(Decision.percent(preferences.unsureBelow))")
+        lines.append("- Decisions: answers \(preferences.decisionAnswers == DecisionAnswers.defaultText ? "default" : "changed"), not sure below \(Decision.percent(preferences.unsureBelow)), about \(preferences.decisionScope.title.lowercased())")
         if updates.isAvailable {
             let lastCheck = updates.lastCheck.map { $0.formatted(.iso8601) } ?? "never"
             lines.append("- Updates: \(updates.channel.title.lowercased()) channel, automatic checks \(updates.checksAutomatically ? "on" : "off"), automatic install \(updates.downloadsAutomatically ? "on" : "off"), last check \(lastCheck), \(updates.state)")

@@ -23,6 +23,7 @@ import WebKit
 ///   note-stack    three answers torn off into one note: the last in front, the edges of the other two under it
 ///   decision      Decision mode: Jev's Yes about a text selected in Mail, with how sure it is
 ///   decision-levels  Decision mode: a priority placed along Low, Medium, and High, and the answers under the input
+///   decision-lines  Decision mode about each line: six tasks from Notes grouped under Yes, No, and Not sure
 @MainActor
 @Suite(.serialized, .enabled(if: Showcase.output != nil, "scripts/showcase.sh takes these pictures"))
 struct ShowcaseTests {
@@ -273,6 +274,29 @@ struct ShowcaseTests {
         }
     }
 
+    @Test func decisionLines() async throws {
+        guard Showcase.wants("decision-lines") else { return }
+        let lines = [
+            "Renew the office lease before Friday", "Order more coffee for the kitchen", "Reply to legal about the pricing page",
+            "Book the team dinner for next month", "Fix the checkout bug for European customers", "Update the on-call schedule",
+        ]
+        func yes(_ p: Double) -> Decision { Decision(options: [.init(label: "Yes", probability: p), .init(label: "No", probability: 1 - p)], isYesNo: true, confidence: abs(2 * p - 1)) }
+        let batch = DecisionBatch(scope: .lines, answers: .yesNo, total: lines.count, items: zip(lines, [0.92, 0.06, 0.86, 0.11, 0.97, 0.58]).enumerated().map { index, pair in
+            DecisionBatch.Item(id: index, text: pair.0, decision: yes(pair.1))
+        })
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.decisionPanel(on: stage, batches: [batch], scope: .lines)
+            scene.session.bring(try #require(SelectedText(lines.joined(separator: "\n"), appName: "Notes", appURL: URL(fileURLWithPath: "/System/Applications/Notes.app"))))
+            scene.session.draft = "Is this urgent?"
+            scene.session.send()
+            await GameTestSupport.settle(scene.session)
+            await Showcase.settle(1.5)
+            try await stage.capturePanel(scene.panel, as: "decision-lines")
+            stage.close(scene.panel)
+        }
+    }
+
     @Test func costNudge() async throws {
         guard Showcase.wants("cost-nudge") else { return }
         for appearance in Showcase.appearances {
@@ -359,13 +383,15 @@ struct ShowcaseTests {
         return try place(session, preferences: preferences, defaults: defaults, model: model, on: stage)
     }
 
-    /// The real panel on the stage in Decision mode, TypeSafe answering with `decisions`.
-    private static func decisionPanel(on stage: ShowcaseStage, decisions: [Decision]) throws -> PanelScene {
+    /// The real panel on the stage in Decision mode, TypeSafe answering with `decisions`, or with `batches` about
+    /// each word or line of the `scope`.
+    private static func decisionPanel(on stage: ShowcaseStage, decisions: [Decision] = [], batches: [DecisionBatch] = [], scope: DecisionScope = .whole) throws -> PanelScene {
         let (preferences, defaults) = preferences()
         preferences[.typeSafe] = ProviderSettings(model: "jev-latest", baseURL: Provider.typeSafe.defaultBaseURL, apiKey: "demo", isEnabled: true)
         preferences.setDefaultProvider(.typeSafe, for: .decision)
         preferences.mode = .decision
-        let model = ScriptedModel(decisions: decisions)
+        preferences.decisionScope = scope
+        let model = ScriptedModel(decisions: decisions, batches: batches)
         let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { model.stream($0) }
         return try place(session, preferences: preferences, defaults: defaults, model: model, on: stage)
     }

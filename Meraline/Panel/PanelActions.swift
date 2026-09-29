@@ -293,7 +293,7 @@ struct PanelContext {
             })
         }
         // A decision is a word and a number, nothing to tear off.
-        if !session.isStreaming, let answer = session.lastAnswer, session.turns.last(where: { !$0.answer.isEmpty })?.decision == nil {
+        if !session.isStreaming, let answer = session.lastAnswer, session.turns.last(where: { !$0.answer.isEmpty })?.isDecision != true {
             let question = session.turns.last { !$0.answer.isEmpty }?.question ?? ""
             copy.append(PanelAction(id: "tearOff", title: "Tear Off Answer", icon: .symbol("macwindow.on.rectangle"), shortcut: .command("t"), keywords: ["note", "float", "keep", "pin"]) { [layout] in
                 AnswerNotes.shared.open(answer: answer, question: question, zoom: layout.answerZoom, workspace: session.workspace?.url)
@@ -388,7 +388,7 @@ struct PanelContext {
 
     /// Whether there are answers to zoom: a chat's, not a game's nor a decision's, once the first one has begun.
     var canZoomAnswers: Bool {
-        session.game == nil && session.turns.contains { !$0.answer.isEmpty && $0.decision == nil }
+        session.game == nil && session.turns.contains { !$0.answer.isEmpty && !$0.isDecision }
     }
 
     /// Zoom In, Zoom Out, and Actual Size for the answers, each while it would change something.

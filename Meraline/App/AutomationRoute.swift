@@ -13,6 +13,7 @@ import Foundation
 ///                                       asked for came
 ///     meraline://ask?agent=1            ask an agent (agent=0: an LLM); works with everything above
 ///     meraline://ask?mode=decision      ask for a decision (mode=llm, mode=agent too); works with everything above
+///     meraline://ask?scope=lines        decide about each line (scope=words each word, scope=whole the whole text)
 ///     meraline://new                    start a new chat and open the window
 ///     meraline://play                   open the window with the games showing
 ///     meraline://play?game=…            start a game, such as oddOneOut or odd-one-out (see `Game(named:)`)
@@ -23,7 +24,7 @@ import Foundation
 ///     meraline://settings?pane=…        open Settings on a pane: general, prompt, permissions, updates,
 ///                                       about, or a provider such as claudeCode (see `SettingsPane(named:)`)
 nonisolated enum AutomationRoute: Equatable, Sendable {
-    case ask(text: String?, selection: String? = nil, clipboard: Bool = false, screen: Bool = false, mode: ProviderKind? = nil, send: Bool)
+    case ask(text: String?, selection: String? = nil, clipboard: Bool = false, screen: Bool = false, mode: ProviderKind? = nil, scope: DecisionScope? = nil, send: Bool)
     case newChat
     /// A game to start, or nil to show them all.
     case play(game: Game?)
@@ -59,6 +60,7 @@ nonisolated enum AutomationRoute: Equatable, Sendable {
                 clipboard: flag("clipboard"),
                 screen: flag("screen"),
                 mode: mode,
+                scope: value("scope").flatMap(DecisionScope.init(named:)),
                 send: flag("send")
             )
         case "new":
@@ -104,6 +106,18 @@ nonisolated extension ProviderKind {
         let wanted = name.trimmed.lowercased()
         guard let kind = Self.allCases.first(where: { $0.rawValue.lowercased() == wanted || $0.title.lowercased() == wanted }) else { return nil }
         self = kind
+    }
+}
+
+nonisolated extension DecisionScope {
+    /// A scope by the name `meraline://ask?scope=` uses: whole or text, words or word, lines or line, in any case.
+    init?(named name: String) {
+        switch name.trimmed.lowercased() {
+        case "whole", "text": self = .whole
+        case "words", "word": self = .words
+        case "lines", "line": self = .lines
+        default: return nil
+        }
     }
 }
 

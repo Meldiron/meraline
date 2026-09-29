@@ -159,6 +159,7 @@ struct DecisionAnswersBadge: View {
         }
         .padding(.horizontal, 11)
         .frame(height: 30)
+        // Its label's width, up to a cap, whatever the row offers: a flexible frame alone stretched it to the cap.
         .frame(maxWidth: 260)
         .fixedSize(horizontal: true, vertical: false)
         .glassEffect(.regular, in: .capsule)
@@ -273,5 +274,190 @@ struct TypedStateCard: View {
 
     private var words: Int {
         text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
+    }
+}
+
+/// Three segments in a glass capsule at the games' place in Decision mode, beside the answers: the whole text,
+/// each word, or each line (see `DecisionScope`). The chosen one carries the mode toggle's tinted pill, which
+/// slides across when the scope changes.
+struct DecisionScopeToggle: View {
+    let scope: DecisionScope
+    let choose: (DecisionScope) -> Void
+
+    @Namespace private var thumb
+    @State private var hovered: DecisionScope?
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(DecisionScope.allCases) { segment($0) }
+        }
+        .padding(3)
+        .glassEffect(.regular, in: .capsule)
+        .animation(.snappy(duration: 0.3, extraBounce: 0.04), value: scope)
+        .animation(.easeOut(duration: 0.12), value: hovered)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("What to decide about")
+    }
+
+    private func segment(_ candidate: DecisionScope) -> some View {
+        let isOn = scope == candidate
+        return Button { choose(candidate) } label: {
+            Image(systemName: candidate.symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(isOn ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
+                .frame(width: 30, height: 24)
+                .background {
+                    if isOn {
+                        Color.clear
+                            .glassEffect(.regular.tint(.meralinePink.opacity(0.22)).interactive(), in: .capsule)
+                            .matchedGeometryEffect(id: "thumb", in: thumb)
+                    } else if hovered == candidate {
+                        Capsule().fill(.primary.opacity(0.07))
+                    }
+                }
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            if inside { hovered = candidate } else if hovered == candidate { hovered = nil }
+        }
+        .help(candidate.help)
+        .accessibilityLabel(candidate.title)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+}
+
+/// The decisions about each word or line of a text, in the answer's place (see `DecisionBatch`): a line with the
+/// counts, then the words or lines grouped by answer, Yes on green, No on red, your own answers and Not Sure in
+/// neutral colors, words as capsules in a row that wraps and lines as a list, each with how sure Jev is. While
+/// the batches come, the line counts them up.
+struct BulkDecisionCard: View {
+    let batch: DecisionBatch
+    /// Under this confidence an item is Not Sure (see `Preferences.unsureBelow`).
+    let unsureBelow: Double
+    let isAnswering: Bool
+
+    var body: some View {
+        let groups = batch.groups(unsureBelow: unsureBelow)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                if isAnswering, !batch.isComplete {
+                    ProgressView().controlSize(.mini)
+                }
+                Text(headline(of: groups))
+                    .font(.system(size: 12, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(groups) { group in
+                VStack(alignment: .leading, spacing: 6) {
+                    header(of: group)
+                    if batch.scope == .words {
+                        words(of: group)
+                    } else {
+                        lines(of: group)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .animation(.smooth(duration: 0.2), value: batch.items.count)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(batch.summary(unsureBelow: unsureBelow))
+    }
+
+    /// "12 of 45 words decided…", then "45 words · Yes 12 · No 30 · Not sure 3".
+    private func headline(of groups: [DecisionBatch.Group]) -> String {
+        guard batch.isComplete else { return "\(batch.items.count.formatted()) of \(batch.count) decided…" }
+        let counts = groups.map { "\($0.label) \($0.items.count.formatted())" }.joined(separator: " · ")
+        return counts.isEmpty ? batch.count : "\(batch.count) · \(counts)"
+    }
+
+    private func header(of group: DecisionBatch.Group) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol(of: group.verdict))
+                .font(.system(size: group.verdict == .chosen ? 7 : 11, weight: .bold))
+                .foregroundStyle(tint(of: group.verdict).map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
+                .frame(width: 14)
+            Text("\(group.label) · \(group.items.count.formatted())")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func words(of group: DecisionBatch.Group) -> some View {
+        FlowLayout(spacing: 6) {
+            ForEach(group.items) { item in
+                HStack(spacing: 5) {
+                    Text(item.text)
+                        .font(.system(size: 12, weight: .medium))
+                    Text(Decision.percent(item.decision.confidence))
+                        .font(.system(size: 11))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                .lineLimit(1)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(fill(of: group.verdict), in: .capsule)
+                .help(help(for: item))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(item.text), \(help(for: item))")
+            }
+        }
+    }
+
+    private func lines(of group: DecisionBatch.Group) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(group.items) { item in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(item.text)
+                        .font(.system(size: 12))
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Text(Decision.percent(item.decision.confidence))
+                        .font(.system(size: 11))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(fill(of: group.verdict), in: .rect(cornerRadius: 8))
+                .help(help(for: item))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(item.text), \(help(for: item))")
+            }
+        }
+    }
+
+    private func symbol(of verdict: Decision.Verdict) -> String {
+        switch verdict {
+        case .yes: "checkmark"
+        case .no: "xmark"
+        case .unsure: "questionmark"
+        case .chosen: "circle.fill"
+        }
+    }
+
+    /// Green for Yes and red for No, as `DecisionCard` has them; nothing for the rest.
+    private func tint(of verdict: Decision.Verdict) -> Color? {
+        switch verdict {
+        case .yes: Color(nsColor: .addedText)
+        case .no: Color(nsColor: .removedText)
+        case .unsure, .chosen: nil
+        }
+    }
+
+    private func fill(of verdict: Decision.Verdict) -> AnyShapeStyle {
+        tint(of: verdict).map { AnyShapeStyle($0.opacity(0.12)) } ?? AnyShapeStyle(.primary.opacity(0.05))
+    }
+
+    private func help(for item: DecisionBatch.Item) -> String {
+        let sure = "\(Decision.percent(item.decision.confidence)) confident"
+        return item.decision.isUnsure(below: unsureBelow) ? "Not sure, leaning \(item.decision.chosen.label), \(sure)" : "\(item.decision.chosen.label), \(sure)"
     }
 }

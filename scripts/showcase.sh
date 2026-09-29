@@ -22,6 +22,7 @@
 #   note-stack    three answers torn off into one note: the last in front, the edges of the other two under it
 #   decision      Decision mode: Jev's Yes about a text selected in Mail, with how sure it is
 #   decision-levels  Decision mode: a priority placed along Low, Medium, and High, and the answers under the input
+#   decision-lines  Decision mode about each line: six tasks from Notes grouped under Yes, No, and Not sure
 #
 # Pictures go to docs/screenshots, as name.png (dark) and name-light.png, the names the README uses. Pictures
 # that need a real provider, an agent, or clicks come from scripts/screenshots.sh. Needs Screen Recording
@@ -42,7 +43,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         dark|light|both) APPEARANCE="$1"; shift ;;
         --out) OUT="$(mkdir -p "$2" && cd "$2" && pwd)"; shift 2 ;;
-        -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) echo "error: unknown option $1" >&2; exit 2 ;;
         *) ONLY+=("$1"); shift ;;
     esac

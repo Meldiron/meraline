@@ -162,6 +162,13 @@ struct ChatPanelView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.bottom, 12)
+                } else if let notice = session.bulkNotice {
+                    SwitchModeRow(message: notice, symbol: DecisionScope.whole.symbol, button: "Whole Text") {
+                        preferences.decisionScope = .whole
+                        isInputFocused = true
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
                 } else if !hasConversation && preferences.activeProvider == nil {
                     SetupRow(kind: preferences.mode) { openSettings(.provider(preferences.mode.providers[0])) }
                         .padding(.horizontal, 12)
@@ -283,6 +290,7 @@ struct ChatPanelView: View {
         .animation(.smooth(duration: Self.cardAnimation), value: session.draftSelections)
         .animation(.smooth(duration: Self.cardAnimation), value: session.fileNotice)
         .animation(.smooth(duration: Self.cardAnimation), value: session.pictureNotice)
+        .animation(.smooth(duration: Self.cardAnimation), value: session.bulkNotice)
         .animation(.smooth(duration: Self.cardAnimation), value: session.needsDecisionState)
         .animation(.smooth(duration: Self.cardAnimation), value: session.typedState == nil)
         .animation(.smooth(duration: Self.cardAnimation), value: session.failure)
@@ -625,7 +633,9 @@ private struct TurnView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
             }
-            if let decision = turn.decision {
+            if let batch = turn.decisions {
+                BulkDecisionCard(batch: batch, unsureBelow: unsureBelow, isAnswering: isAnswering)
+            } else if let decision = turn.decision {
                 DecisionCard(decision: decision, unsureBelow: unsureBelow)
             } else if !turn.answer.isEmpty {
                 if showsChanges, let changes = turn.changes {
@@ -1052,8 +1062,8 @@ private struct NudgeRow: View {
     }
 }
 
-/// Why the draft waits, with the mode that would send it: files while asking an LLM or for a decision, or
-/// pictures while asking for a decision.
+/// Why the draft waits, with the switch that would send it: files while asking an LLM or for a decision,
+/// pictures while asking for a decision, or more words or lines than a decision about each takes.
 private struct SwitchModeRow: View {
     let message: String
     let symbol: String

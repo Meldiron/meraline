@@ -9,19 +9,30 @@ final class ScriptedModel {
     var replies: [String]
     /// What each reply says it took, in order, for a model that reports its usage.
     var usage: [TokenUsage]
-    /// What each question in Decision mode is answered with, in order (see `Decision`).
+    /// What each question in Decision mode is answered with, in order (see `Decision`), and what each question
+    /// about every word or line is answered with (see `DecisionBatch`).
     var decisions: [Decision]
+    var batches: [DecisionBatch]
     private(set) var requests: [ChatRequest] = []
 
-    init(_ replies: [String] = [], usage: [TokenUsage] = [], decisions: [Decision] = []) {
+    init(_ replies: [String] = [], usage: [TokenUsage] = [], decisions: [Decision] = [], batches: [DecisionBatch] = []) {
         self.replies = replies
         self.usage = usage
         self.decisions = decisions
+        self.batches = batches
     }
 
     func stream(_ request: ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> {
         requests.append(request)
         let took = usage.isEmpty ? nil : usage.removeFirst()
+        if let decision = request.decision, !decision.items.isEmpty, !batches.isEmpty {
+            let batch = batches.removeFirst()
+            return AsyncThrowingStream { continuation in
+                if let took { continuation.yield(.usage(took, adds: true)) }
+                continuation.yield(.decisions(batch))
+                continuation.finish()
+            }
+        }
         if request.decision != nil, !decisions.isEmpty {
             let decision = decisions.removeFirst()
             return AsyncThrowingStream { continuation in

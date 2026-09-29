@@ -147,3 +147,146 @@ nonisolated struct Decision: Equatable, Sendable {
         return min(max((count * peak - 1) / (count - 1), 0), 1)
     }
 }
+
+/// What a decision is about: the whole text, or each of its words or lines, one decision apiece, asked of Jev a
+/// hundred questions a request (see `DecisionClient`). The switch at the games' place under the input picks it,
+/// and `Preferences.decisionScope` keeps it.
+nonisolated enum DecisionScope: String, CaseIterable, Identifiable, Sendable {
+    case whole
+    case words
+    case lines
+
+    var id: Self { self }
+
+    /// The most words or lines one question decides about, and how many go in one request.
+    static let itemLimit = 1_000
+    static let batchSize = 100
+
+    var title: String {
+        switch self {
+        case .whole: "Whole text"
+        case .words: "Each word"
+        case .lines: "Each line"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .whole: "text.page"
+        case .words: "textformat.abc"
+        case .lines: "list.dash"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .whole: "Decide about the whole text"
+        case .words: "Decide about each word of the text, and see the words grouped by answer"
+        case .lines: "Decide about each line of the text, and see the lines grouped by answer"
+        }
+    }
+
+    /// "word" or "line", for counts; nothing for the whole text.
+    var noun: String {
+        switch self {
+        case .whole: "text"
+        case .words: "word"
+        case .lines: "line"
+        }
+    }
+
+    /// The items of `texts` this scope decides about, in order and each once: the words, split at spaces and line
+    /// breaks with the punctuation around them left off, or the lines, trimmed, without the empty ones. Nothing
+    /// for the whole text.
+    func items(in texts: [SelectedText]) -> [String] {
+        var seen: Set<String> = []
+        var items: [String] = []
+        func add(_ item: String) {
+            guard !item.isEmpty, seen.insert(item).inserted else { return }
+            items.append(item)
+        }
+        switch self {
+        case .whole:
+            return []
+        case .words:
+            let edges = CharacterSet.punctuationCharacters.union(.symbols)
+            for text in texts {
+                for word in text.text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }) {
+                    add(word.trimmingCharacters(in: edges))
+                }
+            }
+        case .lines:
+            for text in texts {
+                for line in text.text.split(whereSeparator: \.isNewline) {
+                    add(String(line).trimmed)
+                }
+            }
+        }
+        return items
+    }
+}
+
+/// The decisions about each word or line of a text (see `DecisionScope`): the items decided so far, in the text's
+/// order, out of `total`, which the card fills as the batches come.
+nonisolated struct DecisionBatch: Equatable, Sendable {
+    struct Item: Equatable, Sendable, Identifiable {
+        /// The item's place among the text's words or lines.
+        let id: Int
+        let text: String
+        let decision: Decision
+    }
+
+    /// The items that got one answer, for the card and the summary: Yes, No, one of your own answers, or Not Sure.
+    struct Group: Equatable, Sendable, Identifiable {
+        let label: String
+        let verdict: Decision.Verdict
+        let items: [Item]
+
+        var id: String { verdict == .unsure ? "unsure" : "answer.\(label)" }
+    }
+
+    let scope: DecisionScope
+    let answers: DecisionAnswers
+    let total: Int
+    var items: [Item]
+
+    var isComplete: Bool { items.count >= total }
+
+    /// "45 words", or "1 line".
+    var count: String { "\(total.formatted()) \(scope.noun)\(total == 1 ? "" : "s")" }
+
+    /// The items by answer, in the answers' order, Not Sure last, leaving out answers no item got.
+    func groups(unsureBelow threshold: Double) -> [Group] {
+        var byLabel: [String: [Item]] = [:]
+        var unsure: [Item] = []
+        for item in items {
+            if item.decision.isUnsure(below: threshold) {
+                unsure.append(item)
+            } else {
+                byLabel[item.decision.chosen.label, default: []].append(item)
+            }
+        }
+        var groups: [Group] = answers.options.compactMap { label in
+            guard let items = byLabel[label] else { return nil }
+            let verdict: Decision.Verdict = answers.isYesNo ? (label.lowercased() == "yes" ? .yes : .no) : .chosen
+            return Group(label: label, verdict: verdict, items: items)
+        }
+        if !unsure.isEmpty { groups.append(Group(label: "Not sure", verdict: .unsure, items: unsure)) }
+        return groups
+    }
+
+    /// The batch in words, for the transcript, Copy Answer, and Insert Answer: the counts, then each answer with
+    /// its words on one line, or its lines listed.
+    func summary(unsureBelow threshold: Double) -> String {
+        let groups = groups(unsureBelow: threshold)
+        let counts = groups.map { "\($0.label) \($0.items.count)" }.joined(separator: " · ")
+        let head = counts.isEmpty ? count : "\(count): \(counts)"
+        let body = groups.map { group -> String in
+            let title = "\(group.label) (\(group.items.count))"
+            return scope == .words
+                ? "\(title): \(group.items.map(\.text).joined(separator: ", "))"
+                : "\(title):\n\(group.items.map { "- \($0.text)" }.joined(separator: "\n"))"
+        }
+        return ([head] + body).joined(separator: "\n\n")
+    }
+}

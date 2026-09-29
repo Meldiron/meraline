@@ -23,6 +23,8 @@ nonisolated enum StreamOutput: Equatable, Sendable {
     case usage(TokenUsage, adds: Bool)
     /// What a decision model decided, whole, in place of any text (see `DecisionClient`).
     case decision(Decision)
+    /// What it decided about each word or line so far, whole each time (see `DecisionBatch`).
+    case decisions(DecisionBatch)
 }
 
 /// What a provider's payload says an answer took, and whether it adds to earlier reports of the same answer or

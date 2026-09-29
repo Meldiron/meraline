@@ -46,7 +46,7 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
 
 ⚡ **Keeps your everyday asks a click away.** The presets above the window's right put a prompt in the input: Fix Grammar, Anti-Slop, Anonymize, and Translate, or your own from **Settings › Prompt**, each with an icon. Select the text first, click one, and ask, or Shift-click to send it at once. They're for starting a chat, so they step aside once it starts, and once an answer is ready, ⌘1 to ⌘9 run them on it. Each mode has presets of its own: agents start with Find Bugs, Explain Code, Write Tests, and Research, and decisions with questions.
 
-⚖️ **Decides.** Switch to Decision (<kbd>⌘</kbd> <kbd>3</kbd>), add the text you selected or copied, or write it in the window, and ask: "Is this urgent?", "Is this a scam?", "Which team should handle this? Billing / Technical / Sales", or "How high a priority is this? Low < Medium < High" for levels in order. TypeSafe's Jev, a model that decides rather than writes, answers in a fraction of a second with a check on green glass or a cross on red, ringed by how sure it is, "82% confident" beside it, and every answer's probability under it. When it isn't sure enough, it says so, and which way it leans; you set the line in **Settings › Prompt**. Follow-ups ask about the same text.
+⚖️ **Decides.** Switch to Decision (<kbd>⌘</kbd> <kbd>3</kbd>), add the text you selected or copied, or write it in the window, and ask: "Is this urgent?", "Is this a scam?", "Which team should handle this? Billing / Technical / Sales", or "How high a priority is this? Low < Medium < High" for levels in order. TypeSafe's Jev, a model that decides rather than writes, answers in a fraction of a second with a check on green glass or a cross on red, ringed by how sure it is, "82% confident" beside it, and every answer's probability under it. When it isn't sure enough, it says so, and which way it leans; you set the line in **Settings › Prompt**. Follow-ups ask about the same text. A switch under the input decides about the whole text, each word, or each line, and groups the words or lines by answer: paste a list of tasks and ask "Is this urgent?".
 
 ✍️ **Puts the answer to work.** **Actions** (<kbd>⌘</kbd> <kbd>K</kbd>) under an answer make it shorter, longer, simpler, more concrete, or a bullet list, in place, so the next rewrite or follow-up builds on what you see. <kbd>⌘</kbd> <kbd>↩</kbd> closes the window and pastes the answer at the cursor of the app you were in: select a paragraph, ask for it friendlier, press <kbd>⌘</kbd> <kbd>↩</kbd>, and the new text replaces the old. Ask to fix the grammar of text you selected or copied, and **Show What Changed** (<kbd>⌘</kbd> <kbd>D</kbd>) under the answer shows your text with each word it took out struck through in red and each it put in green, so a fix is quick to check before you paste it, with how much changed beside the button (“5% changed · 6 edits”); **Show Answer** goes back. <kbd>⌘</kbd> <kbd>T</kbd> tears the answer off into a small floating note that stays on screen while you follow it in another app; tear off more and they pile up in it, with a count badge that flips through them without opening the window.
 
@@ -155,6 +155,17 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
   <tr>
     <td align="center"><sub>Decision mode: Jev answers yes or no, with how sure it is</sub></td>
     <td align="center"><sub>Name your own answers after the question, or levels in order</sub></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/decision-lines.png">
+        <img src="docs/screenshots/decision-lines-light.png" width="440" alt="Decision mode about each line: six tasks from Notes grouped under Yes, No, and Not sure, each with how sure Jev is, and the switch under the input set to each line">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><sub>Or decide about each word or line, and read them grouped by answer</sub></td>
   </tr>
   <tr>
     <td align="center" colspan="2">
@@ -286,6 +297,7 @@ Other apps and scripts can open Meraline through the `meraline://` URL scheme, w
 | `meraline://ask?screen=1` | Adds a screenshot of the screen the window opens on, as the screen button does. With `send=1`, the question waits for it, and isn't sent if it can't be taken |
 | `meraline://ask?agent=1` | Asks an agent; `agent=0` asks an LLM. Works with everything above |
 | `meraline://ask?mode=decision` | Asks for a decision; `mode=llm` and `mode=agent` work too. Works with everything above |
+| `meraline://ask?mode=decision&scope=lines` | Decides about each line; `scope=words` about each word, `scope=whole` about the whole text |
 | `meraline://new` | Starts a new chat and opens the window |
 | `meraline://play` | Opens the window with the games showing |
 | `meraline://play?game=oddOneOut` | Starts a game: `rhymeDuel`, `addAWord`, `categories`, `wordFootball`, `oddOneOut`, `fixTheTypo`, `speedDefinitions`, or `longestWord`. Its title works too, as in `odd-one-out` |

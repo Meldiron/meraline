@@ -51,6 +51,12 @@ final class ChatSession {
         var changes: TextChanges?
         /// What Jev decided, for a question asked in Decision mode; `answer` then says it in words (see `Decision`).
         var decision: Decision?
+        /// What Jev decided about each word or line, for a question asked about each (see `DecisionBatch`), filled
+        /// in as the batches come; `answer` then sums it up.
+        var decisions: DecisionBatch?
+
+        /// The answer is a decision, about the text or each of its words or lines, not words of a model's.
+        var isDecision: Bool { decision != nil || decisions != nil }
 
         /// The ask the agent is waiting on, if any.
         var pendingPrompt: AgentPrompt? { prompts.last(where: \.isPending) }
@@ -227,7 +233,7 @@ final class ChatSession {
     var canSend: Bool {
         guard !isStreaming else { return false }
         guard let gameState else {
-            guard fileNotice == nil, pictureNotice == nil else { return false }
+            guard fileNotice == nil, pictureNotice == nil, bulkNotice == nil else { return false }
             // A decision takes a question, and text to decide about.
             if isDeciding { return !draft.trimmed.isEmpty && hasDecisionState }
             return !draft.trimmed.isEmpty || !draftImages.isEmpty || !draftFiles.isEmpty || !draftSelections.isEmpty
@@ -284,6 +290,16 @@ final class ChatSession {
         guard isDeciding, !draftImages.isEmpty else { return nil }
         let one = draftImages.count == 1
         return "A decision reads text only, not \(one ? "a picture" : "pictures"). Switch to LLM to ask about \(one ? "it" : "them")."
+    }
+
+    /// Why the draft waits: the question is about each word or line, and the texts have more of them than one
+    /// question decides about (see `DecisionScope.itemLimit`). Deciding about the whole text sends it as it is.
+    var bulkNotice: String? {
+        let scope = preferences.decisionScope
+        guard isDeciding, scope != .whole else { return nil }
+        let count = scope.items(in: decisionState).count
+        guard count > DecisionScope.itemLimit else { return nil }
+        return "A decision about each \(scope.noun) takes up to \(DecisionScope.itemLimit.formatted()) \(scope.noun)s, and the text has \(count.formatted()). Decide about the whole text instead, or about less of it."
     }
 
     /// Whether the next question asks for a decision: Decision mode, in a chat rather than a game.
@@ -415,7 +431,7 @@ final class ChatSession {
     /// Whether the last answer can be told again another way: as for Ask Again, with text to rewrite, which a
     /// decision isn't.
     var canRewrite: Bool {
-        canAskAgain && turns.last?.answer.trimmed.isEmpty == false && turns.last?.decision == nil
+        canAskAgain && turns.last?.answer.trimmed.isEmpty == false && turns.last?.isDecision != true
     }
 
     /// Tells the last answer again another way, asking the provider in use now. The model reads the
@@ -621,7 +637,9 @@ final class ChatSession {
         let key = UsageTally.ModelTally.key(provider: provider, model: model)
         let price = usage.price(for: provider, model: model)
         let turnCount = turns.count
-        let unsure = turn.decision.map { $0.isUnsure(below: preferences.unsureBelow) }
+        // Every decision Jev made: one about the text, or one a word or line.
+        let decided = turn.decisions.map { $0.items.map(\.decision) } ?? turn.decision.map { [$0] } ?? []
+        let unsure = decided.filter { $0.isUnsure(below: preferences.unsureBelow) }.count
         usage.record(at: now) { tally in
             switch end {
             case .failed:
@@ -631,10 +649,8 @@ final class ChatSession {
                 tally.stops += 1
             case .complete:
                 if !inGame { tally.answers += 1 }
-                if let unsure {
-                    tally.decisions += 1
-                    if unsure { tally.unsureDecisions += 1 }
-                }
+                tally.decisions += decided.count
+                tally.unsureDecisions += unsure
             }
             tally.secondsWaited += max(0, now.timeIntervalSince(turn.sentAt))
             tally.waits += 1
@@ -730,14 +746,21 @@ final class ChatSession {
 
     /// The request a question in Decision mode makes (see `DecisionRequest`): the chat's texts so far and
     /// `selections` as Jev's state, the question less the answers it names, and those answers, or Settings' when
-    /// it names none. Jev keeps no conversation, so a follow-up asks about the same texts anew.
+    /// it names none, about the whole text or each of its words or lines (`Preferences.decisionScope`; a text
+    /// with none of them is decided about whole). Jev keeps no conversation, so a follow-up asks about the same
+    /// texts anew.
     func makeDecisionRequest(asking question: String, about selections: [SelectedText], of provider: Provider) -> ChatRequest {
         var request = makeRequest(asking: SelectedText.message(question, about: selections), images: [], of: provider)
         let split = DecisionAnswers.split(question, fallback: defaultAnswers)
+        let state = turns.filter(\.isComplete).flatMap(\.selections) + selections
+        let scope = preferences.decisionScope
+        let items = scope.items(in: state)
         request.decision = DecisionRequest(
-            state: turns.filter(\.isComplete).flatMap(\.selections) + selections,
+            state: state,
             question: split.question,
-            answers: split.answers
+            answers: split.answers,
+            scope: items.isEmpty ? .whole : scope,
+            items: items
         )
         return request
     }
@@ -1352,6 +1375,10 @@ final class ChatSession {
             turns[last].decision = decision
             turns[last].answer = decision.summary(unsureBelow: preferences.unsureBelow)
             turns[last].activity = nil
+        case .decisions(let batch):
+            turns[last].decisions = batch
+            turns[last].answer = batch.summary(unsureBelow: preferences.unsureBelow)
+            turns[last].activity = nil
         case .presented(let paths):
             // Read as Meraline's MCP server read it, so these are the files the agent was told it handed over.
             guard let workspace else { return }
@@ -1383,7 +1410,7 @@ final class ChatSession {
     /// finished answer gets any: not a game's move, nor an answer still coming.
     private func suggestFollowUps(after turn: Turn?) {
         clearFollowUps()
-        guard let turn, !isPlaying, !isStreaming, turn.isComplete, !turn.answer.trimmed.isEmpty, turn.decision == nil else { return }
+        guard let turn, !isPlaying, !isStreaming, turn.isComplete, !turn.answer.trimmed.isEmpty, !turn.isDecision else { return }
         let request = FollowUps.Request(question: turn.question, answer: turn.answer, asked: turns.map(\.question), language: preferences.language)
         let suggest = followUpSuggester
         followUpTask = Task { [weak self] in
@@ -1473,7 +1500,7 @@ final class ChatSession {
     /// A stopped or failed answer is cut short, so it has none. A long text rearranged throughout takes a moment to
     /// compare, so it happens off the main actor, and a turn that has gone meanwhile is left be.
     private func findChanges(at index: Int) {
-        guard turns[index].decision == nil, let selections = turns[...index].last(where: { !$0.selections.isEmpty })?.selections else { return }
+        guard !turns[index].isDecision, let selections = turns[...index].last(where: { !$0.selections.isEmpty })?.selections else { return }
         let texts = selections.map(\.text)
         let originals = texts.count > 1 ? texts + [texts.joined(separator: "\n\n")] : texts
         let id = turns[index].id

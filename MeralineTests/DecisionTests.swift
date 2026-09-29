@@ -364,5 +364,120 @@ struct DecisionTests {
         #expect(session.defaultAnswers == .yesNo, "answers that can't be read fall back to Yes and No")
         session.draft = "Is this fine? Good < Bad"
         #expect(session.draftAnswers.isOrdered)
+        #expect(preferences.decisionScope == .whole)
+        preferences.decisionScope = .lines
+        #expect(Self.preferences(defaults).decisionScope == .lines, "the scope is kept")
+    }
+
+    // MARK: Each word or line
+
+    @Test func aScopeSplitsTheTextsIntoWordsOrLines() throws {
+        let notes = try #require(SelectedText("Buy milk, eggs and bread.\n\n  Call the bank!  \nBuy milk", appName: "Notes"))
+        let typed = try #require(SelectedText.typed("Email “Anna” (again)… $100 e-mail don’t"))
+        #expect(DecisionScope.whole.items(in: [notes, typed]).isEmpty)
+        #expect(DecisionScope.lines.items(in: [notes, typed]) == ["Buy milk, eggs and bread.", "Call the bank!", "Buy milk", "Email “Anna” (again)… $100 e-mail don’t"], "trimmed, no empty line, each once")
+        #expect(DecisionScope.words.items(in: [notes, typed]) == ["Buy", "milk", "eggs", "and", "bread", "Call", "the", "bank", "Email", "Anna", "again", "100", "e-mail", "don’t"], "the punctuation around a word left off, each word once")
+        #expect(DecisionScope.words.items(in: [try #require(SelectedText("… — !!!"))]).isEmpty, "punctuation alone is no word")
+        #expect(DecisionScope.allCases.allSatisfy { PromptPreset.exists($0.symbol) })
+        #expect(DecisionScope(named: "Lines") == .lines && DecisionScope(named: "word") == .words && DecisionScope(named: "text") == .whole)
+    }
+
+    @Test func aQuestionAboutEachItemGoesInBatchesOfAHundred() throws {
+        let words = (1...230).map { "w\($0)" }
+        let request = DecisionRequest(state: [try #require(SelectedText(words.joined(separator: " "), appName: "Notes"))], question: "Is this a noun?", answers: .yesNo, scope: .words, items: words)
+        let body = request.body(model: "jev-latest", itemsFrom: 200, count: DecisionScope.batchSize)
+        let state = try #require(body["state"] as? [String: Any])
+        #expect(state["items"] as? [String] == words, "the items go in the state, so a question can name its own")
+        let questions = try #require(body["questions"] as? [String: [String: Any]])
+        #expect(questions.count == 30, "the last batch takes what is left")
+        let question = try #require(questions["item_229"])
+        #expect(question["type"] as? String == "noul")
+        let instructions = try #require(question["instructions"] as? [String: String])
+        #expect(instructions == ["question": "Is this a noun?", "about": "items[229]", "item": "w230"])
+        #expect(questions["item_199"] == nil && questions["item_230"] == nil)
+        #expect(JSONSerialization.isValidJSONObject(body))
+        #expect(request.body(model: "jev-latest")["questions"] as? [String: [String: Any]] != nil, "the whole text is still one question")
+
+        let reply = Data("""
+        {"model": "jev-1.13.0", "answers": {"item_200": {"type": "noul", "noul": 0.9}, "item_201": {"type": "noul", "noul": 0.1}}, "usage": {"input_tokens": 500, "output_tokens": 20}}
+        """.utf8)
+        let batch = try DecisionClient.decodeBatch(reply, for: request, from: 200, count: 2)
+        #expect(batch.items.map(\.id) == [200, 201])
+        #expect(batch.items.map(\.text) == ["w201", "w202"])
+        #expect(batch.items[0].decision.chosen.label == "Yes" && batch.items[1].decision.chosen.label == "No")
+        #expect(batch.usage == TokenUsage(input: 500, output: 20, model: "jev-1.13.0"))
+        #expect(throws: (any Error).self) { try DecisionClient.decodeBatch(reply, for: request, from: 200, count: 3) }
+    }
+
+    @Test func aBatchGroupsItsItemsByAnswer() {
+        func yes(_ p: Double) -> Decision { Decision(options: [.init(label: "Yes", probability: p), .init(label: "No", probability: 1 - p)], isYesNo: true, confidence: abs(2 * p - 1)) }
+        let batch = DecisionBatch(scope: .words, answers: .yesNo, total: 4, items: [
+            .init(id: 0, text: "apple", decision: yes(0.9)), .init(id: 1, text: "run", decision: yes(0.1)),
+            .init(id: 2, text: "pear", decision: yes(0.8)), .init(id: 3, text: "blue", decision: yes(0.6)),
+        ])
+        #expect(batch.isComplete)
+        #expect(batch.count == "4 words")
+        let groups = batch.groups(unsureBelow: 0.5)
+        #expect(groups.map(\.label) == ["Yes", "No", "Not sure"])
+        #expect(groups.map(\.verdict) == [.yes, .no, .unsure])
+        #expect(groups.map { $0.items.map(\.text) } == [["apple", "pear"], ["run"], ["blue"]])
+        #expect(batch.summary(unsureBelow: 0.5) == "4 words: Yes 2 · No 1 · Not sure 1\n\nYes (2): apple, pear\n\nNo (1): run\n\nNot sure (1): blue")
+        let lines = DecisionBatch(scope: .lines, answers: DecisionAnswers(options: ["Task", "Note"], isOrdered: false), total: 3, items: [
+            .init(id: 0, text: "Buy milk", decision: Decision(options: [.init(label: "Task", probability: 0.9), .init(label: "Note", probability: 0.1)], confidence: 0.8)),
+        ])
+        #expect(!lines.isComplete)
+        #expect(lines.groups(unsureBelow: 0.5).map(\.verdict) == [.chosen], "your own answers get no color")
+        #expect(lines.summary(unsureBelow: 0.5) == "3 lines: Task 1\n\nTask (1):\n- Buy milk")
+        #expect(DecisionBatch(scope: .lines, answers: .yesNo, total: 1, items: []).summary(unsureBelow: 0.5) == "1 line")
+    }
+
+    @Test func aQuestionAboutEachLineIsAskedOfEveryLineAndCounted() async throws {
+        func yes(_ p: Double) -> Decision { Decision(options: [.init(label: "Yes", probability: p), .init(label: "No", probability: 1 - p)], isYesNo: true, confidence: abs(2 * p - 1)) }
+        let batch = DecisionBatch(scope: .lines, answers: .yesNo, total: 2, items: [.init(id: 0, text: "Call the bank", decision: yes(0.9)), .init(id: 1, text: "Buy milk", decision: yes(0.55))])
+        let model = ScriptedModel(batches: [batch])
+        let (session, preferences) = Self.decisionSession(model)
+        preferences.decisionScope = .lines
+        session.bring(try #require(SelectedText("Call the bank\nBuy milk", appName: "Notes")))
+        session.draft = "Is this urgent?"
+        #expect(session.canSend)
+        session.send()
+        await Support.settle(session)
+        let request = try #require(model.requests.last?.decision)
+        #expect(request.scope == .lines)
+        #expect(request.items == ["Call the bank", "Buy milk"])
+        let turn = try #require(session.turns.last)
+        #expect(turn.decisions == batch)
+        #expect(turn.decision == nil)
+        #expect(turn.isDecision)
+        #expect(turn.answer == "2 lines: Yes 1 · Not sure 1\n\nYes (1):\n- Call the bank\n\nNot sure (1):\n- Buy milk")
+        #expect(!session.canRewrite)
+        #expect(session.followUps.isEmpty)
+        #expect(session.usage.summary(.day).decisions == 2, "one a line")
+        #expect(session.usage.summary(.day).unsureDecisions == 1)
+
+        // A text with nothing to split is decided about whole.
+        let whole = ScriptedModel(decisions: [yes(0.9)])
+        let (one, prefs) = Self.decisionSession(whole)
+        prefs.decisionScope = .words
+        one.bring(try #require(SelectedText("…", appName: "Notes")))
+        one.draft = "Is this a word?"
+        one.send()
+        await Support.settle(one)
+        #expect(whole.requests.last?.decision?.scope == .whole)
+        #expect(one.turns.last?.decision != nil)
+    }
+
+    @Test func tooManyWordsWaitForTheWholeText() throws {
+        let (session, preferences) = Self.decisionSession(ScriptedModel())
+        preferences.decisionScope = .words
+        session.bring(try #require(SelectedText((1...1_001).map { "w\($0)" }.joined(separator: " "), appName: "Notes")))
+        session.draft = "Is this a noun?"
+        #expect(session.bulkNotice == "A decision about each word takes up to \(1_000.formatted()) words, and the text has \(1_001.formatted()). Decide about the whole text instead, or about less of it.")
+        #expect(!session.canSend)
+        preferences.decisionScope = .lines
+        #expect(session.bulkNotice == nil, "one line")
+        preferences.decisionScope = .whole
+        #expect(session.bulkNotice == nil)
+        #expect(session.canSend)
     }
 }

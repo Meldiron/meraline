@@ -41,6 +41,10 @@ struct AutomationRouteTests {
         #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&mode=decision")!) == .ask(text: "hi", mode: .decision, send: false))
         #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&mode=LLM")!) == .ask(text: "hi", mode: .llm, send: false))
         #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&mode=chess")!) == .ask(text: "hi", send: false))
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?mode=decision&scope=lines")!) == .ask(text: nil, mode: .decision, scope: .lines, send: false))
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?scope=Word")!) == .ask(text: nil, scope: .words, send: false))
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?scope=text")!) == .ask(text: nil, scope: .whole, send: false))
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?scope=pages")!) == .ask(text: nil, send: false))
     }
 
     @Test func switchMode() {

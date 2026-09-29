@@ -145,6 +145,15 @@ final class Preferences {
             Log.settings.info("Decision answers \(decisionAnswers == DecisionAnswers.defaultText ? "default" : "changed")")
         }
     }
+    /// What a decision is about: the whole text, or each of its words or lines (see `DecisionScope`). The switch
+    /// under the input in Decision mode sets it.
+    var decisionScope: DecisionScope {
+        didSet {
+            guard decisionScope != oldValue else { return }
+            defaults.set(decisionScope.rawValue, forKey: "decisions.scope")
+            Log.settings.info("Decisions about \(decisionScope.title.lowercased())")
+        }
+    }
     /// The language answers, agents, and games are in (see `AnswerLanguage`).
     var language: AnswerLanguage {
         didSet {
@@ -219,6 +228,7 @@ final class Preferences {
         self.changedPresets = changedPresets
         unsureBelow = defaults.object(forKey: "decisions.unsureBelow") as? Double ?? Decision.defaultUnsureBelow
         decisionAnswers = defaults.string(forKey: "decisions.answers") ?? DecisionAnswers.defaultText
+        decisionScope = defaults.string(forKey: "decisions.scope").flatMap(DecisionScope.init(rawValue:)) ?? .whole
         language = defaults.string(forKey: "language").flatMap(AnswerLanguage.init(rawValue:)) ?? .english
         updateChannel = defaults.string(forKey: "updateChannel").flatMap(UpdateChannel.init(rawValue:)) ?? .stable
         hidesFromScreenSharing = defaults.bool(forKey: "hidesFromScreenSharing")
