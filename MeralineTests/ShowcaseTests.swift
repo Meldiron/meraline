@@ -313,6 +313,21 @@ struct ShowcaseTests {
         }
     }
 
+    @Test func addText() async throws {
+        guard Showcase.wants("add-text") else { return }
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage)
+            scene.session.draft = "Draft a friendly reply saying Thursday at 3 works"
+            // Tab opens the note card; a piece of context written by hand, alongside the question.
+            scene.session.writeState()
+            scene.session.typedState = "Hi — any chance you're free this week to go over the Q3 numbers? Tuesday or Thursday afternoon both work for me. — Sam"
+            await Showcase.settle(1.5)
+            try await stage.capturePanel(scene.panel, as: "add-text")
+            stage.close(scene.panel)
+        }
+    }
+
     @Test func noteStack() async throws {
         guard Showcase.wants("note-stack") else { return }
         for appearance in Showcase.appearances {

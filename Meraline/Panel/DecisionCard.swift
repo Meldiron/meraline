@@ -283,10 +283,11 @@ struct DecisionStateRow: View {
     }
 }
 
-/// Text written in the window itself as the context of a decision, between the input and the row under it,
-/// where the row asking for it was, like a selected text's card: a header that counts its words, a field of a
-/// few lines that grows with the text, and a cross. It goes with the question as a text of its own, quoted in
-/// the conversation as Context, like a selection.
+/// Text written in the window itself, opened with Tab in any mode (or Decision's Write It row), between the
+/// input and the row under it: a note of context for an LLM or agent, or the text a decision is about. Like a
+/// selected text's card: a header that counts its words, a field of a few lines that grows with the text, and a
+/// cross. It goes with the question as a text of its own, quoted in the conversation as Context, like a
+/// selection, and ⌘Return sends from it (see `PanelController`).
 struct TypedStateCard: View {
     @Binding var text: String
     let remove: () -> Void

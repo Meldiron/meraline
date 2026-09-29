@@ -442,6 +442,14 @@ final class PanelController: NSObject {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.panel else { return event }
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            // ⌘Return sends while the write-a-note card is open, as Return does in the input, ahead of Insert
+            // Answer and the like, since the note's editor takes plain Return for a new line.
+            if modifiers == .command, self.session.typedState != nil, self.layout.actionPanel == nil,
+               !self.session.isStreaming,
+               event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter) {
+                self.session.send()
+                return nil
+            }
             if !self.shortcutSetup.isPresented, self.runAction(for: event) {
                 return nil
             }
@@ -454,8 +462,11 @@ final class PanelController: NSObject {
             if self.layout.actionPanel != nil {
                 return event
             }
+            // Tab opens the card for writing a note to send with the question (`ChatSession.writeState`), in any
+            // mode; Decision also offers it on its own row. It no longer sends — Return already does — and does
+            // nothing while an answer streams, a game is on, or the card is already open.
             if event.keyCode == UInt16(kVK_Tab), modifiers.isEmpty {
-                self.session.send()
+                if !self.session.isStreaming { self.session.writeState() }
                 return nil
             }
             // ⌫ in an empty input takes out the selection or the last attachment, like a token in Spotlight.

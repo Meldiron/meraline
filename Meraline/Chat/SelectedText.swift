@@ -6,7 +6,9 @@ import AppKit
 /// (`typed`), for a decision about text that is nowhere else.
 /// It waits in the draft, in a card above the row under the input, and goes with the question when it is
 /// sent: the model reads it in a `<selected_text>` block before the question. It lives only in memory, like
-/// the rest of the chat.
+/// the rest of the chat. Text written in the window (`typed`) works the same way in any mode: Tab opens the
+/// card for it (see `ChatSession.writeState`, `TypedStateCard`), a note of context for an LLM or agent as well
+/// as the text a decision is about.
 nonisolated struct SelectedText: Identifiable, Equatable, Sendable {
     /// The most that comes along. A runaway selection is cut here rather than filling the question, but the
     /// cap is high enough that ordinary documents pasted or selected whole still arrive in full.
@@ -22,7 +24,7 @@ nonisolated struct SelectedText: Identifiable, Equatable, Sendable {
     let isShortened: Bool
     /// Copied rather than selected: the clipboard button above the window brought it.
     let isFromClipboard: Bool
-    /// Written in the window itself, for a decision (see `TypedStateCard`).
+    /// Written in the window itself, opened with Tab in any mode (see `TypedStateCard`).
     let isTyped: Bool
 
     /// The selection with its ends trimmed and plain line breaks, or nil when nothing is left of it.
@@ -46,7 +48,7 @@ nonisolated struct SelectedText: Identifiable, Equatable, Sendable {
         SelectedText(text, appName: "Clipboard", fromClipboard: true)
     }
 
-    /// Text written in the window for a decision.
+    /// Text written in the window, opened with Tab in any mode.
     static func typed(_ text: String) -> SelectedText? {
         SelectedText(text, typed: true)
     }

@@ -320,7 +320,9 @@ final class ChatSession {
     /// The text written in the window as a text of its own, or nil while there is none.
     var typedSelection: SelectedText? { typedState.flatMap(SelectedText.typed) }
 
-    /// Write It on the row under the mode row: opens the card for writing the text a decision is about.
+    /// Opens the card for writing a note to send with the question (`TypedStateCard`): Tab in any mode, or
+    /// Decision's Write It row. In Decision it is the text to decide about; in LLM and Agent modes it is a piece
+    /// of context of its own, sent as `SelectedText.typed`.
     func writeState() {
         guard !isPlaying, typedState == nil else { return }
         typedState = ""
