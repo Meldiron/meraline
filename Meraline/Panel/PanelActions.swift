@@ -578,8 +578,8 @@ struct PanelContext {
 
     // MARK: The sparkle
 
-    /// The sparkle's panel: the ready providers of the current mode, the other modes, anonymous mode, hiding
-    /// from screen sharing, Settings, and Copy Diagnostics.
+    /// The sparkle's panel: the ready providers of the current mode, Add Text (the manual context Tab opens),
+    /// the other modes, anonymous mode, hiding from screen sharing, Settings, and Copy Diagnostics.
     var providersMenu: ActionMenu {
         let preferences = preferences
         let session = session
@@ -616,6 +616,14 @@ struct PanelContext {
                 focusInput()
             },
         ]
+        // Manual context, so it is discoverable without knowing the Tab shortcut. Not while a game is on or the
+        // card is already open.
+        var context: [PanelAction] = []
+        if !session.isPlaying, session.typedState == nil {
+            context.append(PanelAction(id: "addText", title: "Add Text", subtitle: "Write context to send with your question (Tab)", icon: .symbol("square.and.pencil")) {
+                session.writeState()
+            })
+        }
         var settings: [PanelAction] = []
         if let active {
             settings.append(PanelAction(id: "providerSettings", title: "\(active.name) Settings…", icon: .symbol("slider.horizontal.3")) { [openSettings] in
@@ -641,13 +649,13 @@ struct PanelContext {
         case .agent: "Search agents and settings…"
         case .decision: "Search decision models and settings…"
         }
+        var sections = [ActionSection(id: "providers", actions: providers)]
+        if !context.isEmpty { sections.append(ActionSection(id: "context", actions: context)) }
+        sections.append(ActionSection(id: "modes", actions: modes))
+        sections.append(ActionSection(id: "settings", actions: settings))
         return ActionMenu(
             title: kind.pluralTitle,
-            sections: [
-                ActionSection(id: "providers", actions: providers),
-                ActionSection(id: "modes", actions: modes),
-                ActionSection(id: "settings", actions: settings),
-            ],
+            sections: sections,
             searchPrompt: searchPrompt
         )
     }

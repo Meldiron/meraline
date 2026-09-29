@@ -365,14 +365,18 @@ struct ChatPanelView: View {
 
     private var placeholder: String {
         guard let state = session.gameState else {
+            let ask: String
             if session.isDeciding {
-                let ask = hasConversation ? "Ask for another decision" : "Ask something Jev can decide"
-                return session.isAnonymous ? "\(ask) secretly…" : "\(ask)…"
+                ask = hasConversation ? "Ask for another decision" : "Ask to make decision"
+            } else {
+                let texts = session.draftSelections
+                // A base that reads the same across modes — get answer, do work, make decision — with the
+                // context and follow-up variants layered on where they say more.
+                let base = preferences.mode == .agent ? "Ask to do work" : "Ask to get answer"
+                ask = texts.count > 1 ? "Ask about them"
+                    : texts.first.map { $0.isFromClipboard ? "Ask about the clipboard" : "Ask about the selection" }
+                    ?? (hasConversation ? "Ask a follow-up" : base)
             }
-            let texts = session.draftSelections
-            let ask = texts.count > 1 ? "Ask about them"
-                : texts.first.map { $0.isFromClipboard ? "Ask about the clipboard" : "Ask about the selection" }
-                ?? (hasConversation ? "Ask a follow-up" : "Ask anything")
             return session.isAnonymous ? "\(ask) secretly…" : "\(ask)…"
         }
         switch state.phase {

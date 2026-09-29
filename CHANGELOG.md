@@ -6,6 +6,8 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ## Unreleased
 
+- **Clearer, consistent input placeholders.** Each mode's empty input now reads the same way: “Ask to get answer…” for LLMs, “Ask to do work…” for agents, and “Ask to make decision…” for Jev. Selecting text or asking a follow-up still tailors it.
+- **Add Text in the sparkle's menu.** Writing a piece of context by hand is now an item in the sparkle's menu (the icon left of the input), so it's discoverable without knowing that Tab opens it.
 - **New answers scroll into view again.** After a few answers the conversation stopped following along to the bottom; it now scrolls to the newest answer as it arrives.
 - **Ask a decision without context.** Decision mode no longer needs text to decide about — ask a question on its own (“Is 17 prime?”) and Jev answers. Adding the text you selected, copied, or wrote still sharpens the call, and the row under the input still suggests it, now clearly optional.
 - **A choice or a score is coloured by how sure Jev is.** When a Decision names its own answers — a set with `/` or levels in order with `<` — the disc, its ring, and a score's meter now follow Jev's confidence: green when it's very sure, amber when it's only moderately, so the answer reads at a glance. Yes and No keep their green and red.
