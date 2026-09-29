@@ -305,6 +305,8 @@ struct DecisionStateRow: View {
 /// selection, and ⌘Return sends from it (see `PanelController`).
 struct TypedStateCard: View {
     @Binding var text: String
+    /// Decision mode, where the text is what Jev decides about; in the other modes it goes with the question.
+    var isDeciding = false
     let remove: () -> Void
 
     @FocusState private var isFocused: Bool
@@ -313,6 +315,8 @@ struct TypedStateCard: View {
     private static let font = Font.system(size: 13)
     /// The field's height past which it scrolls.
     private static let tallest: CGFloat = 160
+    /// The room above and below the text, the same for the editor, its placeholder, and the hidden copy that sizes it.
+    private static let inset: CGFloat = 8
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -337,20 +341,22 @@ struct TypedStateCard: View {
                     .font(Self.font)
                     .lineSpacing(2)
                     .padding(.horizontal, 5)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, Self.inset)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .hidden()
                     .onGeometryChange(for: CGFloat.self, of: \.size.height) { textHeight = $0 }
                 if text.isEmpty {
-                    Text("Paste or type the text to decide about…")
+                    Text(isDeciding ? "Paste or type the text to decide about…" : "Paste or type text to send with your question…")
                         .font(Self.font)
                         .foregroundStyle(.tertiary)
                         .padding(.horizontal, 5)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, Self.inset)
                         .allowsHitTesting(false)
                 }
                 // The field fits its text, with a little room to spare, and scrolls only past its tallest, so no
-                // scroll bar shows beside a line or two.
+                // scroll bar shows beside a line or two. The editor draws its first line at its very top (no inset of
+                // its own, and content margins don't reach it), so it sits `inset` down, where the placeholder is;
+                // the caret was otherwise a line's gap above the placeholder.
                 TextEditor(text: $text)
                     .font(Self.font)
                     .lineSpacing(2)
@@ -358,7 +364,8 @@ struct TypedStateCard: View {
                     .scrollDisabled(textHeight + 8 <= Self.tallest)
                     .tint(.meralinePink)
                     .focused($isFocused)
-                    .frame(height: min(max(textHeight + 8, 40), Self.tallest))
+                    .frame(height: min(max(textHeight + 8, 40), Self.tallest) - Self.inset * 2)
+                    .padding(.vertical, Self.inset)
             }
             .padding(.horizontal, 4)
             .background(.primary.opacity(0.04), in: .rect(cornerRadius: 10))
@@ -370,7 +377,7 @@ struct TypedStateCard: View {
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
         .onAppear { isFocused = true }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Context written for the decision")
+        .accessibilityLabel(isDeciding ? "Context written for the decision" : "Context written for the question")
     }
 
     private var words: Int {

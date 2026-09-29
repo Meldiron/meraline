@@ -109,7 +109,7 @@ struct ChatPanelView: View {
                         .transition(Self.cardRowTransition)
                 }
                 if session.typedState != nil, !session.isPlaying {
-                    TypedStateCard(text: typedState) {
+                    TypedStateCard(text: typedState, isDeciding: session.isDeciding) {
                         session.removeTypedState()
                         isInputFocused = true
                     }

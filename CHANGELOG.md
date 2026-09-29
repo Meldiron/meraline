@@ -6,6 +6,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ## Unreleased
 
+- **The cursor in the Context card sits on the first line.** The card Tab opens drew its blinking cursor a line's gap above “Paste or type…”, and what you typed started there too. Both now begin on the same line, and in LLM and Agent modes the hint reads “Paste or type text to send with your question…” instead of asking for text to decide about.
 - **The first open is as quick as the rest.** Meraline now builds and draws its window once, off-screen, just after it launches, so the first ⌥ Space no longer pays to construct and first-render the whole panel.
 - **The window opens the moment you press the shortcut.** Reading what you'd selected no longer holds it up: the fast read runs first and the window appears at once, and when an app has to be asked to copy (browsers, editors — 150–250 ms), that now happens after the window is up, with the selection offered a moment later. Zed still reads before opening, since it needs the ⌘C to reach it first.
 - **Clearer, consistent input placeholders.** Each mode's empty input now reads the same way: “Ask to get answer…” for LLMs, “Ask to do work…” for agents, and “Ask to make decision…” for Jev. Selecting text or asking a follow-up still tailors it.
