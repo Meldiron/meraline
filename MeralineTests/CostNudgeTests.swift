@@ -62,15 +62,24 @@ struct CostNudgeTests {
         #expect(ledger.summary(from: now, to: now.addingTimeInterval(-1)).questions == 0, "a span that ends before it starts has nothing")
     }
 
-    @Test func eachKindShowsOnceItHasCostATenthOfACent() {
-        #expect(CostNudge.nudges { _ in 0 }.isEmpty, "nothing asked today, nothing to say")
+    @Test func oneCapsuleSaysNothingUntilEitherKindHasCostATenthOfACent() {
+        let nothing = CostNudge.nudges { _ in 0 }
+        #expect(nothing == [CostNudge(kind: nil, cost: 0)])
+        #expect(nothing.first?.label == "$0 today")
+        #expect(nothing.first?.accessibilityLabel == "$0 today")
+        #expect(nothing.first?.help.hasPrefix("Today hasn’t cost") == true)
+        #expect(CostNudge.nudges { $0 == .llm ? 0.0002 : 0 } == nothing, "a trace of a cent is nothing yet")
+        #expect(PromptPreset.exists(CostNudge.symbol), "macOS has the dollar sign")
+
         let costs: [ProviderKind: Double] = [.llm: 0.0002, .agent: 4]
-        #expect(CostNudge.nudges { costs[$0]! } == [CostNudge(kind: .agent, cost: 4)], "a trace of a cent on LLMs isn't worth a capsule")
-        #expect(CostNudge.nudges { $0 == .llm ? 0.002 : 12.8 }.map(\.kind) == [.llm, .agent], "LLMs first")
-        #expect(CostNudge.nudges { _ in UsageInsights.leastMoney }.count == 2, "from the least money writes as a number")
+        let both = CostNudge.nudges { costs[$0]! }
+        #expect(both.map(\.kind) == [.llm, .agent], "LLMs first, once either has cost a tenth of a cent")
+        #expect(both.map(\.label) == ["$0", UsageInsights.money(4)], "the trace reads as nothing, with no word more")
+        #expect(both.map(\.accessibilityLabel) == ["$0 on LLMs today", "\(UsageInsights.money(4)) on agents today"])
+        #expect(both[0].help == "What LLMs have cost since midnight, as Settings › Usage counts it.")
+        #expect(both[1].help == "What agents have cost since midnight, as Settings › Usage counts it.")
+        #expect(CostNudge.nudges { _ in UsageInsights.leastMoney }.allSatisfy { $0.hasCost }, "from the least money writes as a number")
         #expect(UsageInsights.money(UsageInsights.leastMoney).hasPrefix("$"), "so a capsule always shows a number")
-        #expect(CostNudge(kind: .llm, cost: 1.5).label == "\(UsageInsights.money(1.5)) on LLMs today")
-        #expect(CostNudge(kind: .agent, cost: 12.8).label == "\(UsageInsights.money(12.8)) on agents today")
-        #expect(CostNudge(kind: .agent, cost: 12.8).help.hasPrefix("What agents have cost since midnight"))
+        #expect(CostNudge(kind: .llm, cost: 1.5).label == UsageInsights.money(1.5))
     }
 }

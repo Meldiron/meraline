@@ -82,7 +82,7 @@ struct AnnouncementsTests {
         let expiresAt = try #require(session.expiresAt)
         settle("the chat runs out while the window is hidden") { session.expireChats(now: expiresAt.addingTimeInterval(1)) }
         #expect(session.turns.isEmpty)
-        settle("the usage is cleared, and the capsules go") { session.usage.clear() }
+        settle("the usage is cleared, and one capsule says $0 today") { session.usage.clear() }
         #expect(!controller.isVisible)
     }
 }
