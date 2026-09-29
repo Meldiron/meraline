@@ -265,9 +265,7 @@ struct DecisionAnswersBadge: View {
         .frame(maxWidth: 260)
         .fixedSize(horizontal: true, vertical: false)
         .glassEffect(.regular, in: .capsule)
-        .help(answers.isOrdered
-            ? "The levels Jev places the text along. Name your own after the question, from lowest to highest with < between them"
-            : "The answers Jev picks from. Name your own after the question, with / between them, or < for levels in order")
+        .help(answers.isOrdered ? "The levels Jev places the text along" : "The answers Jev picks from")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Answers: \(answers.text)")
     }

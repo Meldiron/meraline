@@ -154,9 +154,9 @@ private struct ModeToggle: View {
 
     private func help(for kind: ProviderKind, shortcut: String) -> String {
         switch kind {
-        case .llm: "Ask a model through its API or on this Mac\(shortcut)"
-        case .agent: "Ask an agent on this Mac that can use tools: Claude Code, Codex, or OpenCode\(shortcut)"
-        case .decision: "Ask TypeSafe’s Jev to decide about the text you add: yes or no, or one of your answers, with how sure it is\(shortcut)"
+        case .llm: "Ask a model, through its API or on this Mac\(shortcut)"
+        case .agent: "Ask an agent that can use tools: Claude Code, Codex, or OpenCode\(shortcut)"
+        case .decision: "Ask TypeSafe’s Jev for a decision, with how sure it is\(shortcut)"
         }
     }
 }

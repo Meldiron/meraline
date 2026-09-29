@@ -346,7 +346,7 @@ private struct NoteCapsule: View {
                 Button("Allow…", action: allow)
                     .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
                     .controlSize(.small)
-                    .help("Ask macOS for Screen Recording access. Meraline takes one picture when you ask and records nothing.")
+                    .help("Ask macOS for Screen Recording access")
                 Button(action: dismiss) {
                     Image(systemName: "xmark")
                         .font(.system(size: 8, weight: .bold))

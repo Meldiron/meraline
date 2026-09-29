@@ -181,8 +181,8 @@ nonisolated enum DecisionScope: String, CaseIterable, Identifiable, Sendable {
     var help: String {
         switch self {
         case .whole: "Decide about the whole text"
-        case .words: "Decide about each word of the text, and see the words grouped by answer"
-        case .lines: "Decide about each line of the text, and see the lines grouped by answer"
+        case .words: "Decide each word, grouped by answer"
+        case .lines: "Decide each line, grouped by answer"
         }
     }
 

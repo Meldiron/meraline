@@ -34,7 +34,7 @@ struct PermissionsPane: View {
                     PermissionStatus(isAllowed: isAllowed)
                     if !isAllowed {
                         Button("Allow…") { permissions.request(permission) }
-                            .help("Asks macOS again for this copy of Meraline, even if its switch already looks on")
+                            .help("Ask macOS again, even if the switch looks on")
                     }
                 }
                 .animation(.smooth(duration: 0.2), value: isAllowed)
