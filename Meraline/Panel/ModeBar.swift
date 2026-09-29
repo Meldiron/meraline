@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The row under the input: the LLM and Agent toggle on the left, with quiet privacy badges beside it
-/// (`PrivacyBadges`); on the right, the games behind a controller and the recent chats behind a clock. All are small glass groups in the panel's own language.
+/// The row under the input: the LLM, Agent, and Decision toggle on the left, with quiet privacy badges beside it
+/// (`PrivacyBadges`); on the right, the games behind a controller, or in Decision mode the answers the next
+/// question picks from (`DecisionAnswersBadge`), and the recent chats behind a clock. All are small glass groups in the panel's own language.
 /// The chosen item sits raised in glass with the faint pink tint of the active pin, and the other items
 /// stay quiet until the pointer is over them.
 struct ModeBar: View {
@@ -25,12 +26,30 @@ struct ModeBar: View {
             Spacer(minLength: 0)
             HStack(spacing: 8) {
                 let isOpen = layout.expandedTray == .games
-                GameTray(openness: isOpen ? 1 : 0, isOpen: isOpen, playing: session.game) {
-                    toggle(.games)
-                } start: { game in
-                    session.startGame(game)
-                    focusInput()
+                let isDeciding = preferences.mode == .decision
+                // In Decision mode the games give way to the answers the next question picks from: a game is
+                // played against an LLM or an agent, never a decision model. Both stay in the view tree, each in
+                // a glass container of its own so its fade reaches its glass, and the capsule takes no click, so
+                // no button of its lies where the games' are.
+                ZStack(alignment: .trailing) {
+                    GlassEffectContainer {
+                        GameTray(openness: isOpen ? 1 : 0, isOpen: isOpen, playing: session.game) {
+                            toggle(.games)
+                        } start: { game in
+                            session.startGame(game)
+                            focusInput()
+                        }
+                    }
+                    .opacity(isDeciding ? 0 : 1)
+                    .disabled(isDeciding)
+                    .accessibilityHidden(isDeciding)
+                    GlassEffectContainer {
+                        DecisionAnswersBadge(answers: session.draftAnswers)
+                    }
+                    .opacity(isDeciding ? 1 : 0)
+                    .accessibilityHidden(!isDeciding)
                 }
+                .animation(.smooth(duration: 0.2), value: isDeciding)
                 HistoryButton(
                     count: session.history.count,
                     forgetting: layout.lastForgetting,
@@ -53,15 +72,19 @@ struct ModeBar: View {
 
     private func switchMode(to mode: ProviderKind) {
         guard mode != preferences.mode else { return }
+        // The games fold away as the answers take their place.
+        if mode == .decision, layout.expandedTray == .games {
+            withAnimation(GameTray.spring) { layout.expandedTray = nil }
+        }
         preferences.mode = mode
         session.prewarm()
         focusInput()
     }
 }
 
-/// Two segments in a glass capsule. The chosen one carries a tinted glass pill that slides across when the
-/// mode changes. ⌘1 and ⌘2 pick them from the keyboard, except while presets hold those shortcuts for a ready
-/// answer (see `ChatSession.presetShortcuts(among:)`).
+/// Three segments in a glass capsule. The chosen one carries a tinted glass pill that slides across when the
+/// mode changes. ⌘1, ⌘2, and ⌘3 pick them from the keyboard, except while presets hold those shortcuts for a
+/// ready answer (see `ChatSession.presetShortcuts(among:)`).
 private struct ModeToggle: View {
     let mode: ProviderKind
     /// How many of ⌘1…⌘9 run presets on the answer now.
@@ -82,7 +105,7 @@ private struct ModeToggle: View {
         .accessibilityLabel("Mode")
     }
 
-    /// A segment's place, 1 or 2, which is also its shortcut with ⌘.
+    /// A segment's place, 1 to 3, which is also its shortcut with ⌘.
     private func number(of kind: ProviderKind) -> Int {
         (ProviderKind.allCases.firstIndex(of: kind) ?? 0) + 1
     }
@@ -126,6 +149,7 @@ private struct ModeToggle: View {
         switch kind {
         case .llm: "Ask a model through its API or on this Mac\(shortcut)"
         case .agent: "Ask an agent on this Mac that can use tools: Claude Code, Codex, or OpenCode\(shortcut)"
+        case .decision: "Ask TypeSafe’s Jev to decide about the text you add: yes or no, or one of your answers, with how sure it is\(shortcut)"
         }
     }
 }

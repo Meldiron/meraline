@@ -116,11 +116,13 @@ struct ContextButtons: View {
 
     private var clipboardStatus: Status {
         if !sources.items(from: sources.clipboard, in: session).isEmpty { return .added }
-        return sources.clipboardHasContent ? .available : .unavailable
+        // A decision reads text only.
+        return (session.isDeciding ? sources.clipboardHasText : sources.clipboardHasContent) ? .available : .unavailable
     }
 
     private var screenshotStatus: Status {
         if !sources.items(from: sources.screen, in: session).isEmpty { return .added }
+        guard !session.isDeciding else { return .unavailable }
         return session.draftImages.count < ImageAttachment.limit ? .available : .unavailable
     }
 
@@ -144,7 +146,7 @@ struct ContextButtons: View {
         switch status {
         case .added: "Take out what you added from the clipboard (⇧⌘V)"
         case .available: "Add what’s on the clipboard (⇧⌘V)"
-        case .unavailable: "Nothing on the clipboard Meraline can add"
+        case .unavailable: session.isDeciding ? "Nothing on the clipboard a decision can read; it takes text only" : "Nothing on the clipboard Meraline can add"
         }
     }
 
@@ -152,7 +154,7 @@ struct ContextButtons: View {
         switch status {
         case .added: "Take out the screenshot of this screen (⇧⌘S)"
         case .available: "Add a screenshot of this screen, without Meraline (⇧⌘S)"
-        case .unavailable: "A question can take up to \(ImageAttachment.limit) images"
+        case .unavailable: session.isDeciding ? "A decision reads text only, so no screenshot goes with it" : "A question can take up to \(ImageAttachment.limit) images"
         }
     }
 

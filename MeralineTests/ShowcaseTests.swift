@@ -21,6 +21,8 @@ import WebKit
 ///   cost-nudge    the empty panel with what LLMs and agents have cost today
 ///   preview       Agent mode: a page and a Markdown file an agent handed over, each with its preview strip
 ///   note-stack    three answers torn off into one note: the last in front, the edges of the other two under it
+///   decision      Decision mode: Jev's Yes about a text selected in Mail, with how sure it is
+///   decision-levels  Decision mode: a priority placed along Low, Medium, and High, and the answers under the input
 @MainActor
 @Suite(.serialized, .enabled(if: Showcase.output != nil, "scripts/showcase.sh takes these pictures"))
 struct ShowcaseTests {
@@ -227,6 +229,50 @@ struct ShowcaseTests {
         }
     }
 
+    @Test func decision() async throws {
+        guard Showcase.wants("decision") else { return }
+        let text = "hi all, can we move the launch meeting to thursday? the slides aren't ready and legal still has to sign off on the pricing page, sorry for the late notice"
+        let decision = Decision(options: [.init(label: "Yes", probability: 0.91), .init(label: "No", probability: 0.09)], isYesNo: true, confidence: 0.82)
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.decisionPanel(on: stage, decisions: [decision])
+            scene.session.bring(try #require(SelectedText(text, appName: "Mail", appURL: URL(fileURLWithPath: "/System/Applications/Mail.app"))))
+            scene.session.draft = "Is this urgent?"
+            scene.session.send()
+            await GameTestSupport.settle(scene.session)
+            await Showcase.settle(1.5)
+            try await stage.capturePanel(scene.panel, as: "decision")
+            stage.close(scene.panel)
+        }
+    }
+
+    @Test func decisionLevels() async throws {
+        guard Showcase.wants("decision-levels") else { return }
+        let text = "Checkout has been failing for every customer in Europe since 9:40, and the payment provider's status page says nothing. Support has 40 tickets already."
+        let decision = Decision(
+            options: [.init(label: "Low", probability: 0.02), .init(label: "Medium", probability: 0.14), .init(label: "High", probability: 0.84)],
+            isOrdered: true, score: 1.82, confidence: 0.76
+        )
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.decisionPanel(on: stage, decisions: [decision])
+            scene.session.bring(try #require(SelectedText(text, appName: "Slack", appURL: URL(fileURLWithPath: "/Applications/Slack.app"))))
+            scene.session.draft = "How high a priority is this? Low < Medium < High"
+            scene.session.send()
+            await GameTestSupport.settle(scene.session)
+            // The next question, typed but not asked, so the answers under the input show what it picks from.
+            scene.session.draft = "Should we page the on-call engineer? Now / After lunch / Tomorrow"
+            await Showcase.settle(1.5)
+            // With the keyboard, as after typing: the cursor after the question, not all of it selected.
+            await Showcase.waitForIdle()
+            scene.panel.makeKey()
+            await Showcase.settle(0.3)
+            PromptPresets.moveCursorToEnd(in: scene.panel)
+            try await stage.capturePanel(scene.panel, as: "decision-levels")
+            stage.close(scene.panel)
+        }
+    }
+
     @Test func costNudge() async throws {
         guard Showcase.wants("cost-nudge") else { return }
         for appearance in Showcase.appearances {
@@ -309,6 +355,17 @@ struct ShowcaseTests {
     private static func panel(on stage: ShowcaseStage, replies: [String] = []) throws -> PanelScene {
         let (preferences, defaults) = preferences()
         let model = ScriptedModel(replies)
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { model.stream($0) }
+        return try place(session, preferences: preferences, defaults: defaults, model: model, on: stage)
+    }
+
+    /// The real panel on the stage in Decision mode, TypeSafe answering with `decisions`.
+    private static func decisionPanel(on stage: ShowcaseStage, decisions: [Decision]) throws -> PanelScene {
+        let (preferences, defaults) = preferences()
+        preferences[.typeSafe] = ProviderSettings(model: "jev-latest", baseURL: Provider.typeSafe.defaultBaseURL, apiKey: "demo", isEnabled: true)
+        preferences.setDefaultProvider(.typeSafe, for: .decision)
+        preferences.mode = .decision
+        let model = ScriptedModel(decisions: decisions)
         let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { model.stream($0) }
         return try place(session, preferences: preferences, defaults: defaults, model: model, on: stage)
     }

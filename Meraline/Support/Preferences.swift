@@ -64,7 +64,7 @@ final class Preferences {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let secrets: SecretStore
 
-    /// Whether the panel asks an LLM or an agent. The toggle under the input switches it.
+    /// Whether the panel asks an LLM, an agent, or a decision model. The toggle under the input switches it.
     var mode: ProviderKind {
         didSet {
             guard mode != oldValue else { return }
@@ -126,8 +126,25 @@ final class Preferences {
     }
     /// The prompts changed in Settings › Prompt. One left out says what it says by default.
     private var changedPrompts: [SystemPrompt: String]
-    /// The presets as Settings › Prompt changed them, or nil while they are the defaults.
-    private var changedPresets: [PromptPreset]?
+    /// The presets of each mode as Settings › Prompt changed them; a mode left out has the defaults.
+    private var changedPresets: [ProviderKind: [PromptPreset]]
+    /// Under this confidence a decision shows as Not Sure, with the answer it leans to (see `Decision`).
+    var unsureBelow: Double {
+        didSet {
+            guard unsureBelow != oldValue else { return }
+            defaults.set(unsureBelow, forKey: "decisions.unsureBelow")
+            Log.settings.info("Decisions not sure below \(Decision.percent(unsureBelow))")
+        }
+    }
+    /// The answers a decision picks from when its question names none, written as `DecisionAnswers.text` is:
+    /// “Yes / No” until changed.
+    var decisionAnswers: String {
+        didSet {
+            guard decisionAnswers != oldValue else { return }
+            defaults.set(decisionAnswers, forKey: "decisions.answers")
+            Log.settings.info("Decision answers \(decisionAnswers == DecisionAnswers.defaultText ? "default" : "changed")")
+        }
+    }
     /// The language answers, agents, and games are in (see `AnswerLanguage`).
     var language: AnswerLanguage {
         didSet {
@@ -179,7 +196,7 @@ final class Preferences {
         // Before each mode had a prompt of its own, one prompt went to both, so a change to it carries over to each.
         if let legacy = defaults.string(forKey: SystemPrompt.legacyKey) {
             if legacy != SystemPrompt.llm {
-                for kind in ProviderKind.allCases where defaults.object(forKey: SystemPrompt.chat(kind).key) == nil {
+                for kind in ProviderKind.prompted where defaults.object(forKey: SystemPrompt.chat(kind).key) == nil {
                     defaults.set(legacy, forKey: SystemPrompt.chat(kind).key)
                 }
             }
@@ -195,7 +212,13 @@ final class Preferences {
             }
         }
         self.changedPrompts = changedPrompts
-        changedPresets = defaults.data(forKey: PromptPreset.key).flatMap { try? JSONDecoder().decode([PromptPreset].self, from: $0) }
+        var changedPresets: [ProviderKind: [PromptPreset]] = [:]
+        for kind in ProviderKind.allCases {
+            changedPresets[kind] = defaults.data(forKey: PromptPreset.key(for: kind)).flatMap { try? JSONDecoder().decode([PromptPreset].self, from: $0) }
+        }
+        self.changedPresets = changedPresets
+        unsureBelow = defaults.object(forKey: "decisions.unsureBelow") as? Double ?? Decision.defaultUnsureBelow
+        decisionAnswers = defaults.string(forKey: "decisions.answers") ?? DecisionAnswers.defaultText
         language = defaults.string(forKey: "language").flatMap(AnswerLanguage.init(rawValue:)) ?? .english
         updateChannel = defaults.string(forKey: "updateChannel").flatMap(UpdateChannel.init(rawValue:)) ?? .stable
         hidesFromScreenSharing = defaults.bool(forKey: "hidesFromScreenSharing")
@@ -263,23 +286,34 @@ final class Preferences {
         changedPrompts[prompt] != nil
     }
 
-    /// The presets above an empty chat, as Settings › Prompt has them (see `PromptPreset`). Setting them back to
-    /// the defaults forgets the change, so they follow later defaults and the language again.
-    var presets: [PromptPreset] {
-        get { changedPresets ?? PromptPreset.defaults(in: language) }
+    /// A mode's presets above an empty chat, as Settings › Prompt has them (see `PromptPreset`). Setting them
+    /// back to the defaults forgets the change, so they follow later defaults and the language again.
+    subscript(presets kind: ProviderKind) -> [PromptPreset] {
+        get { changedPresets[kind] ?? PromptPreset.defaults(for: kind, in: language) }
         set {
-            guard newValue != presets else { return }
-            if newValue == PromptPreset.defaults(in: language) {
-                changedPresets = nil
-                defaults.removeObject(forKey: PromptPreset.key)
+            guard newValue != self[presets: kind] else { return }
+            if newValue == PromptPreset.defaults(for: kind, in: language) {
+                changedPresets[kind] = nil
+                defaults.removeObject(forKey: PromptPreset.key(for: kind))
             } else {
-                changedPresets = newValue
-                defaults.set(try? JSONEncoder().encode(newValue), forKey: PromptPreset.key)
+                changedPresets[kind] = newValue
+                defaults.set(try? JSONEncoder().encode(newValue), forKey: PromptPreset.key(for: kind))
             }
         }
     }
 
-    var arePresetsChanged: Bool { changedPresets != nil }
+    /// The presets of the current mode.
+    var presets: [PromptPreset] {
+        get { self[presets: mode] }
+        set { self[presets: mode] = newValue }
+    }
+
+    func arePresetsChanged(for kind: ProviderKind) -> Bool { changedPresets[kind] != nil }
+
+    /// The modes whose presets were changed, for the diagnostics.
+    var changedPresetKinds: [ProviderKind] { ProviderKind.allCases.filter { changedPresets[$0] != nil } }
+
+    var arePresetsChanged: Bool { !changedPresets.isEmpty }
 
     /// Every ready provider. A cloud provider comes before Apple Intelligence, so a configured one
     /// outranks the on-device fallback.

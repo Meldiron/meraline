@@ -19,6 +19,8 @@ final class ContextSources {
     private(set) var clipboardChange = -1
     /// Whether the clipboard held something to add when it was last looked at, judged by its kinds alone.
     private(set) var clipboardHasContent = false
+    /// Whether the clipboard holds text, all a decision can read.
+    private(set) var clipboardHasText = false
     private(set) var screenVisit = 0
     /// What the buttons have to say, in a capsule beside them.
     var notice: ContextButtons.Note?
@@ -62,7 +64,8 @@ final class ContextSources {
         refreshClipboard()
         let origin = clipboard
         guard items(from: origin, in: session).isEmpty else { return true }
-        guard let content = ClipboardContent.read(from: pasteboard) else {
+        // A decision reads text only, so a copied picture or file is nothing to it.
+        guard let content = session.isDeciding ? ClipboardContent.readText(from: pasteboard) : ClipboardContent.read(from: pasteboard) else {
             Log.panel.info("Clipboard: nothing to add")
             show(.emptyClipboard)
             return false
@@ -125,6 +128,8 @@ final class ContextSources {
         clipboardChange = change
         let hasContent = ClipboardContent.hasContent(pasteboard)
         if hasContent != clipboardHasContent { clipboardHasContent = hasContent }
+        let hasText = ClipboardContent.hasText(pasteboard)
+        if hasText != clipboardHasText { clipboardHasText = hasText }
     }
 
     /// The window opened: a new visit to the screen, and the clipboard watched while the window is up.

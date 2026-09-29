@@ -121,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.show()
             session.startGame(game)
         case .mode(let mode):
-            let mode = mode ?? (preferences.mode == .llm ? .agent : .llm)
+            let mode = mode ?? preferences.mode.next
             Log.app.info("URL route: mode \(mode.title)")
             switchMode(to: mode)
             panel.show()
@@ -133,7 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Switches between LLM and Agent, as the toggle under the input does.
+    /// Switches between LLM, Agent, and Decision, as the toggle under the input does.
     private func switchMode(to mode: ProviderKind) {
         guard mode != preferences.mode else { return }
         preferences.mode = mode

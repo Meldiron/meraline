@@ -25,6 +25,12 @@ enum ClipboardContent {
         return types.contains(.fileURL) || types.contains(.string) || NSImage.canInit(with: pasteboard)
     }
 
+    /// Whether `pasteboard` seems to hold text, judged by its kinds alone, and no password.
+    static func hasText(_ pasteboard: NSPasteboard) -> Bool {
+        guard let types = pasteboard.types, !isConcealed(types) else { return false }
+        return types.contains(.string)
+    }
+
     static func isConcealed(_ types: [NSPasteboard.PasteboardType]) -> Bool {
         types.contains { concealedTypes.contains($0) }
     }
@@ -32,6 +38,14 @@ enum ClipboardContent {
     /// What `pasteboard` holds, or nil when there is nothing Meraline can add.
     static func read(from pasteboard: NSPasteboard) -> ClipboardContent? {
         read(from: pasteboard, pictureWins: picturesFirst)
+    }
+
+    /// The text `pasteboard` holds, or nil when it holds none, whatever else is on it: for a decision, which
+    /// reads text only.
+    static func readText(from pasteboard: NSPasteboard) -> ClipboardContent? {
+        guard !isConcealed(pasteboard.types ?? []),
+              let text = pasteboard.string(forType: .string), !text.trimmed.isEmpty else { return nil }
+        return .text(text)
     }
 
     /// What Services › Ask Meraline was handed with a selection: files, text, or a picture, as Preview and

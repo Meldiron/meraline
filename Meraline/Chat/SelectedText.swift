@@ -2,7 +2,8 @@ import AppKit
 
 /// Text selected in another app, brought along as context for the next question. The shortcut reads it from
 /// the app in front (see `SelectionReader`); a drag onto the window, the Services menu, and
-/// `meraline://ask?selection=…` hand it over.
+/// `meraline://ask?selection=…` hand it over, and in Decision mode it can be written in the window itself
+/// (`typed`), for a decision about text that is nowhere else.
 /// It waits in the draft, in a card above the row under the input, and goes with the question when it is
 /// sent: the model reads it in a `<selected_text>` block before the question. It lives only in memory, like
 /// the rest of the chat.
@@ -20,9 +21,11 @@ nonisolated struct SelectedText: Identifiable, Equatable, Sendable {
     let isShortened: Bool
     /// Copied rather than selected: the clipboard button above the window brought it.
     let isFromClipboard: Bool
+    /// Written in the window itself, for a decision (see `TypedStateCard`).
+    let isTyped: Bool
 
     /// The selection with its ends trimmed and plain line breaks, or nil when nothing is left of it.
-    init?(_ text: String, appName: String? = nil, appURL: URL? = nil, fromClipboard: Bool = false) {
+    init?(_ text: String, appName: String? = nil, appURL: URL? = nil, fromClipboard: Bool = false, typed: Bool = false) {
         let text = text
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
@@ -34,11 +37,22 @@ nonisolated struct SelectedText: Identifiable, Equatable, Sendable {
         self.appName = appName.isEmpty ? nil : appName
         self.appURL = appURL
         isFromClipboard = fromClipboard
+        isTyped = typed
     }
 
     /// Text from the clipboard, for the clipboard button.
     static func clipboard(_ text: String) -> SelectedText? {
         SelectedText(text, appName: "Clipboard", fromClipboard: true)
+    }
+
+    /// Text written in the window for a decision.
+    static func typed(_ text: String) -> SelectedText? {
+        SelectedText(text, typed: true)
+    }
+
+    /// Where the text came from, as its card and its quote say: the app, the clipboard, or the window itself.
+    var sourceLabel: String {
+        appName ?? (isTyped ? "Written here" : "Selected text")
     }
 
     /// Text another app handed over, dragged onto the window or sent through the Services menu, named after the
@@ -78,12 +92,13 @@ nonisolated struct SelectedText: Identifiable, Equatable, Sendable {
     /// The same text from the same kind of place, whenever it was read: selecting it again, or copying it
     /// again, brings nothing new.
     func isSame(as other: SelectedText) -> Bool {
-        text == other.text && isFromClipboard == other.isFromClipboard
+        text == other.text && isFromClipboard == other.isFromClipboard && isTyped == other.isTyped
     }
 
     /// What the model reads for a question about `selection`: the selection in a block that names its app,
-    /// or a `<clipboard>` block for copied text, then the question. On its own, the block asks the model to
-    /// make sense of the text. Without a selection, the question as it is.
+    /// a `<clipboard>` block for copied text, or a `<text>` block for text written in the window, then the
+    /// question. On its own, the block asks the model to make sense of the text. Without a selection, the
+    /// question as it is.
     static func message(_ question: String, about selection: SelectedText?) -> String {
         message(question, about: selection.map { [$0] } ?? [])
     }
@@ -92,9 +107,9 @@ nonisolated struct SelectedText: Identifiable, Equatable, Sendable {
     static func message(_ question: String, about selections: [SelectedText]) -> String {
         let blocks = selections.map { selection in
             let source = selection.appName.map { " from=\"\($0.replacingOccurrences(of: "\"", with: "'"))\"" } ?? ""
-            return selection.isFromClipboard
-                ? "<clipboard>\n\(selection.text)\n</clipboard>"
-                : "<selected_text\(source)>\n\(selection.text)\n</selected_text>"
+            if selection.isFromClipboard { return "<clipboard>\n\(selection.text)\n</clipboard>" }
+            if selection.isTyped { return "<text>\n\(selection.text)\n</text>" }
+            return "<selected_text\(source)>\n\(selection.text)\n</selected_text>"
         }
         return (blocks + [question]).filter { !$0.isEmpty }.joined(separator: "\n\n")
     }

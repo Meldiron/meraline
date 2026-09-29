@@ -38,6 +38,9 @@ struct AutomationRouteTests {
         #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&agent=1")!) == .ask(text: "hi", mode: .agent, send: false))
         #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&agent=off")!) == .ask(text: "hi", mode: .llm, send: false))
         #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&agent=maybe")!) == .ask(text: "hi", send: false))
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&mode=decision")!) == .ask(text: "hi", mode: .decision, send: false))
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&mode=LLM")!) == .ask(text: "hi", mode: .llm, send: false))
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&mode=chess")!) == .ask(text: "hi", send: false))
     }
 
     @Test func switchMode() {
@@ -45,6 +48,12 @@ struct AutomationRouteTests {
         #expect(AutomationRoute(url: URL(string: "meraline://mode?agent=FALSE")!) == .mode(.llm))
         #expect(AutomationRoute(url: URL(string: "meraline://mode")!) == .mode(nil))
         #expect(AutomationRoute(url: URL(string: "meraline://mode?agent=maybe")!) == nil)
+        #expect(AutomationRoute(url: URL(string: "meraline://mode?mode=decision")!) == .mode(.decision))
+        #expect(AutomationRoute(url: URL(string: "meraline://mode?mode=Agent")!) == .mode(.agent))
+        #expect(AutomationRoute(url: URL(string: "meraline://mode?mode=chess")!) == nil)
+        #expect(ProviderKind.llm.next == .agent)
+        #expect(ProviderKind.agent.next == .decision)
+        #expect(ProviderKind.decision.next == .llm, "meraline://mode alone goes around the toggle")
     }
 
     @Test func play() {

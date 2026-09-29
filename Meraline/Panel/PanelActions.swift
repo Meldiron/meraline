@@ -292,7 +292,8 @@ struct PanelContext {
                 layout.copyNotice += 1
             })
         }
-        if !session.isStreaming, let answer = session.lastAnswer {
+        // A decision is a word and a number, nothing to tear off.
+        if !session.isStreaming, let answer = session.lastAnswer, session.turns.last(where: { !$0.answer.isEmpty })?.decision == nil {
             let question = session.turns.last { !$0.answer.isEmpty }?.question ?? ""
             copy.append(PanelAction(id: "tearOff", title: "Tear Off Answer", icon: .symbol("macwindow.on.rectangle"), shortcut: .command("t"), keywords: ["note", "float", "keep", "pin"]) { [layout] in
                 AnswerNotes.shared.open(answer: answer, question: question, zoom: layout.answerZoom, workspace: session.workspace?.url)
@@ -385,9 +386,9 @@ struct PanelContext {
         }
     }
 
-    /// Whether there are answers to zoom: a chat's, not a game's, once the first one has begun.
+    /// Whether there are answers to zoom: a chat's, not a game's nor a decision's, once the first one has begun.
     var canZoomAnswers: Bool {
-        session.game == nil && session.turns.contains { !$0.answer.isEmpty }
+        session.game == nil && session.turns.contains { !$0.answer.isEmpty && $0.decision == nil }
     }
 
     /// Zoom In, Zoom Out, and Actual Size for the answers, each while it would change something.
@@ -449,13 +450,15 @@ struct PanelContext {
     }
 
     /// Ask Again with each other ready provider, this mode's first. The one picked becomes the provider in use,
-    /// switching modes when it is of the other kind, so a follow-up goes to it too.
+    /// switching modes when it is of another kind, so a follow-up goes to it too. A decision model answers about
+    /// text only, so it is offered when the chat has some.
     private var askAgainElsewhere: [PanelAction] {
         let preferences = preferences
         let session = session
         let active = preferences.activeProvider
+        let hasState = session.hasDecisionState
         let kinds = [preferences.mode] + ProviderKind.allCases.filter { $0 != preferences.mode }
-        return kinds.flatMap { preferences.readyProviders(for: $0) }.filter { $0 != active }.map { provider in
+        return kinds.flatMap { preferences.readyProviders(for: $0) }.filter { $0 != active && ($0.kind != .decision || hasState) }.map { provider in
             PanelAction(
                 id: "askAgainWith.\(provider.rawValue)",
                 title: "Ask Again with \(provider.name)",
@@ -575,7 +578,7 @@ struct PanelContext {
 
     // MARK: The sparkle
 
-    /// The sparkle's panel: the ready providers of the current mode, the other mode, anonymous mode, hiding
+    /// The sparkle's panel: the ready providers of the current mode, the other modes, anonymous mode, hiding
     /// from screen sharing, Settings, and Copy Diagnostics.
     var providersMenu: ActionMenu {
         let preferences = preferences
@@ -595,14 +598,15 @@ struct PanelContext {
                 openSettings(.provider(kind.providers[0]))
             })
         }
-        let other: ProviderKind = kind == .llm ? .agent : .llm
-        let number = (ProviderKind.allCases.firstIndex(of: other) ?? 0) + 1
-        let modes = [
-            PanelAction(id: "switchMode", title: "Switch to \(other.title)", icon: .image(other.image), shortcut: .command(Character("\(number)"))) {
+        let switches = ProviderKind.allCases.filter { $0 != kind }.map { other in
+            let number = (ProviderKind.allCases.firstIndex(of: other) ?? 0) + 1
+            return PanelAction(id: "switchMode.\(other.rawValue)", title: "Switch to \(other.title)", icon: .image(other.image), shortcut: .command(Character("\(number)"))) {
                 preferences.mode = other
                 session.prewarm()
                 focusInput()
-            },
+            }
+        }
+        let modes = switches + [
             PanelAction(id: "anonymous", title: "Anonymous Mode", subtitle: "Keep chats out of Recent Chats", icon: .symbol("sunglasses"), shortcut: .command("n", .shift), isChecked: session.isAnonymous) {
                 session.isAnonymous.toggle()
                 focusInput()
@@ -632,6 +636,11 @@ struct PanelContext {
                 perform: copyDiagnostics
             ))
         }
+        let searchPrompt: String = switch kind {
+        case .llm: "Search LLMs and settings…"
+        case .agent: "Search agents and settings…"
+        case .decision: "Search decision models and settings…"
+        }
         return ActionMenu(
             title: kind.pluralTitle,
             sections: [
@@ -639,7 +648,7 @@ struct PanelContext {
                 ActionSection(id: "modes", actions: modes),
                 ActionSection(id: "settings", actions: settings),
             ],
-            searchPrompt: kind == .llm ? "Search LLMs and settings…" : "Search agents and settings…"
+            searchPrompt: searchPrompt
         )
     }
 

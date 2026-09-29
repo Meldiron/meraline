@@ -49,6 +49,8 @@ final class ChatSession {
         /// What the answer changed in the text its question was about, found when it ended, for Show What Changed;
         /// nil when it isn't that text changed (see `TextChanges`).
         var changes: TextChanges?
+        /// What Jev decided, for a question asked in Decision mode; `answer` then says it in words (see `Decision`).
+        var decision: Decision?
 
         /// The ask the agent is waiting on, if any.
         var pendingPrompt: AgentPrompt? { prompts.last(where: \.isPending) }
@@ -71,11 +73,17 @@ final class ChatSession {
         var images: [ImageAttachment] = []
         var files: [FileAttachment] = []
         var selections: [SelectedText] = []
+        /// Text written in the window for a decision (see `TypedStateCard`), or nil while its card is closed.
+        var typedState: String?
 
-        var isEmpty: Bool { text.trimmed.isEmpty && images.isEmpty && files.isEmpty && selections.isEmpty }
+        var isEmpty: Bool {
+            text.trimmed.isEmpty && images.isEmpty && files.isEmpty && selections.isEmpty && (typedState ?? "").trimmed.isEmpty
+        }
 
-        /// The draft as the question it would ask.
-        var turn: Turn { Turn(question: text.trimmed, images: images, files: files, selections: selections) }
+        /// The draft as the question it would ask, the written text among its texts.
+        var turn: Turn {
+            Turn(question: text.trimmed, images: images, files: files, selections: selections + (typedState.flatMap(SelectedText.typed).map { [$0] } ?? []))
+        }
     }
 
     struct PastChat: Identifiable, Equatable {
@@ -127,6 +135,10 @@ final class ChatSession {
     /// The text selected in the app in front when the shortcut opened the window. It stays out of the draft
     /// until the selection button above the card adds it (see `toggleOfferedSelection()`).
     private(set) var offeredSelection: SelectedText?
+    /// Text written in the window for a decision, while its card is open (see `writeState()`): nil until Write It
+    /// opens the card, and empty from then until something is typed. It goes with the question as a text of its
+    /// own (`SelectedText.typed`).
+    var typedState: String?
     /// The images and files the last Finder selection brought (see `bring(files:)`), which the next one replaces.
     @ObservationIgnored private var broughtAttachments: Set<UUID> = []
     private(set) var turns: [Turn] = []
@@ -215,7 +227,10 @@ final class ChatSession {
     var canSend: Bool {
         guard !isStreaming else { return false }
         guard let gameState else {
-            return fileNotice == nil && (!draft.trimmed.isEmpty || !draftImages.isEmpty || !draftFiles.isEmpty || !draftSelections.isEmpty)
+            guard fileNotice == nil, pictureNotice == nil else { return false }
+            // A decision takes a question, and text to decide about.
+            if isDeciding { return !draft.trimmed.isEmpty && hasDecisionState }
+            return !draft.trimmed.isEmpty || !draftImages.isEmpty || !draftFiles.isEmpty || !draftSelections.isEmpty
         }
         switch gameState.phase {
         case .modelMoves, .opening, .over: return true
@@ -255,12 +270,58 @@ final class ChatSession {
         turns.last(where: { !$0.presentedFiles.isEmpty })?.presentedFiles ?? []
     }
 
-    /// Why the draft waits: it has files, which only an agent reads, and the panel is asking an LLM.
-    /// Switching to Agent sends them as they are.
+    /// Why the draft waits: it has files, which only an agent reads, and the panel is asking an LLM or for a
+    /// decision. Switching to Agent sends them as they are.
     var fileNotice: String? {
-        guard preferences.mode == .llm, !draftFiles.isEmpty else { return nil }
+        guard preferences.mode != .agent, !draftFiles.isEmpty else { return nil }
         let kinds = FileAttachment.kinds(of: draftFiles)
         return "Only an agent can read \(kinds). Switch to Agent to send \(draftFiles.count == 1 ? "it" : "them")."
+    }
+
+    /// Why the draft waits: it has pictures, which a decision model can't read. Switching to LLM sends them as
+    /// they are.
+    var pictureNotice: String? {
+        guard isDeciding, !draftImages.isEmpty else { return nil }
+        let one = draftImages.count == 1
+        return "A decision reads text only, not \(one ? "a picture" : "pictures"). Switch to LLM to ask about \(one ? "it" : "them")."
+    }
+
+    /// Whether the next question asks for a decision: Decision mode, in a chat rather than a game.
+    var isDeciding: Bool { preferences.mode == .decision && !isPlaying }
+
+    /// What a decision is about: the texts of the chat so far and those waiting in the draft, the written one
+    /// included (see `DecisionRequest`). A decision needs at least one, so a follow-up asks about the same texts.
+    var decisionState: [SelectedText] {
+        turns.flatMap(\.selections) + draftSelections + (typedSelection.map { [$0] } ?? [])
+    }
+
+    var hasDecisionState: Bool { !decisionState.isEmpty }
+
+    /// Whether a decision waits for text to decide about, for the row under the mode row that says so.
+    var needsDecisionState: Bool { isDeciding && !hasDecisionState }
+
+    /// The text written in the window as a text of its own, or nil while there is none.
+    var typedSelection: SelectedText? { typedState.flatMap(SelectedText.typed) }
+
+    /// Write It on the row under the mode row: opens the card for writing the text a decision is about.
+    func writeState() {
+        guard !isPlaying, typedState == nil else { return }
+        typedState = ""
+    }
+
+    func removeTypedState() {
+        typedState = nil
+    }
+
+    /// The answers a question that names none picks from: Settings' answers, or Yes and No when they can't be
+    /// read (see `DecisionAnswers`).
+    var defaultAnswers: DecisionAnswers {
+        DecisionAnswers.parse(preferences.decisionAnswers) ?? .yesNo
+    }
+
+    /// The answers the question in the input would pick from, for the capsule under the input.
+    var draftAnswers: DecisionAnswers {
+        DecisionAnswers.split(draft, fallback: defaultAnswers).answers
     }
 
     func send() {
@@ -276,14 +337,17 @@ final class ChatSession {
         let question = draft.trimmed
         let images = draftImages
         let files = draftFiles
-        let selections = draftSelections
+        let selections = draftSelections + (typedSelection.map { [$0] } ?? [])
         guard fits(Turn(question: question, images: images, selections: selections)) else { return }
-        let request = makeRequest(asking: SelectedText.message(question, about: selections), images: images, files: files, of: provider)
+        let request = provider.kind == .decision
+            ? makeDecisionRequest(asking: question, about: selections, of: provider)
+            : makeRequest(asking: SelectedText.message(question, about: selections), images: images, files: files, of: provider)
 
         draft = ""
         draftImages = []
         draftFiles = []
         draftSelections = []
+        typedState = nil
         failure = nil
         var turn = Turn(question: question, images: images, files: files, selections: selections)
         turn.provider = provider
@@ -329,7 +393,9 @@ final class ChatSession {
         guard canAskAgain, let provider = preferences.activeProvider, let last = turns.popLast() else { return }
         replacedTurn = last
         isRewriting = false
-        let request = makeRequest(asking: SelectedText.message(last.question, about: last.selections), images: last.images, files: last.files, of: provider)
+        let request = provider.kind == .decision
+            ? makeDecisionRequest(asking: last.question, about: last.selections, of: provider)
+            : makeRequest(asking: SelectedText.message(last.question, about: last.selections), images: last.images, files: last.files, of: provider)
         failure = nil
         var turn = Turn(question: last.question, images: last.images, files: last.files, selections: last.selections)
         turn.provider = provider
@@ -345,9 +411,10 @@ final class ChatSession {
         stream(request, for: turn.id)
     }
 
-    /// Whether the last answer can be told again another way: as for Ask Again, with text to rewrite.
+    /// Whether the last answer can be told again another way: as for Ask Again, with text to rewrite, which a
+    /// decision isn't.
     var canRewrite: Bool {
-        canAskAgain && turns.last?.answer.trimmed.isEmpty == false
+        canAskAgain && turns.last?.answer.trimmed.isEmpty == false && turns.last?.decision == nil
     }
 
     /// Tells the last answer again another way, asking the provider in use now. The model reads the
@@ -447,7 +514,7 @@ final class ChatSession {
 
     /// Sends your move to the model, which replies with its own.
     private func ask(_ move: Turn, in game: Game) {
-        guard let provider = preferences.activeProvider else {
+        guard let provider = gameProvider else {
             fail(with: setupMessage(to: "play"), needsSettings: true)
             return
         }
@@ -500,7 +567,7 @@ final class ChatSession {
     /// Asks the model for a move of its own: a turn with a cue and nothing of yours. If that fails,
     /// Return asks again.
     private func askModel(_ cue: String, in game: Game) {
-        guard let provider = preferences.activeProvider else {
+        guard let provider = gameProvider else {
             fail(with: setupMessage(to: "play"), needsSettings: true)
             return
         }
@@ -522,7 +589,17 @@ final class ChatSession {
         switch preferences.mode {
         case .llm: "Connect an AI provider in Settings to \(goal)."
         case .agent: "Turn on an agent in Settings to \(goal), or switch to LLM."
+        case .decision: "Add your TypeSafe API key in Settings to \(goal), or switch to LLM."
         }
+    }
+
+    /// The provider a game plays against: the one in use, unless it is a decision model, which answers yes or no
+    /// and nothing else; then the LLMs' default, or the agents'.
+    private var gameProvider: Provider? {
+        guard let provider = preferences.activeProvider, provider.kind != .decision else {
+            return preferences.defaultProvider(for: .llm) ?? preferences.defaultProvider(for: .agent)
+        }
+        return provider
     }
 
     private func modelName(for provider: Provider) -> String {
@@ -543,6 +620,7 @@ final class ChatSession {
         let key = UsageTally.ModelTally.key(provider: provider, model: model)
         let price = usage.price(for: provider, model: model)
         let turnCount = turns.count
+        let unsure = turn.decision.map { $0.isUnsure(below: preferences.unsureBelow) }
         usage.record(at: now) { tally in
             switch end {
             case .failed:
@@ -552,6 +630,10 @@ final class ChatSession {
                 tally.stops += 1
             case .complete:
                 if !inGame { tally.answers += 1 }
+                if let unsure {
+                    tally.decisions += 1
+                    if unsure { tally.unsureDecisions += 1 }
+                }
             }
             tally.secondsWaited += max(0, now.timeIntervalSince(turn.sentAt))
             tally.waits += 1
@@ -637,11 +719,26 @@ final class ChatSession {
         return ChatRequest(
             provider: provider,
             settings: preferences[provider],
-            systemPrompt: preferences.instructions(for: game.map(SystemPrompt.game) ?? .chat(provider.kind)),
+            // A decision model takes no prompt.
+            systemPrompt: provider.kind == .decision ? "" : preferences.instructions(for: game.map(SystemPrompt.game) ?? .chat(provider.kind)),
             messages: messages,
             workspace: provider.isCommandLine ? workspaceForAgents()?.url : nil,
             presentsFiles: provider.isCommandLine && game == nil
         )
+    }
+
+    /// The request a question in Decision mode makes (see `DecisionRequest`): the chat's texts so far and
+    /// `selections` as Jev's state, the question less the answers it names, and those answers, or Settings' when
+    /// it names none. Jev keeps no conversation, so a follow-up asks about the same texts anew.
+    func makeDecisionRequest(asking question: String, about selections: [SelectedText], of provider: Provider) -> ChatRequest {
+        var request = makeRequest(asking: SelectedText.message(question, about: selections), images: [], of: provider)
+        let split = DecisionAnswers.split(question, fallback: defaultAnswers)
+        request.decision = DecisionRequest(
+            state: turns.filter(\.isComplete).flatMap(\.selections) + selections,
+            question: split.question,
+            answers: split.answers
+        )
+        return request
     }
 
     /// The chat's workspace, made on the first question to an agent, and again if it has gone missing.
@@ -719,6 +816,7 @@ final class ChatSession {
         draftImages = []
         draftFiles = []
         draftSelections = []
+        typedState = nil
         turns = []
         mode = .chat
         isStreaming = false
@@ -741,6 +839,8 @@ final class ChatSession {
     /// Starts a game in place of the open chat, which moves to Recent Chats first. The model moves first.
     func startGame(_ game: Game) {
         reset()
+        // A game is played against an LLM or an agent, never a decision model, so the toggle says which plays.
+        if preferences.mode == .decision { preferences.mode = gameProvider?.kind ?? .llm }
         mode = .game(game)
         lastGame = game
         Log.chat.info("\(game.title) started")
@@ -828,7 +928,7 @@ final class ChatSession {
         workspace = chat.workspace
         suggestFollowUps(after: turns.last)
         if let parked = chat.draft {
-            (draft, draftImages, draftFiles, draftSelections) = (parked.text, parked.images, parked.files, parked.selections)
+            (draft, draftImages, draftFiles, draftSelections, typedState) = (parked.text, parked.images, parked.files, parked.selections, parked.typedState)
             Log.chat.info("A stashed draft is back in the input")
         } else {
             deadline = chat.expiresAt
@@ -858,7 +958,7 @@ final class ChatSession {
     }
 
     private var currentDraft: Draft {
-        Draft(text: draft, images: draftImages, files: draftFiles, selections: draftSelections)
+        Draft(text: draft, images: draftImages, files: draftFiles, selections: draftSelections, typedState: typedState)
     }
 
     /// Puts a draft on top of Recent Chats, letting go of the oldest chats past the limit.
@@ -993,6 +1093,7 @@ final class ChatSession {
         draftImages = []
         draftFiles = []
         draftSelections = []
+        typedState = nil
         failure = nil
     }
 
@@ -1114,12 +1215,12 @@ final class ChatSession {
     }
 
     /// Files and folders selected in Finder, in place of whatever the last selection brought. An image comes as
-    /// one for either mode; anything else only while asking an agent, since an LLM can't read it, unless they
-    /// were handed over `deliberately` (the Services menu), which brings everything, like a drop. A game has
-    /// no use for them.
+    /// one for an LLM or an agent; anything else only while asking an agent, since an LLM can't read it, unless
+    /// they were handed over `deliberately` (the Services menu), which brings everything, like a drop. A decision
+    /// reads text only, and a game has no use for them.
     func bring(files urls: [URL], deliberately: Bool = false) {
         guard !isPlaying else { return }
-        let usable = deliberately || preferences.mode == .agent ? urls : urls.filter(ImageAttachment.isImage(at:))
+        let usable = deliberately || preferences.mode == .agent ? urls : preferences.mode == .decision ? [] : urls.filter(ImageAttachment.isImage(at:))
         draftImages.removeAll { broughtAttachments.contains($0.id) }
         draftFiles.removeAll { broughtAttachments.contains($0.id) }
         let before = attachmentIDs
@@ -1246,6 +1347,10 @@ final class ChatSession {
             }
         case .usage(let usage, let adds):
             turns[last].usage = (turns[last].usage ?? .zero).merging(usage, adding: adds)
+        case .decision(let decision):
+            turns[last].decision = decision
+            turns[last].answer = decision.summary(unsureBelow: preferences.unsureBelow)
+            turns[last].activity = nil
         case .presented(let paths):
             // Read as Meraline's MCP server read it, so these are the files the agent was told it handed over.
             guard let workspace else { return }
@@ -1277,7 +1382,7 @@ final class ChatSession {
     /// finished answer gets any: not a game's move, nor an answer still coming.
     private func suggestFollowUps(after turn: Turn?) {
         clearFollowUps()
-        guard let turn, !isPlaying, !isStreaming, turn.isComplete, !turn.answer.trimmed.isEmpty else { return }
+        guard let turn, !isPlaying, !isStreaming, turn.isComplete, !turn.answer.trimmed.isEmpty, turn.decision == nil else { return }
         let request = FollowUps.Request(question: turn.question, answer: turn.answer, asked: turns.map(\.question), language: preferences.language)
         let suggest = followUpSuggester
         followUpTask = Task { [weak self] in
@@ -1367,7 +1472,7 @@ final class ChatSession {
     /// A stopped or failed answer is cut short, so it has none. A long text rearranged throughout takes a moment to
     /// compare, so it happens off the main actor, and a turn that has gone meanwhile is left be.
     private func findChanges(at index: Int) {
-        guard let selections = turns[...index].last(where: { !$0.selections.isEmpty })?.selections else { return }
+        guard turns[index].decision == nil, let selections = turns[...index].last(where: { !$0.selections.isEmpty })?.selections else { return }
         let texts = selections.map(\.text)
         let originals = texts.count > 1 ? texts + [texts.joined(separator: "\n\n")] : texts
         let id = turns[index].id

@@ -12,11 +12,13 @@ import Foundation
 ///                                       button does; send=1 waits for it, and sends only if everything
 ///                                       asked for came
 ///     meraline://ask?agent=1            ask an agent (agent=0: an LLM); works with everything above
+///     meraline://ask?mode=decision      ask for a decision (mode=llm, mode=agent too); works with everything above
 ///     meraline://new                    start a new chat and open the window
 ///     meraline://play                   open the window with the games showing
 ///     meraline://play?game=…            start a game, such as oddOneOut or odd-one-out (see `Game(named:)`)
-///     meraline://mode?agent=1           switch to Agent and open the window; agent=0 switches to LLM, and
-///                                       meraline://mode alone to the other mode
+///     meraline://mode?agent=1           switch to Agent and open the window; agent=0 switches to LLM,
+///                                       mode=decision (mode=llm, mode=agent) to that mode, and
+///                                       meraline://mode alone to the next one around the toggle
 ///     meraline://settings               open Settings
 ///     meraline://settings?pane=…        open Settings on a pane: general, prompt, permissions, updates,
 ///                                       about, or a provider such as claudeCode (see `SettingsPane(named:)`)
@@ -40,9 +42,11 @@ nonisolated enum AutomationRoute: Equatable, Sendable {
         func flag(_ name: String) -> Bool {
             Self.flag(value(name)) == true
         }
-        /// `agent=1` or `agent=0`; nil when it is missing or neither.
+        /// `mode=llm`, `mode=agent`, or `mode=decision`, or else `agent=1` or `agent=0`; nil when both are
+        /// missing or neither reads.
         var mode: ProviderKind? {
-            Self.flag(value("agent")).map { $0 ? .agent : .llm }
+            if let name = value("mode") { return ProviderKind(named: name) }
+            return Self.flag(value("agent")).map { $0 ? .agent : .llm }
         }
 
         switch (url.host() ?? "").lowercased() {
@@ -62,8 +66,8 @@ nonisolated enum AutomationRoute: Equatable, Sendable {
         case "play":
             self = .play(game: value("game").flatMap(Game.init(named:)))
         case "mode":
-            // A value that is neither on nor off would switch to a mode nobody asked for.
-            guard value("agent") == nil || mode != nil else { return nil }
+            // A value that names no mode would switch to one nobody asked for.
+            guard (value("agent") == nil && value("mode") == nil) || mode != nil else { return nil }
             self = .mode(mode)
         case "settings":
             let pane = value("pane")?.trimmed ?? ""
@@ -91,6 +95,15 @@ nonisolated enum AutomationRoute: Equatable, Sendable {
         case "0", "false", "no", "off": false
         default: nil
         }
+    }
+}
+
+nonisolated extension ProviderKind {
+    /// A mode by the name `meraline://mode?mode=` uses: llm, agent, or decision, in any case.
+    init?(named name: String) {
+        let wanted = name.trimmed.lowercased()
+        guard let kind = Self.allCases.first(where: { $0.rawValue.lowercased() == wanted || $0.title.lowercased() == wanted }) else { return nil }
+        self = kind
     }
 }
 

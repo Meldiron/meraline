@@ -44,7 +44,9 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
 
 ✂️ **Knows what you selected.** Select text in any app and press <kbd>⌥</kbd> <kbd>Space</kbd>, then click the text cursor above the window: the text comes along as context, so "summarize this" or "what does this mean?" is all you type. It never joins a question until you add it, and texts from several apps can go together. Select files or folders in Finder instead and they're attached: photos for any model, anything for an agent. It needs Accessibility access, which Meraline asks for. **Services › Ask Meraline** works without it, and takes a picture selected in Preview or Photos too. So does dragging: drop a selection from any app onto the window, and it waits above your question the same way.
 
-⚡ **Keeps your everyday asks a click away.** The presets above the window's right put a prompt in the input: Fix Grammar, Anti-Slop, Anonymize, and Translate, or your own from **Settings › Prompt**, each with an icon. Select the text first, click one, and ask, or Shift-click to send it at once. They're for starting a chat, so they step aside once it starts, and once an answer is ready, ⌘1 to ⌘9 run them on it.
+⚡ **Keeps your everyday asks a click away.** The presets above the window's right put a prompt in the input: Fix Grammar, Anti-Slop, Anonymize, and Translate, or your own from **Settings › Prompt**, each with an icon. Select the text first, click one, and ask, or Shift-click to send it at once. They're for starting a chat, so they step aside once it starts, and once an answer is ready, ⌘1 to ⌘9 run them on it. Each mode has presets of its own: agents start with Find Bugs, Explain Code, Write Tests, and Research, and decisions with questions.
+
+⚖️ **Decides.** Switch to Decision (<kbd>⌘</kbd> <kbd>3</kbd>), add the text you selected or copied, or write it in the window, and ask: "Is this urgent?", "Is this a scam?", "Which team should handle this? Billing / Technical / Sales", or "How high a priority is this? Low < Medium < High" for levels in order. TypeSafe's Jev, a model that decides rather than writes, answers in a fraction of a second with a check on green glass or a cross on red, ringed by how sure it is, "82% confident" beside it, and every answer's probability under it. When it isn't sure enough, it says so, and which way it leans; you set the line in **Settings › Prompt**. Follow-ups ask about the same text.
 
 ✍️ **Puts the answer to work.** **Actions** (<kbd>⌘</kbd> <kbd>K</kbd>) under an answer make it shorter, longer, simpler, more concrete, or a bullet list, in place, so the next rewrite or follow-up builds on what you see. <kbd>⌘</kbd> <kbd>↩</kbd> closes the window and pastes the answer at the cursor of the app you were in: select a paragraph, ask for it friendlier, press <kbd>⌘</kbd> <kbd>↩</kbd>, and the new text replaces the old. Ask to fix the grammar of text you selected or copied, and **Show What Changed** (<kbd>⌘</kbd> <kbd>D</kbd>) under the answer shows your text with each word it took out struck through in red and each it put in green, so a fix is quick to check before you paste it, with how much changed beside the button (“5% changed · 6 edits”); **Show Answer** goes back. <kbd>⌘</kbd> <kbd>T</kbd> tears the answer off into a small floating note that stays on screen while you follow it in another app; tear off more and they pile up in it, with a count badge that flips through them without opening the window.
 
@@ -54,7 +56,7 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
 
 🍎 **Works out of the box.** On a Mac with Apple Intelligence, the on-device model built into macOS answers the moment you install. No key, no account, and nothing leaves your Mac.
 
-🔌 **Uses the AI you already have.** The toggle under the input switches between asking an LLM and asking an agent (<kbd>⌘</kbd> <kbd>1</kbd> and <kbd>⌘</kbd> <kbd>2</kbd>). Click the sparkle to pick among that mode's providers you've turned on. The clock under the input keeps the chats you close, with their count on it, until each one's 30 minutes run out. To forget them sooner, clear them from the clock, or shake the window while you drag it.
+🔌 **Uses the AI you already have.** The toggle under the input switches between asking an LLM, asking an agent, and asking for a decision (<kbd>⌘</kbd> <kbd>1</kbd>, <kbd>⌘</kbd> <kbd>2</kbd>, and <kbd>⌘</kbd> <kbd>3</kbd>). Click the sparkle to pick among that mode's providers you've turned on. The clock under the input keeps the chats you close, with their count on it, until each one's 30 minutes run out. To forget them sooner, clear them from the clock, or shake the window while you drag it.
 
 | | Works with |
 | --- | --- |
@@ -62,10 +64,11 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
 | **API keys** | Anthropic, OpenAI, Google Gemini, OpenRouter |
 | **Local models** | Ollama, LM Studio, or any OpenAI-compatible server |
 | **Command-line agents** | Claude Code, Codex, OpenCode, using the account they're signed in to and the MCP servers set up in them |
+| **Decision models** | TypeSafe's Jev, which answers yes or no, one of your answers, or a level, with how sure it is |
 
 🔒 **Stays private.** API keys live in your Keychain. Conversations exist only in memory. OpenAI requests ask not to be stored, and command-line agents run in an empty temporary folder without saving a session. For a question you'd rather not see again, anonymous mode (<kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>N</kbd>) turns the sparkle graphite, in sunglasses, and keeps chats out of Recent Chats. When you do want to keep something, copy the answer or the whole conversation as Markdown.
 
-📊 **Shows what you've used.** **Settings › Usage** counts how Meraline is used, by the hour, day, week, month, and year: questions and answers, tokens in and out with a chart, what they cost at OpenRouter's public prices or as Claude Code, OpenCode, and OpenRouter report it, which models and games, what the agents did, what went with your questions, and habits like your busiest hour and longest streak. Numbers only, kept on your Mac, never a word of what was said. Before a chat starts, capsules under the window say what LLMs and agents have cost today.
+📊 **Shows what you've used.** **Settings › Usage** counts how Meraline is used, by the hour, day, week, month, and year: questions and answers, tokens in and out with a chart, what they cost at OpenRouter's public prices or as Claude Code, OpenCode, and OpenRouter report it, which models and games, what the agents did, how many decisions and how many weren't sure, what went with your questions, and habits like your busiest hour and longest streak. Numbers only, kept on your Mac, never a word of what was said. Before a chat starts, capsules under the window say what LLMs, agents, and decision models have cost today.
 
 ⚙️ **Feels at home on a Mac.** Settings look like System Settings, the icon follows light and dark mode, and updates install themselves. **Settings › Prompt** holds every instruction Meraline sends: pick the language answers and games are in (English, Czech, Slovak, and 22 more), give LLMs and agents instructions of their own, or rewrite a game's rules.
 
@@ -134,6 +137,24 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
   </tr>
   <tr>
     <td align="center" colspan="2"><sub>Rewrite an answer in place, or paste it where you were</sub></td>
+  </tr>
+  <tr>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/decision.png">
+        <img src="docs/screenshots/decision-light.png" width="440" alt="Decision mode: asked whether a message selected in Mail is urgent, Jev answers Yes, a check on green glass ringed by its confidence, 82% confident, with Yes 91% and No 9% under it">
+      </picture>
+    </td>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/decision-levels.png">
+        <img src="docs/screenshots/decision-levels-light.png" width="440" alt="Decision mode: a message from Slack placed along Low, Medium, and High as a high priority, and under the input the answers the next question picks from: Now, After lunch, Tomorrow">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Decision mode: Jev answers yes or no, with how sure it is</sub></td>
+    <td align="center"><sub>Name your own answers after the question, or levels in order</sub></td>
   </tr>
   <tr>
     <td align="center" colspan="2">
@@ -223,7 +244,7 @@ That's it. Press <kbd>⌥</kbd> <kbd>Space</kbd> whenever you have a question.
 | <kbd>⌘</kbd> <kbd>+</kbd>, <kbd>⌘</kbd> <kbd>−</kbd>, <kbd>⌘</kbd> <kbd>0</kbd> | Make answers larger for reading across the room, smaller, or their own size again; pinching on the trackpad zooms too, in the window or a torn-off note |
 | <kbd>⌘</kbd> <kbd>R</kbd> | Ask the last question again; in a game, restart it, or play again once a round is over |
 | <kbd>⌘</kbd> <kbd>I</kbd> | Show a hint in a game |
-| <kbd>⌘</kbd> <kbd>1</kbd> or <kbd>⌘</kbd> <kbd>2</kbd> | Ask an LLM or an agent |
+| <kbd>⌘</kbd> <kbd>1</kbd>, <kbd>⌘</kbd> <kbd>2</kbd>, or <kbd>⌘</kbd> <kbd>3</kbd> | Ask an LLM, an agent, or for a decision |
 | <kbd>⌘</kbd> <kbd>N</kbd> | Start a new chat |
 | <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>⌫</kbd> | Delete the chat, after asking; it skips Recent Chats |
 | <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>O</kbd> | Show an agent's files in Finder |
@@ -248,6 +269,7 @@ Meraline is built so you don't have to take its word for any of this.
 - **Screenshots only when you click.** The screen button takes a single picture of the display the window is on, with Meraline's own windows left out, and attaches it to your next question. It needs Screen Recording access, which macOS asks you for, but Meraline never records: nothing is captured until you click, and the picture lives in memory with the chat. The clipboard button reads your clipboard only when you click it; while the window is open, Meraline only checks what kind of thing is on it, to show whether there's something to add. Passwords that password managers mark as concealed are never read.
 - **Every access in one list.** **Settings › Permissions** shows Accessibility and Screen Recording, the features each one turns on, and whether macOS allows it right now, with a button to ask for it and one that opens its page in System Settings.
 - **Off screen shares, if you want.** **Hide from Screen Sharing**, in the sparkle's panel or **Settings › General**, asks macOS to leave the window out of screen sharing, recordings, and screenshots. It's off unless you turn it on. Apps that capture the whole display, such as QuickTime, can still show the window, so try it with yours first.
+- **Decisions go to TypeSafe, and only when you ask.** In Decision mode, the text you added and your question go to `api.typesafe.ai` as one request, with your key in a header, when you press Return and at no other time. Nothing is sent without text, no picture or file ever goes, and the reply, a few numbers, lives in memory with the chat. TypeSafe's policy is not to train on customer data. Settings › Usage counts decisions, never their answers.
 - **On-device means on-device.** Apple Intelligence answers come from the model inside macOS, and Ollama's from a model on your Mac. Nothing is sent anywhere, unless you pick one of Ollama's cloud models or point it at another machine. The follow-up questions under an answer are suggested on your Mac too, by Apple Intelligence when it's on, and never by your provider; they stay in memory and go when you ask the next question.
 - **It's all open source.** Search the code for `URLSession`, `Process`, and `Keychain` to see every place Meraline talks to anything.
 
@@ -263,12 +285,13 @@ Other apps and scripts can open Meraline through the `meraline://` URL scheme, w
 | `meraline://ask?clipboard=1` | Adds what's on the clipboard, as the clipboard button does |
 | `meraline://ask?screen=1` | Adds a screenshot of the screen the window opens on, as the screen button does. With `send=1`, the question waits for it, and isn't sent if it can't be taken |
 | `meraline://ask?agent=1` | Asks an agent; `agent=0` asks an LLM. Works with everything above |
+| `meraline://ask?mode=decision` | Asks for a decision; `mode=llm` and `mode=agent` work too. Works with everything above |
 | `meraline://new` | Starts a new chat and opens the window |
 | `meraline://play` | Opens the window with the games showing |
 | `meraline://play?game=oddOneOut` | Starts a game: `rhymeDuel`, `addAWord`, `categories`, `wordFootball`, `oddOneOut`, `fixTheTypo`, `speedDefinitions`, or `longestWord`. Its title works too, as in `odd-one-out` |
-| `meraline://mode?agent=1` | Switches to Agent and opens the window; `agent=0` switches to LLM, and `meraline://mode` alone to the other mode |
+| `meraline://mode?agent=1` | Switches to Agent and opens the window; `agent=0` switches to LLM, `mode=decision` (or `mode=llm`, `mode=agent`) to that mode, and `meraline://mode` alone to the next one around the toggle |
 | `meraline://settings` | Opens Settings |
-| `meraline://settings?pane=claudeCode` | Opens Settings on a page: `general`, `prompt`, `permissions`, `usage`, `updates`, `about`, or a provider such as `anthropic`, `apple`, or `codex` |
+| `meraline://settings?pane=claudeCode` | Opens Settings on a page: `general`, `prompt`, `permissions`, `usage`, `updates`, `about`, or a provider such as `anthropic`, `apple`, `codex`, or `typeSafe` |
 
 A `meraline://` link in an answer works with a click too, but never sends: the question it fills in waits for you to press Return.
 

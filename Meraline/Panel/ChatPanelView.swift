@@ -67,8 +67,14 @@ struct ChatPanelView: View {
     private var hasAnnouncements: Bool { whatsNew.update != nil || offeredUpdate != nil || crashNotice.isOffered }
     /// The diagnostics the capsule under the card offers once after a crash, and says Copied when they were.
     private let crashNotice = CrashNotice.shared
-    /// The presets above the card, those with text to put in the input.
-    private var presets: [PromptPreset] { preferences.presets.filter { !$0.text.trimmed.isEmpty } }
+    /// A mode's presets above the card, those with text to put in the input.
+    private func presets(for kind: ProviderKind) -> [PromptPreset] {
+        preferences[presets: kind].filter { !$0.text.trimmed.isEmpty }
+    }
+    /// The text written in the window for a decision, for its card.
+    private var typedState: Binding<String> {
+        Binding(get: { session.typedState ?? "" }, set: { session.typedState = $0 })
+    }
     /// What LLMs and agents have cost today, on an empty panel.
     private var costNudges: [CostNudge] {
         guard !hasConversation else { return [] }
@@ -89,6 +95,15 @@ struct ChatPanelView: View {
                             }
                             .transition(Self.cardRowTransition)
                         }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                    .transition(Self.cardRowTransition)
+                }
+                if session.typedState != nil, !session.isPlaying {
+                    TypedStateCard(text: typedState) {
+                        session.removeTypedState()
+                        isInputFocused = true
                     }
                     .padding(.horizontal, 12)
                     .padding(.bottom, 10)
@@ -126,8 +141,15 @@ struct ChatPanelView: View {
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
                 } else if let notice = session.fileNotice {
-                    AgentFilesRow(message: notice) {
+                    SwitchModeRow(message: notice, symbol: "doc", button: "Switch to Agent") {
                         preferences.mode = .agent
+                        isInputFocused = true
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                } else if let notice = session.pictureNotice {
+                    SwitchModeRow(message: notice, symbol: "photo", button: "Switch to LLM") {
+                        preferences.mode = .llm
                         isInputFocused = true
                     }
                     .padding(.horizontal, 12)
@@ -136,6 +158,11 @@ struct ChatPanelView: View {
                     SetupRow(kind: preferences.mode) { openSettings(.provider(preferences.mode.providers[0])) }
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
+                } else if session.needsDecisionState {
+                    DecisionStateRow { session.writeState() }
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 12)
+                        .transition(.opacity)
                 } else if let rematch = session.rematch, !rematch.isAfterGame {
                     rematchTray(rematch)
                 } else if let nudge = nudgeMessage {
@@ -181,10 +208,17 @@ struct ChatPanelView: View {
                 // Lined up with the sparkle under them.
                 ContextButtons(session: session, preferences: preferences, sources: sources, screen: screen, close: onClose) { isInputFocused = true }
                     .fixedSize()
-                // Lined up with the gear under them, in the room the buttons leave.
-                PromptPresets(presets: presets, draft: session.draft, isShown: !hasConversation) { preset, sends in
-                    session.apply(preset, among: presets, sending: sends)
-                    if !sends { isInputFocused = true }
+                // Lined up with the gear under them, in the room the buttons leave: each mode's presets in a row of
+                // its own, the current mode's up and the others sunk, so a change of mode sinks one row as the
+                // next rises. Every row stays in the view tree, faded and disabled.
+                ZStack(alignment: .trailing) {
+                    ForEach(ProviderKind.allCases) { kind in
+                        let presets = presets(for: kind)
+                        PromptPresets(presets: presets, draft: session.draft, isShown: !hasConversation && preferences.mode == kind) { preset, sends in
+                            session.apply(preset, among: presets, sending: sends)
+                            if !sends { isInputFocused = true }
+                        }
+                    }
                 }
             }
             .padding(.leading, PanelController.margin + 18)
@@ -245,6 +279,9 @@ struct ChatPanelView: View {
         .animation(.smooth(duration: Self.cardAnimation), value: session.draftFiles)
         .animation(.smooth(duration: Self.cardAnimation), value: session.draftSelections)
         .animation(.smooth(duration: Self.cardAnimation), value: session.fileNotice)
+        .animation(.smooth(duration: Self.cardAnimation), value: session.pictureNotice)
+        .animation(.smooth(duration: Self.cardAnimation), value: session.needsDecisionState)
+        .animation(.smooth(duration: Self.cardAnimation), value: session.typedState == nil)
         .animation(.smooth(duration: Self.cardAnimation), value: session.failure)
         .animation(.smooth(duration: Self.cardAnimation), value: session.nudge)
         .animation(.smooth(duration: Self.cardAnimation), value: session.rematch)
@@ -317,6 +354,10 @@ struct ChatPanelView: View {
 
     private var placeholder: String {
         guard let state = session.gameState else {
+            if session.isDeciding {
+                let ask = hasConversation ? "Ask for another decision" : "Ask something Jev can decide"
+                return session.isAnonymous ? "\(ask) secretly…" : "\(ask)…"
+            }
             let texts = session.draftSelections
             let ask = texts.count > 1 ? "Ask about them"
                 : texts.first.map { $0.isFromClipboard ? "Ask about the clipboard" : "Ask about the selection" }
@@ -390,6 +431,7 @@ struct ChatPanelView: View {
                             showsChanges: layout.answersShowingChanges.contains(turn.id),
                             toggleChanges: { layout.toggleChanges(of: turn.id) },
                             isLastAnswer: turn.id == session.turns.last(where: { !$0.answer.isEmpty })?.id,
+                            unsureBelow: preferences.unsureBelow,
                             agent: agentName,
                             answer: { session.answer($0, with: $1) },
                             explain: explain,
@@ -547,6 +589,8 @@ private struct TurnView: View {
     let toggleChanges: () -> Void
     /// Whether this is the last answer, whose changes ⌘D shows.
     var isLastAnswer = false
+    /// Under this confidence a decision shows as Not Sure.
+    var unsureBelow = Decision.defaultUnsureBelow
     let agent: String
     let answer: (AgentPrompt.ID, AgentAnswer) -> Void
     var explain: ((AgentPrompt) async throws -> String)?
@@ -578,7 +622,9 @@ private struct TurnView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
             }
-            if !turn.answer.isEmpty {
+            if let decision = turn.decision {
+                DecisionCard(decision: decision, unsureBelow: unsureBelow)
+            } else if !turn.answer.isEmpty {
                 if showsChanges, let changes = turn.changes {
                     ChangesView(changes: changes)
                 } else {
@@ -1003,20 +1049,23 @@ private struct NudgeRow: View {
     }
 }
 
-/// Files in the draft while the panel asks an LLM: only an agent reads them, and the button switches.
-private struct AgentFilesRow: View {
+/// Why the draft waits, with the mode that would send it: files while asking an LLM or for a decision, or
+/// pictures while asking for a decision.
+private struct SwitchModeRow: View {
     let message: String
-    let switchToAgent: () -> Void
+    let symbol: String
+    let button: String
+    let switchMode: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "doc")
+            Image(systemName: symbol)
                 .foregroundStyle(.secondary)
             Text(message)
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
-            Button("Switch to Agent", action: switchToAgent)
+            Button(button, action: switchMode)
                 .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
         }
         .padding(12)
@@ -1196,21 +1245,36 @@ private struct FailureRow: View {
     }
 }
 
-/// What to do when the current mode has nothing ready: connect an LLM, or turn on an agent.
+/// What to do when the current mode has nothing ready: connect an LLM, turn on an agent, or add a decision
+/// model's key.
 private struct SetupRow: View {
     let kind: ProviderKind
     let openSettings: () -> Void
+
+    private var title: String {
+        switch kind {
+        case .llm: "Connect an AI provider"
+        case .agent: "Turn on an agent"
+        case .decision: "Connect a decision model"
+        }
+    }
+
+    private var detail: String {
+        switch kind {
+        case .llm: "Add an API key or turn on a local model to start asking."
+        case .agent: "Install Claude Code, Codex, or OpenCode, then turn it on in Settings."
+        case .decision: "Add your TypeSafe API key in Settings, and Jev answers yes or no about the text you add."
+        }
+    }
 
     var body: some View {
         HStack(spacing: 12) {
             (kind == .agent ? kind.image : Image(systemName: "key.fill"))
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
-                Text(kind == .agent ? "Turn on an agent" : "Connect an AI provider")
+                Text(title)
                     .font(.system(size: 13, weight: .semibold))
-                Text(kind == .agent
-                    ? "Install Claude Code, Codex, or OpenCode, then turn it on in Settings."
-                    : "Add an API key or turn on a local model to start asking.")
+                Text(detail)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }

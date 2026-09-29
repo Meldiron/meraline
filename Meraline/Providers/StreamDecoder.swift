@@ -21,6 +21,8 @@ nonisolated enum StreamOutput: Equatable, Sendable {
     /// What the provider says the answer took so far (see `StreamDecoder.usage(in:from:)`): the fields it
     /// carries replace what was known, or, when `adds`, add to it.
     case usage(TokenUsage, adds: Bool)
+    /// What a decision model decided, whole, in place of any text (see `DecisionClient`).
+    case decision(Decision)
 }
 
 /// What a provider's payload says an answer took, and whether it adds to earlier reports of the same answer or
@@ -168,7 +170,7 @@ nonisolated enum StreamDecoder {
         case .claudeCode: try claudeCode(payload, knownServers: knownServers)
         case .codex: try codex(payload)
         case .opencode: try opencode(payload, knownServers: knownServers)
-        case .apple: .ignored
+        case .apple, .typeSafe: .ignored
         }
     }
 
@@ -237,7 +239,7 @@ nonisolated enum StreamDecoder {
                 input: tokens?.input, output: tokens.map { ($0.output ?? 0) + ($0.reasoning ?? 0) },
                 cacheRead: tokens?.cache?.read, cacheWrite: tokens?.cache?.write, cost: part.cost
             ), adds: true)
-        case .apple:
+        case .apple, .typeSafe:
             return nil
         }
     }

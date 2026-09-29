@@ -1,10 +1,11 @@
 import AppKit
 
 /// A prompt that waits above an empty chat as a glass capsule with an icon (see `PromptPresets`): a click puts its
-/// text in the input, a Shift-click sends it at once. Settings › Prompt edits, adds, and deletes them. Above the
-/// card they are for a chat's first question; once an answer is ready, the chat's actions (⌘K) offer them for the
-/// answer instead, the first nine on ⌘1…⌘9 (see `ChatSession.run(_:)`). Only a changed list is kept, in
-/// UserDefaults, so presets left alone follow later defaults and the language chosen for answers.
+/// text in the input, a Shift-click sends it at once. Each mode has a list of its own, which Settings › Prompt
+/// edits, adds to, and deletes from, and a change of mode swaps the rows above the card. Above the card they are
+/// for a chat's first question; once an answer is ready, the chat's actions (⌘K) offer them for the answer
+/// instead, the first nine on ⌘1…⌘9 (see `ChatSession.run(_:)`). Only a changed list is kept, in UserDefaults,
+/// so presets left alone follow later defaults and the language chosen for answers.
 nonisolated struct PromptPreset: Codable, Hashable, Identifiable, Sendable {
     var id: String
     var title: String
@@ -15,8 +16,12 @@ nonisolated struct PromptPreset: Codable, Hashable, Identifiable, Sendable {
     /// The icon a new preset starts with, and the one shown for a symbol macOS doesn't have.
     static let fallbackSymbol = "text.bubble"
 
-    /// Where a changed list is kept.
+    /// Where a changed list is kept: the LLMs' under the key the one list had before each mode got its own.
     static let key = "promptPresets"
+
+    static func key(for kind: ProviderKind) -> String {
+        kind == .llm ? key : "\(key).\(kind.rawValue)"
+    }
 
     /// How many presets the chat's actions give a shortcut, ⌘1 to ⌘9.
     static let shortcutLimit = 9
@@ -25,7 +30,44 @@ nonisolated struct PromptPreset: Codable, Hashable, Identifiable, Sendable {
     /// which is text of yours.
     static let usageKey = "preset"
 
-    /// The presets until the list is changed. Translate goes into the language chosen for answers.
+    /// The presets a mode starts with, until its list is changed: for the LLMs, work on a text, Translate into the
+    /// language chosen for answers; for the agents, work on the files attached and on the web; for decisions,
+    /// questions, two of which name their answers after the question mark (see `DecisionAnswers`).
+    static func defaults(for kind: ProviderKind, in language: AnswerLanguage) -> [PromptPreset] {
+        switch kind {
+        case .llm: defaults(in: language)
+        case .agent: agentDefaults
+        case .decision: decisionDefaults
+        }
+    }
+
+    static let agentDefaults = [
+        PromptPreset(
+            id: "findBugs", title: "Find Bugs", symbol: "ant",
+            text: "Look through the files attached for bugs, edge cases, and code that could break, and list each one with where it is and how to fix it:"
+        ),
+        PromptPreset(
+            id: "explainCode", title: "Explain Code", symbol: "text.magnifyingglass",
+            text: "Explain what the files attached do and how their parts fit together, briefly and in plain words:"
+        ),
+        PromptPreset(
+            id: "writeTests", title: "Write Tests", symbol: "checklist",
+            text: "Write tests for the code attached, in its own language and test framework, covering the edge cases, and hand the test file over:"
+        ),
+        PromptPreset(
+            id: "research", title: "Research", symbol: "globe",
+            text: "Search the web and answer this in a short summary with its sources, newest first:"
+        ),
+    ]
+
+    static let decisionDefaults = [
+        PromptPreset(id: "urgent", title: "Urgent?", symbol: "exclamationmark.triangle", text: "Is this urgent?"),
+        PromptPreset(id: "scam", title: "Scam?", symbol: "shield", text: "Is this a scam, spam, or phishing?"),
+        PromptPreset(id: "tone", title: "Tone", symbol: "face.smiling", text: "What is the tone of this text? Friendly / Neutral / Angry"),
+        PromptPreset(id: "priority", title: "Priority", symbol: "flag", text: "How high a priority is this? Low < Medium < High"),
+    ]
+
+    /// The LLMs' presets until their list is changed. Translate goes into the language chosen for answers.
     static func defaults(in language: AnswerLanguage) -> [PromptPreset] {
         [
             PromptPreset(

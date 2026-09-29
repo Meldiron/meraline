@@ -100,6 +100,11 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
     /// Files an agent handed over with `present_files`.
     var filesHandedOver = 0
 
+    // What the decision models decided.
+    /// Decisions that arrived, answers to questions asked in Decision mode, and those under the Not Sure line.
+    var decisions = 0
+    var unsureDecisions = 0
+
     /// Games by `Game.rawValue`. Their runs of wins add up in order, so tallies are summed earliest first.
     var games: [String: GameTally] = [:]
 
@@ -347,6 +352,8 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
         sum.asksDenied = a.asksDenied + b.asksDenied
         sum.questionsAnswered = a.questionsAnswered + b.questionsAnswered
         sum.filesHandedOver = a.filesHandedOver + b.filesHandedOver
+        sum.decisions = a.decisions + b.decisions
+        sum.unsureDecisions = a.unsureDecisions + b.unsureDecisions
         sum.games = a.games.merging(b.games, uniquingKeysWith: +)
         sum.answersCopied = a.answersCopied + b.answersCopied
         sum.answersInserted = a.answersInserted + b.answersInserted
@@ -428,6 +435,8 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
         asksDenied = try int(.asksDenied)
         questionsAnswered = try int(.questionsAnswered)
         filesHandedOver = try int(.filesHandedOver)
+        decisions = try int(.decisions)
+        unsureDecisions = try int(.unsureDecisions)
         games = try values.decodeIfPresent([String: GameTally].self, forKey: .games) ?? [:]
         answersCopied = try int(.answersCopied)
         answersInserted = try int(.answersInserted)

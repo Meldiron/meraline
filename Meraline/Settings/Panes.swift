@@ -150,7 +150,7 @@ struct PromptPane: View {
 
     var body: some View {
         Form {
-            PaneHeader(pane: .prompt, summary: "Tell the models how to answer, and keep the prompts you use most a click away. LLMs and agents each have their own instructions, and each game plays by its own.")
+            PaneHeader(pane: .prompt, summary: "Tell the models how to answer, and keep the prompts you use most a click away. LLMs and agents each have their own instructions, decisions their answers, each mode its presets, and each game plays by its own.")
 
             Section {
                 Picker("Language", selection: $preferences.language) {
@@ -160,7 +160,7 @@ struct PromptPane: View {
                 Text("LLMs and agents answer in it, unless you ask for another, as for a translation, and the games are played in it. Meraline adds a line saying so after the instructions below.")
             }
 
-            ForEach(ProviderKind.allCases) { kind in
+            ForEach(ProviderKind.prompted) { kind in
                 Section {
                     editor(for: .chat(kind))
                 } header: {
@@ -176,7 +176,34 @@ struct PromptPane: View {
                 }
             }
 
-            PresetsSection(preferences: preferences)
+            Section {
+                TextField("Answers", text: $preferences.decisionAnswers, prompt: Text(DecisionAnswers.defaultText))
+                LabeledContent {
+                    HStack(spacing: 10) {
+                        Slider(value: $preferences.unsureBelow, in: 0...0.95, step: 0.05)
+                            .frame(width: 160)
+                            .tint(.meralinePink)
+                            .labelsHidden()
+                        Text(Decision.percent(preferences.unsureBelow))
+                            .monospacedDigit()
+                            .frame(width: 36, alignment: .trailing)
+                    }
+                } label: {
+                    Text("Not sure below")
+                    Text("How sure Jev must be for its answer to show. Under it, the answer says Not Sure, with the answer it leans to. For Yes and No, 50% is a winner under 75%.")
+                }
+            } header: {
+                Text("Decisions")
+            } footer: {
+                Text(DecisionAnswers.parse(preferences.decisionAnswers) == nil
+                    ? "Write at least two answers with / between them, or < for levels in order. Until then a question picks Yes or No."
+                    : "Jev picks one of these when a question names no answers of its own after its question mark: “Which team should handle this? Billing / Technical / Sales”, or “How urgent is this? Low < Medium < High” for levels in order. Jev takes no instructions, so there is no prompt to edit: it reads the text you add and the question, nothing else.")
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            ForEach(ProviderKind.allCases) { kind in
+                PresetsSection(preferences: preferences, kind: kind)
+            }
 
             Section {
                 ForEach(Game.allCases) { game in

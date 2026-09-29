@@ -86,7 +86,7 @@ nonisolated enum ToolReason {
                 startsOver = !reply.isEmpty
             case .prompt(_, let responder?):
                 responder(.deny)
-            case .prompt, .presented, .usage:
+            case .prompt, .presented, .usage, .decision:
                 break
             }
         }

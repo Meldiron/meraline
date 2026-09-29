@@ -56,7 +56,7 @@ struct ChangesView: View {
 
 /// Red and green that read well on the panel's glass: the system's own in Dark Mode, and deeper shades on light
 /// glass, where the system's green is faint.
-private extension NSColor {
+extension NSColor {
     static let removedText = NSColor(name: nil) { $0.isDark ? .systemRed : NSColor(srgbRed: 0.78, green: 0.13, blue: 0.11, alpha: 1) }
     static let addedText = NSColor(name: nil) { $0.isDark ? .systemGreen : NSColor(srgbRed: 0.1, green: 0.5, blue: 0.2, alpha: 1) }
 }

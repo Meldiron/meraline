@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// A capsule under an empty panel: what the LLMs or the agents have cost today, or, while neither has cost a
-/// tenth of a cent, that today has cost nothing yet.
+/// A capsule under an empty panel: what the LLMs, the agents, or the decision models have cost today, or, while
+/// none has cost a tenth of a cent, that today has cost nothing yet.
 nonisolated struct CostNudge: Equatable, Identifiable, Sendable {
-    /// The LLMs or the agents, or nil for the one capsule that stands for both while today has cost nothing.
+    /// The LLMs, the agents, or the decision models, or nil for the one capsule that stands for all while today
+    /// has cost nothing.
     let kind: ProviderKind?
     let cost: Double
 
@@ -35,6 +36,7 @@ nonisolated struct CostNudge: Equatable, Identifiable, Sendable {
         switch kind {
         case .llm?: "What LLMs have cost since midnight, as Settings › Usage counts it."
         case .agent?: "What agents have cost since midnight, as Settings › Usage counts it."
+        case .decision?: "What decision models have cost since midnight, as Settings › Usage counts it."
         case nil: "Today hasn’t cost a tenth of a cent yet, as Settings › Usage counts it."
         }
     }
@@ -44,6 +46,7 @@ nonisolated struct CostNudge: Equatable, Identifiable, Sendable {
         switch kind {
         case .llm?: "\(label) on LLMs today"
         case .agent?: "\(label) on agents today"
+        case .decision?: "\(label) on decision models today"
         case nil: label
         }
     }

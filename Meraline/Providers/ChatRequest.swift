@@ -26,6 +26,9 @@ nonisolated struct ChatRequest: Sendable {
     /// Whether an agent may hand files from its workspace to the person (see `PresentFilesServer`). A game's
     /// moves don't.
     var presentsFiles = false
+    /// In Decision mode, the question as TypeSafe's Jev takes it: the texts it is about, the question, and the
+    /// answers it picks from (see `DecisionClient`). The messages then only stand in for the conversation.
+    var decision: DecisionRequest?
 
     static let maximumOutputTokens = 16_000
 
@@ -67,6 +70,8 @@ nonisolated struct ChatRequest: Sendable {
             preconditionFailure("\(provider) runs through CommandLineClient")
         case .apple:
             preconditionFailure("\(provider) runs through AppleIntelligenceClient")
+        case .typeSafe:
+            preconditionFailure("\(provider) runs through DecisionClient")
         }
 
         guard var components = URLComponents(string: settings.baseURL.trimmed),

@@ -82,6 +82,7 @@ struct SettingsView: View {
                 sidebarSection([.general, .permissions, .prompt, .usage, .softwareUpdate, .about])
                 sidebarSection(Provider.services.map(SettingsPane.provider), title: "LLMs")
                 sidebarSection(Provider.commandLineTools.map(SettingsPane.provider), title: "Agents")
+                sidebarSection(Provider.decisionModels.map(SettingsPane.provider), title: "Decision Models")
             }
             .searchable(text: $search, placement: .sidebar, prompt: "Search")
             .navigationSplitViewColumnWidth(215)

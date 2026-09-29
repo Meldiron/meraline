@@ -35,7 +35,7 @@ struct SelectionCard: View {
     private var header: some View {
         HStack(spacing: 6) {
             AppIcon(selection: selection, size: 16)
-            Text(selection.appName ?? "Selected text")
+            Text(selection.sourceLabel)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
             Text("· \(selection.lengthLabel)")
@@ -96,7 +96,7 @@ struct SelectionQuote: View {
                     }
                     .buttonStyle(.plain)
                     .help(isExpanded ? "Show less" : "Show all of it")
-                    .accessibilityLabel("\(selection.appName ?? "Selected text"), \(selection.lengthLabel)")
+                    .accessibilityLabel("\(selection.sourceLabel), \(selection.lengthLabel)")
                     .accessibilityHint(isExpanded ? "Shows less of the text" : "Shows all of the text")
                 } else {
                     header
@@ -114,7 +114,7 @@ struct SelectionQuote: View {
     private var header: some View {
         HStack(spacing: 5) {
             AppIcon(selection: selection, size: 13)
-            Text(selection.appName ?? "Selected text")
+            Text(selection.sourceLabel)
                 .font(.system(size: 11, weight: .medium))
             Text("· \(selection.lengthLabel)")
                 .font(.system(size: 11))
@@ -232,7 +232,7 @@ private struct QuoteBar: View {
 /// A small glass circle with a symbol, for the cards' own controls. `turn` rotates the symbol alone: glass in
 /// the panel's glass container can't be rotated, and a rotated circle swells into a disc beside its place
 /// while it turns.
-private struct CardButton: View {
+struct CardButton: View {
     let symbol: String
     let label: String
     var turn: Angle = .zero
@@ -265,7 +265,7 @@ private struct AppIcon: View {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
                     .resizable()
             } else {
-                Image(systemName: selection.isFromClipboard ? "clipboard" : "text.quote")
+                Image(systemName: selection.isFromClipboard ? "clipboard" : selection.isTyped ? "keyboard" : "text.quote")
                     .resizable()
                     .scaledToFit()
                     .padding(size * 0.15)

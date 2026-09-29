@@ -1,8 +1,9 @@
 import Foundation
 
 /// The instructions Meraline sends a model, each of which Settings › Prompt can change: one for the LLMs, one for
-/// the agents, one for each game, and the one Why? asks Claude Code with. Only a changed prompt is kept, in
-/// UserDefaults, so a prompt left alone follows its default when a later version changes it.
+/// the agents, one for each game, and the one Why? asks Claude Code with. A decision model takes no prompt, so
+/// Decision mode has none. Only a changed prompt is kept, in UserDefaults, so a prompt left alone follows its
+/// default when a later version changes it.
 nonisolated enum SystemPrompt: Hashable, Identifiable, Sendable {
     /// Sent with every question to a mode's providers.
     case chat(ProviderKind)
@@ -11,7 +12,7 @@ nonisolated enum SystemPrompt: Hashable, Identifiable, Sendable {
     /// Why? on an agent's ask (see `ToolReason`).
     case toolReason
 
-    static let allCases: [SystemPrompt] = ProviderKind.allCases.map(chat) + Game.allCases.map(game) + [.toolReason]
+    static let allCases: [SystemPrompt] = ProviderKind.prompted.map(chat) + Game.allCases.map(game) + [.toolReason]
 
     static let llm = """
     You answer quick questions asked from a small floating window. Lead with the answer. \
@@ -35,6 +36,7 @@ nonisolated enum SystemPrompt: Hashable, Identifiable, Sendable {
         switch self {
         case .chat(.llm): Self.llm
         case .chat(.agent): Self.agent
+        case .chat(.decision): ""
         case .game(let game): game.rules.systemPrompt
         case .toolReason: ToolReason.systemPrompt
         }

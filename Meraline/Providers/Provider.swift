@@ -10,15 +10,21 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
     case claudeCode
     case codex
     case opencode
+    case typeSafe
+    // Last: the on-device model is the fallback, so it sorts after the configured providers of its kind.
     case apple
 
     static let services: [Provider] = [.apple, .anthropic, .openAI, .gemini, .openRouter, .ollama, .custom]
     static let commandLineTools: [Provider] = [.claudeCode, .codex, .opencode]
+    /// The models that decide rather than write: a yes or no, one of a set of answers, or a level, with how sure
+    /// they are (see `DecisionClient`).
+    static let decisionModels: [Provider] = [.typeSafe]
 
     var isCommandLine: Bool { Self.commandLineTools.contains(self) }
+    var isDecisionModel: Bool { Self.decisionModels.contains(self) }
 
-    /// Which of the panel's two modes the provider answers in.
-    var kind: ProviderKind { isCommandLine ? .agent : .llm }
+    /// Which of the panel's modes the provider answers in.
+    var kind: ProviderKind { isDecisionModel ? .decision : isCommandLine ? .agent : .llm }
 
     /// Runs on this Mac through Apple's Foundation Models framework: no key, no server, no command.
     var isOnDevice: Bool { self == .apple }
@@ -43,6 +49,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .codex: "Codex"
         case .opencode: "OpenCode"
         case .apple: "Apple Intelligence"
+        case .typeSafe: "TypeSafe"
         }
     }
 
@@ -58,6 +65,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .codex: "Answers from the codex command, using the account it’s signed in to and its MCP servers, in a sandbox that writes only to the chat’s workspace and temporary folders."
         case .opencode: "Answers from the opencode command, using the providers and MCP servers configured in OpenCode."
         case .apple: "The on-device model built into macOS. Private, works offline, and needs no key. Best for short questions; it can’t browse the web."
+        case .typeSafe: "Jev, TypeSafe’s decision model. It writes nothing: asked about the text you add, it answers yes or no, one of the answers you name, or a level, with how sure it is, in a fraction of a second."
         }
     }
 
@@ -73,6 +81,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .codex: "chevron.left.forwardslash.chevron.right"
         case .opencode: "curlybraces"
         case .apple: "apple.intelligence"
+        case .typeSafe: "circle.lefthalf.filled"
         }
     }
 
@@ -88,6 +97,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .codex: Color(red: 0.13, green: 0.13, blue: 0.15)
         case .opencode: Color(red: 0.30, green: 0.33, blue: 0.40)
         case .apple: Color(red: 0.44, green: 0.42, blue: 0.78)
+        case .typeSafe: Color(red: 0.16, green: 0.53, blue: 0.6)
         }
     }
 
@@ -98,6 +108,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .gemini: "gemini-3.6-flash"
         case .openRouter: "anthropic/claude-sonnet-5"
         case .ollama: "llama3.2"
+        case .typeSafe: "jev-latest"
         case .custom, .claudeCode, .codex, .opencode, .apple: ""
         }
     }
@@ -112,6 +123,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .custom, .opencode, .apple: []
         case .claudeCode: ["sonnet", "opus", "haiku"]
         case .codex: ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"]
+        case .typeSafe: ["jev-latest", "jev-preview", "jev-1.13.0"]
         }
     }
 
@@ -127,12 +139,13 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .codex: "codex"
         case .opencode: "opencode"
         case .apple: ""
+        case .typeSafe: "https://api.typesafe.ai/v1"
         }
     }
 
     var keyPolicy: KeyPolicy {
         switch self {
-        case .anthropic, .openAI, .gemini, .openRouter: .required
+        case .anthropic, .openAI, .gemini, .openRouter, .typeSafe: .required
         case .custom: .optional
         case .ollama, .claudeCode, .codex, .opencode, .apple: .none
         }
@@ -150,6 +163,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .codex: URL(string: "https://developers.openai.com/codex/cli")
         case .opencode: URL(string: "https://opencode.ai/docs")
         case .apple: nil
+        case .typeSafe: URL(string: "https://console.typesafe.ai/keys")
         }
     }
 
@@ -170,18 +184,26 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
     }
 }
 
-/// The panel's two modes: a model answering through its API or on this Mac, or an agent on this Mac that
-/// can use tools. The toggle under the input switches between them, and each keeps its own provider.
+/// The panel's three modes: a model answering through its API or on this Mac, an agent on this Mac that can
+/// use tools, or a decision model that answers yes or no, one of your answers, or a level about the text you
+/// add (see `Decision`). The toggle under the input switches between them, and each keeps its own provider.
 nonisolated enum ProviderKind: String, CaseIterable, Identifiable, Sendable {
     case llm
     case agent
+    case decision
 
     var id: Self { self }
+
+    /// The modes that send a system prompt, which Settings › Prompt edits. A decision model takes none.
+    static let prompted: [ProviderKind] = [.llm, .agent]
+
+    var hasSystemPrompt: Bool { Self.prompted.contains(self) }
 
     var title: String {
         switch self {
         case .llm: "LLM"
         case .agent: "Agent"
+        case .decision: "Decision"
         }
     }
 
@@ -190,15 +212,17 @@ nonisolated enum ProviderKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .llm: "LLMs"
         case .agent: "Agents"
+        case .decision: "Decision Models"
         }
     }
 
-    /// The mode's picture: a speech bubble, or Meraline's own robot head, a custom symbol in the asset
-    /// catalog that behaves like a system one.
+    /// The mode's picture: a speech bubble, Meraline's own robot head, a custom symbol in the asset catalog that
+    /// behaves like a system one, or a pair of scales.
     var image: Image {
         switch self {
         case .llm: Image(systemName: "bubble.left")
         case .agent: Image("robot")
+        case .decision: Image(systemName: "scale.3d")
         }
     }
 
@@ -207,7 +231,14 @@ nonisolated enum ProviderKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .llm: Provider.services
         case .agent: Provider.commandLineTools
+        case .decision: Provider.decisionModels
         }
+    }
+
+    /// The mode after this one, around the toggle: `meraline://mode` alone switches to it.
+    var next: ProviderKind {
+        let all = Self.allCases
+        return all[((all.firstIndex(of: self) ?? 0) + 1) % all.count]
     }
 }
 

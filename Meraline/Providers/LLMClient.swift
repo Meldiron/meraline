@@ -7,6 +7,7 @@ nonisolated enum LLMClient {
     static func stream(_ request: ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> {
         if request.provider.isCommandLine { return CommandLineClient.stream(request) }
         if request.provider.isOnDevice { return AppleIntelligenceClient.stream(request) }
+        if request.provider.isDecisionModel { return DecisionClient.stream(request) }
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {

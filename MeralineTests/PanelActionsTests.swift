@@ -228,7 +228,8 @@ struct PanelActionsTests {
         let custom = menu.actions.first { $0.id == "provider.custom" }
         #expect(custom?.isChecked == true)
         #expect(custom?.subtitle == "games")
-        #expect(ids(menu).contains("switchMode"))
+        #expect(ids(menu).contains("switchMode.agent"))
+        #expect(ids(menu).contains("switchMode.decision"))
         let anonymous = menu.actions.first { $0.id == "anonymous" }
         #expect(anonymous?.isChecked == false)
         anonymous?.perform()
@@ -241,7 +242,7 @@ struct PanelActionsTests {
         let preferences = Support.preferences()
         let session = ChatSession(preferences: preferences) { _ in AsyncThrowingStream { _ in } }
         let menu = context(session, preferences: preferences).providersMenu
-        let other = menu.actions.first { $0.id == "switchMode" }
+        let other = menu.actions.first { $0.id == "switchMode.agent" }
         #expect(other?.title == "Switch to Agent")
         #expect(other?.shortcut == .command("2"))
         other?.perform()

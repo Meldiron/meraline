@@ -10,6 +10,9 @@ nonisolated struct ModelPrice: Codable, Equatable, Sendable {
 
     /// A model that runs on this Mac.
     static let free = ModelPrice(prompt: 0, completion: 0)
+    /// TypeSafe's list price for Jev, $0.042 a million tokens in and nothing out, which OpenRouter's list doesn't
+    /// carry.
+    static let jev = ModelPrice(prompt: 0.042 / 1_000_000, completion: 0)
 
     func cost(of tokens: UsageTally.ModelTally.Tokens) -> Double {
         let input = Double(tokens.input) * prompt
@@ -67,6 +70,7 @@ nonisolated struct PriceTable: Codable, Equatable, Sendable {
     /// model, and the answer waits unpriced.
     func price(for provider: Provider, model: String) -> ModelPrice? {
         if provider.isOnDevice || provider == .ollama { return .free }
+        if provider.isDecisionModel { return .jev }
         let model = model.trimmed
         guard !model.isEmpty else { return nil }
         if provider == .openRouter || provider == .opencode || provider == .custom {
@@ -90,7 +94,7 @@ nonisolated struct PriceTable: Codable, Equatable, Sendable {
         case .anthropic, .claudeCode: ["anthropic"]
         case .openAI, .codex: ["openai"]
         case .gemini: ["google"]
-        case .openRouter, .custom, .opencode, .ollama, .apple: []
+        case .openRouter, .custom, .opencode, .ollama, .apple, .typeSafe: []
         }
     }
 

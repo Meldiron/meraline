@@ -47,6 +47,9 @@ struct PromptPresets: View {
         }
         .scrollIndicators(.never)
         .scrollBounceBehavior(.basedOnSize)
+        // A sunk row, another mode's, takes no click and no scroll.
+        .allowsHitTesting(isShown)
+        .accessibilityHidden(!isShown)
         .frame(height: ContextButtons.size + Self.shadowRoom * 2)
         .padding(-Self.shadowRoom)
         .frame(maxWidth: .infinity)

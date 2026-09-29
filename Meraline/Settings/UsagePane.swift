@@ -45,6 +45,7 @@ struct UsagePane: View {
                 asking
                 modelsSection
                 if insights.tally.agentRuns > 0 { agents }
+                if insights.tally.decisions > 0 { decisions }
                 if insights.tally.games.values.contains(where: { $0.started > 0 || $0.rounds > 0 }) { games }
                 if insights.contextItems > 0 { context }
                 habits
@@ -234,6 +235,13 @@ struct UsagePane: View {
             if insights.tally.filesHandedOver > 0 {
                 row("Files handed over", UsageInsights.compact(insights.tally.filesHandedOver), "")
             }
+        }
+    }
+
+    private var decisions: some View {
+        Section("Decisions") {
+            row("Decisions", UsageInsights.compact(insights.tally.decisions), "yes, no, or one of your answers, from TypeSafe’s Jev")
+            row("Not sure", UsageInsights.compact(insights.tally.unsureDecisions), "\(UsageInsights.percent(Double(insights.tally.unsureDecisions) / Double(max(1, insights.tally.decisions)))) of them, under the line set in Settings › Prompt")
         }
     }
 
