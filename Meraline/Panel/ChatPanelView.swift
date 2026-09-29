@@ -69,10 +69,10 @@ struct ChatPanelView: View {
     private let crashNotice = CrashNotice.shared
     /// The presets above the card, those with text to put in the input.
     private var presets: [PromptPreset] { preferences.presets.filter { !$0.text.trimmed.isEmpty } }
-    /// What LLMs and agents have cost today, each past the amount set in Settings › Usage, on an empty panel.
+    /// What LLMs and agents have cost today, on an empty panel.
     private var costNudges: [CostNudge] {
-        guard !hasConversation, !preferences.costNudges.isEmpty else { return [] }
-        return CostNudge.nudges(limits: preferences.costNudges) { session.usage.cost(of: $0, onDayOf: today) }
+        guard !hasConversation else { return [] }
+        return CostNudge.nudges { session.usage.cost(of: $0, onDayOf: today) }
     }
 
     var body: some View {

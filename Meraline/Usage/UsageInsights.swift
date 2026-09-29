@@ -157,10 +157,13 @@ nonisolated struct UsageInsights: Equatable, Sendable {
         }
     }
 
+    /// The least `money` writes as a number: below it, an amount is a trace.
+    static let leastMoney = 0.0005
+
     /// "$4.20", "$0.003", "less than a tenth of a cent" for a trace, "$0" for nothing.
     static func money(_ amount: Double, locale: Locale = .current) -> String {
         if amount == 0 { return "$0" }
-        if amount < 0.0005 { return "less than a tenth of a cent" }
+        if amount < leastMoney { return "less than a tenth of a cent" }
         let places = amount < 0.01 ? 3 : amount < 100 ? 2 : 0
         return "$" + amount.formatted(.number.precision(.fractionLength(places)).locale(locale))
     }

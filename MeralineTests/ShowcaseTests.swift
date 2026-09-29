@@ -18,7 +18,7 @@ import WebKit
 ///   presets       the presets above an empty chat, Fix Grammar put in the input for a text selected in Mail
 ///   prompt-presets  Settings › Prompt › Presets: the four defaults and one of your own
 ///   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
-///   cost-nudge    the empty panel with what LLMs and agents have cost today, each past its daily nudge
+///   cost-nudge    the empty panel with what LLMs and agents have cost today
 ///   preview       Agent mode: a page and a Markdown file an agent handed over, each with its preview strip
 ///   note-stack    three answers torn off into one note: the last in front, the edges of the other two under it
 @MainActor
@@ -231,8 +231,8 @@ struct ShowcaseTests {
         guard Showcase.wants("cost-nudge") else { return }
         for appearance in Showcase.appearances {
             let stage = ShowcaseStage(appearance)
-            let scene = try Self.panel(on: stage, defaults: ["costNudge.llm": 1.0, "costNudge.agent": 10.0])
-            // A busy day, past the amounts set for both.
+            let scene = try Self.panel(on: stage)
+            // A busy day.
             scene.session.usage.record {
                 $0.count(answer: TokenUsage(input: 48_000, output: 9_000, cost: 1.42), reported: true, for: "anthropic/claude-sonnet-5")
                 $0.count(answer: TokenUsage(input: 910_000, output: 41_000, cost: 12.8), reported: true, for: "claudeCode")
@@ -305,9 +305,9 @@ struct ShowcaseTests {
         return (preferences, defaults)
     }
 
-    /// The real panel on the stage, answering from `replies`, with `values` in its preferences.
-    private static func panel(on stage: ShowcaseStage, replies: [String] = [], defaults values: [String: Any] = [:]) throws -> PanelScene {
-        let (preferences, defaults) = preferences(values)
+    /// The real panel on the stage, answering from `replies`.
+    private static func panel(on stage: ShowcaseStage, replies: [String] = []) throws -> PanelScene {
+        let (preferences, defaults) = preferences()
         let model = ScriptedModel(replies)
         let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { model.stream($0) }
         return try place(session, preferences: preferences, defaults: defaults, model: model, on: stage)

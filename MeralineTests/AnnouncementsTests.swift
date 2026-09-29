@@ -66,7 +66,6 @@ struct AnnouncementsTests {
         let defaults = Self.throwaway()
         defaults.set(true, forKey: ShortcutSetup.chosenKey)
         let preferences = Support.preferences()
-        preferences.costNudges = [.llm: 1, .agent: 1]
         let session = Support.session(ScriptedModel(["Hello"]))
         session.usage.record { $0.count(answer: TokenUsage(input: 1, output: 1, cost: 2), reported: true, for: "anthropic/claude-sonnet-5") }
         session.usage.record { $0.count(answer: TokenUsage(input: 1, output: 1, cost: 3), reported: true, for: "claudeCode") }
@@ -83,7 +82,7 @@ struct AnnouncementsTests {
         let expiresAt = try #require(session.expiresAt)
         settle("the chat runs out while the window is hidden") { session.expireChats(now: expiresAt.addingTimeInterval(1)) }
         #expect(session.turns.isEmpty)
-        settle("an amount is switched off") { preferences.costNudges[.agent] = nil }
+        settle("the usage is cleared, and the capsules go") { session.usage.clear() }
         #expect(!controller.isVisible)
     }
 }

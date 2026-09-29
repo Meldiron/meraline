@@ -2,8 +2,7 @@ import Foundation
 import Testing
 @testable import Meraline
 
-/// The capsules under the empty panel that say what LLMs and agents have cost today, once past the amounts set in
-/// Settings › Usage.
+/// The capsules under the empty panel that say what LLMs and agents have cost today.
 @MainActor
 struct CostNudgeTests {
     private let utc: Calendar = {
@@ -63,29 +62,15 @@ struct CostNudgeTests {
         #expect(ledger.summary(from: now, to: now.addingTimeInterval(-1)).questions == 0, "a span that ends before it starts has nothing")
     }
 
-    @Test func onlyTheKindsPastTheirAmountAreNudged() {
-        let costs: [ProviderKind: Double] = [.llm: 1.5, .agent: 4]
-        #expect(CostNudge.nudges(limits: [:]) { costs[$0]! }.isEmpty, "off until you set an amount")
-        let llm = CostNudge.nudges(limits: [.llm: 1, .agent: 10]) { costs[$0]! }
-        #expect(llm == [CostNudge(kind: .llm, cost: 1.5, limit: 1)])
-        #expect(CostNudge.nudges(limits: [.llm: 1.5, .agent: 4]) { costs[$0]! }.isEmpty, "reaching the amount isn't passing it")
-        #expect(CostNudge.nudges(limits: [.agent: 0, .llm: 0]) { costs[$0]! }.map(\.kind) == [.llm, .agent], "LLMs first, and nothing at all is an amount too")
-        #expect(llm.first?.label == "\(UsageInsights.money(1.5)) on LLMs today")
-        #expect(CostNudge(kind: .agent, cost: 12, limit: 10).label == "\(UsageInsights.money(12)) on agents today")
-        #expect(CostNudge(kind: .agent, cost: 12, limit: 10).help.hasPrefix("Agents have cost"))
-    }
-
-    @Test func theAmountsAreKeptAndStartOff() {
-        let suite = "MeralineTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        let secrets = SecretStore(read: { _ in "" }, write: { _, _ in })
-        let preferences = Preferences(defaults: defaults, secrets: secrets, onDeviceModelAvailable: false)
-        #expect(preferences.costNudges.isEmpty)
-        preferences.costNudges[.agent] = 7.5
-        #expect(Preferences(defaults: defaults, secrets: secrets, onDeviceModelAvailable: false).costNudges == [.agent: 7.5])
-        preferences.costNudges[.agent] = nil
-        #expect(defaults.object(forKey: "costNudge.agent") == nil, "switched off, the amount goes")
-        #expect(Preferences(defaults: defaults, secrets: secrets, onDeviceModelAvailable: false).costNudges.isEmpty)
+    @Test func eachKindShowsOnceItHasCostATenthOfACent() {
+        #expect(CostNudge.nudges { _ in 0 }.isEmpty, "nothing asked today, nothing to say")
+        let costs: [ProviderKind: Double] = [.llm: 0.0002, .agent: 4]
+        #expect(CostNudge.nudges { costs[$0]! } == [CostNudge(kind: .agent, cost: 4)], "a trace of a cent on LLMs isn't worth a capsule")
+        #expect(CostNudge.nudges { $0 == .llm ? 0.002 : 12.8 }.map(\.kind) == [.llm, .agent], "LLMs first")
+        #expect(CostNudge.nudges { _ in UsageInsights.leastMoney }.count == 2, "from the least money writes as a number")
+        #expect(UsageInsights.money(UsageInsights.leastMoney).hasPrefix("$"), "so a capsule always shows a number")
+        #expect(CostNudge(kind: .llm, cost: 1.5).label == "\(UsageInsights.money(1.5)) on LLMs today")
+        #expect(CostNudge(kind: .agent, cost: 12.8).label == "\(UsageInsights.money(12.8)) on agents today")
+        #expect(CostNudge(kind: .agent, cost: 12.8).help.hasPrefix("What agents have cost since midnight"))
     }
 }

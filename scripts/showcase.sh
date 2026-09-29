@@ -17,7 +17,7 @@
 #   presets       the presets above an empty chat, Fix Grammar put in the input for a text selected in Mail
 #   prompt-presets  Settings › Prompt › Presets: the four defaults and one of your own
 #   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
-#   cost-nudge    the empty panel with what LLMs and agents have cost today, each past its daily nudge
+#   cost-nudge    the empty panel with what LLMs and agents have cost today
 #   preview       Agent mode: a page and a Markdown file an agent handed over, each with its preview strip
 #   note-stack    three answers torn off into one note: the last in front, the edges of the other two under it
 #
