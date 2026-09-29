@@ -4,9 +4,9 @@ import SwiftUI
 /// What to ask next, under the last answer: two or three glass capsules, one under another, each a question
 /// suggested on this Mac (see `FollowUps`). A click puts the question in the input without sending it, so it can be
 /// changed first; a Shift-click asks it at once, and while Shift is down the capsule under the pointer shows an
-/// arrow for it, as the presets above the card do. They show only while the input is empty and nothing streams.
-/// They fade in, but go at once rather than fading out, so a new set never lies over the old one while it fades
-/// (two buttons on one spot hung the hidden window, see `Announcements`).
+/// arrow and turns the pink of the panel's other chosen states, as the presets above the card do. They show only
+/// while the input is empty and nothing streams. They fade in, but go at once rather than fading out, so a new set
+/// never lies over the old one while it fades (two buttons on one spot hung the hidden window, see `Announcements`).
 struct FollowUpChips: View {
     let questions: [String]
     let choose: (_ question: String, _ sends: Bool) -> Void
@@ -34,24 +34,12 @@ struct FollowUpChips: View {
     private func chip(_ question: String) -> some View {
         let sends = isShiftDown && hovered == question
         return Button { click(question) } label: {
-            HStack(spacing: 7) {
-                Image(systemName: sends ? "arrow.up" : "arrow.turn.down.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 14)
-                Text(question)
-                    .font(.system(size: 12, weight: .medium))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .padding(.leading, 10)
-            .padding(.trailing, 12)
-            .padding(.vertical, 6)
-            .glassEffect(.regular.interactive(), in: .capsule)
-            .contentShape(.capsule)
+            ChipLabel(question: question, sends: sends)
+                .glassEffect(sends ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(), in: .capsule)
+                .contentShape(.capsule)
         }
         .buttonStyle(.plain)
+        .animation(.smooth(duration: 0.2), value: sends)
         .onHover { isOver in
             if isOver {
                 hovered = question
@@ -77,5 +65,29 @@ struct FollowUpChips: View {
             isShiftDown = event.modifierFlags.contains(.shift)
             return event
         }
+    }
+}
+
+/// A follow-up's arrow and question. While a Shift-click would send it, the arrow points up in pink over a semibold
+/// question, like the mode toggle's chosen segment.
+private struct ChipLabel: View {
+    let question: String
+    let sends: Bool
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: sends ? "arrow.up" : "arrow.turn.down.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(sends ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 14)
+            Text(question)
+                .font(.system(size: 12, weight: sends ? .semibold : .medium))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 12)
+        .padding(.vertical, 6)
     }
 }

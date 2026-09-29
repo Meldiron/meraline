@@ -4,8 +4,8 @@ import SwiftUI
 /// Glass capsules above the card, at its right, lined up with the gear: the presets of Settings › Prompt (see
 /// `PromptPreset`), each its icon and its name. A click puts the preset's text in the input, ahead of whatever is
 /// typed there, and a second click takes it out again; a Shift-click sends it at once, and while Shift is down the
-/// capsule under the pointer shows an arrow for it. The preset whose text starts the input wears the active pin's
-/// pink. When the names don't fit beside the buttons on the left, only the icons show, and past that the row
+/// capsule under the pointer shows an arrow for it and turns pink. The preset whose text starts the input wears the
+/// active pin's pink too. When the names don't fit beside the buttons on the left, only the icons show, and past that the row
 /// scrolls. Here presets are for a chat's first question: once the chat starts they sink into the card one after
 /// another, to rise again for the next chat, and the chat's actions (⌘K) offer them for its answer instead. They stay in the view
 /// tree all along, faded and disabled, so nothing is inserted or removed while the window is hidden (see
@@ -54,7 +54,7 @@ struct PromptPresets: View {
         .background {
             // The row with its names, never drawn, to tell whether they fit.
             HStack(spacing: 8) {
-                ForEach(presets) { PresetLabel(preset: $0, symbol: $0.shownSymbol, showsTitle: true, isApplied: false) }
+                ForEach(presets) { PresetLabel(preset: $0, symbol: $0.shownSymbol, showsTitle: true, isPink: false) }
             }
             .fixedSize()
             .hidden()
@@ -71,14 +71,16 @@ struct PromptPresets: View {
 
     private func bubble(_ preset: PromptPreset, isApplied: Bool, showsTitle: Bool, order: Int) -> some View {
         let sends = isShiftDown && hovered == preset.id
+        let isPink = isApplied || sends
         return GlassEffectContainer {
             Button { click(preset) } label: {
-                PresetLabel(preset: preset, symbol: sends ? "arrow.up" : preset.shownSymbol, showsTitle: showsTitle, isApplied: isApplied)
-                    .glassEffect(isApplied ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(), in: .capsule)
+                PresetLabel(preset: preset, symbol: sends ? "arrow.up" : preset.shownSymbol, showsTitle: showsTitle, isPink: isPink)
+                    .glassEffect(isPink ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(), in: .capsule)
                     .contentShape(.capsule)
             }
             .buttonStyle(.plain)
         }
+        .animation(.smooth(duration: 0.2), value: sends)
         .onHover { isOver in
             if isOver {
                 hovered = preset.id
@@ -142,13 +144,13 @@ struct PromptPresets: View {
 }
 
 /// A preset's icon and name, or its icon alone in a circle the size of the buttons on the left. The icon and name
-/// are the active pin's pink and the primary color while the preset starts the input, like the mode toggle's
-/// chosen segment.
+/// are the active pin's pink and the primary color while the preset starts the input, or while a Shift-click would
+/// send it, like the mode toggle's chosen segment.
 private struct PresetLabel: View {
     let preset: PromptPreset
     let symbol: String
     let showsTitle: Bool
-    let isApplied: Bool
+    let isPink: Bool
 
     private var title: String? {
         showsTitle && !preset.title.trimmed.isEmpty ? preset.title.trimmed : nil
@@ -158,13 +160,13 @@ private struct PresetLabel: View {
         HStack(spacing: 6) {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(isApplied ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
+                .foregroundStyle(isPink ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 16)
             if let title {
                 Text(title)
-                    .font(.system(size: 12, weight: isApplied ? .semibold : .medium))
-                    .foregroundStyle(isApplied ? .primary : .secondary)
+                    .font(.system(size: 12, weight: isPink ? .semibold : .medium))
+                    .foregroundStyle(isPink ? .primary : .secondary)
                     .lineLimit(1)
                     .fixedSize()
                     .transition(.opacity)
