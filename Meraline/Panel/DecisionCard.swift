@@ -4,8 +4,10 @@ import SwiftUI
 /// What Jev decided, in the answer's place (see `Decision`): a glass disc with a check on green glass for Yes, a
 /// cross on red for No, a question mark on neutral glass for Not Sure, or a check on neutral glass for one of your
 /// own answers, which get no color; a ring around the disc is how sure Jev is, and beside it the answer and
-/// “82% confident”. Under them, every answer with its probability, the chosen one in the primary color. The check,
-/// the cross, and the words carry the meaning, so the colors are only a help, as in Show What Changed.
+/// “82% confident”. Under them, every answer with its probability, the chosen one in the primary color — or, for
+/// answers in order (Jev's `score`), a scale that lays the levels out first to last with a marker where Jev placed
+/// the text, between two levels when it isn't sure. The check, the cross, the marker, and the words carry the
+/// meaning, so the colors are only a help, as in Show What Changed.
 struct DecisionCard: View {
     let decision: Decision
     /// Under this confidence the card says Not Sure (see `Preferences.unsureBelow`).
@@ -34,7 +36,11 @@ struct DecisionCard: View {
                 .textSelection(.enabled)
                 Spacer(minLength: 0)
             }
-            ProbabilityRow(decision: decision)
+            if decision.isOrdered {
+                ScaleRow(decision: decision, progress: ringDrawn)
+            } else {
+                ProbabilityRow(decision: decision)
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -130,6 +136,85 @@ private struct ProbabilityRow: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(decision.isOrdered ? "Levels" : "Answers")
+    }
+}
+
+/// The levels of a `score` decision laid out first to last along a track, with a filled meter and a marker where
+/// Jev placed the text (its `score`, which sits between two levels when Jev isn't sure), and each level's
+/// probability beneath it, the chosen one emphasized. Unlike the choice row's even capsules, it shows the order
+/// and how far along it the text landed. Neutral graphite, like the rest of the card.
+private struct ScaleRow: View {
+    let decision: Decision
+    /// How far the meter is drawn, from none as the card appears to all of it, in step with the disc's ring.
+    let progress: Double
+
+    /// The marker's diameter and the track's height.
+    private static let marker: CGFloat = 13
+    private static let track: CGFloat = 6
+
+    private var count: Int { decision.options.count }
+
+    /// Where the text sits in level space: 0 at the first level, `count - 1` at the last, from Jev's score or, when
+    /// it gives none, the chosen level's place.
+    private var position: Double {
+        let chosen = decision.options.firstIndex { $0.label == decision.chosen.label } ?? 0
+        return min(max(decision.score ?? Double(chosen), 0), Double(max(count - 1, 0)))
+    }
+
+    var body: some View {
+        VStack(spacing: 9) {
+            GeometryReader { geo in
+                let width = geo.size.width
+                let cell = width / CGFloat(max(count, 1))
+                // Levels sit at the centre of their cell, so the ends never spill past the track; the marker
+                // follows the same mapping, drawing in from the left in step with the disc's ring.
+                let markerX = cell * (CGFloat(position) + 0.5)
+                let drawn = markerX * progress
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(.primary.opacity(0.08))
+                        .frame(height: Self.track)
+                    Capsule()
+                        .fill(.primary.opacity(0.35))
+                        .frame(width: drawn, height: Self.track)
+                    ForEach(Array(decision.options.enumerated()), id: \.offset) { index, _ in
+                        Circle()
+                            .fill(.primary.opacity(0.18))
+                            .frame(width: 3, height: 3)
+                            .offset(x: cell * (CGFloat(index) + 0.5) - 1.5)
+                    }
+                    Circle()
+                        .fill(.primary)
+                        .overlay(Circle().stroke(.background, lineWidth: 2))
+                        .frame(width: Self.marker, height: Self.marker)
+                        .shadow(color: .black.opacity(0.15), radius: 1, y: 0.5)
+                        .offset(x: drawn - Self.marker / 2)
+                }
+                .frame(width: width, height: geo.size.height)
+            }
+            .frame(height: Self.marker)
+
+            HStack(spacing: 0) {
+                ForEach(decision.options) { option in
+                    let isChosen = option.label == decision.chosen.label
+                    VStack(spacing: 1) {
+                        Text(option.label)
+                            .font(.system(size: 11, weight: isChosen ? .semibold : .medium))
+                            .foregroundStyle(isChosen ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                        Text(Decision.percent(option.probability))
+                            .font(.system(size: 10))
+                            .monospacedDigit()
+                            .foregroundStyle(isChosen ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
+                    }
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Scale from \(decision.options.first?.label ?? "") to \(decision.options.last?.label ?? "")")
+        .accessibilityValue(decision.options.map { "\($0.label) \(Decision.percent($0.probability))" }.joined(separator: ", "))
     }
 }
 

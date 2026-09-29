@@ -6,6 +6,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ## Unreleased
 
+- **A scale for a decision between levels.** When a Decision question names its answers in order (“How high a priority is this? Low < Medium < High”), Jev's answer now shows on a scale: the levels laid out first to last with a marker where Jev placed the text, which sits between two levels when it isn't sure, and each level's share beneath it. A question that picks one of a set still shows its answers as before.
 - **Longer selections and clipboards come along whole.** The text you add from a selection, the clipboard, or the window in Decision mode used to stop at 20,000 characters; a whole document copied or selected now arrives in full, up to a million characters, so a long report or transcript comes along without being cut.
 
 ## v1.8.0 - 2026-09-29
