@@ -87,7 +87,7 @@ struct ChangesToggle: View {
                     .contentShape(.capsule)
             }
             .buttonStyle(.plain)
-            .help(help)
+            .hoverTip(help)
             Text(changes.stats)
                 .font(.system(size: 11).monospacedDigit())
                 .foregroundStyle(.tertiary)

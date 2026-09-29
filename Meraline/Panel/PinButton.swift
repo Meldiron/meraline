@@ -19,7 +19,7 @@ struct PinButton: View {
         }
         .buttonStyle(.plain)
         .keyboardShortcut("p")
-        .help(isPinned ? "Unpin: close when clicking elsewhere (⌘P)" : "Pin: stay open when clicking elsewhere (⌘P)")
+        .hoverTip(isPinned ? "Unpin: close when clicking elsewhere (⌘P)" : "Pin: stay open when clicking elsewhere (⌘P)", edge: .bottom)
         .accessibilityLabel(isPinned ? "Unpin" : "Pin")
     }
 }

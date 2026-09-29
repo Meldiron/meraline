@@ -33,7 +33,7 @@ struct ChannelChip: View {
         .glassEffect(channel == .beta ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(), in: .capsule)
         .disabled(release == nil)
         .pointerStyle(release == nil ? nil : .link)
-        .help(release == nil ? "" : "Open the release of \(tag) on GitHub")
+        .hoverTip(release == nil ? "" : "Open the release of \(tag) on GitHub")
         .accessibilityLabel("\(channel.title) \(tag)")
         .accessibilityHint(release == nil ? "" : "Opens its release on GitHub")
     }

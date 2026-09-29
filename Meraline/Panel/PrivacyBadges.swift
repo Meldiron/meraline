@@ -9,7 +9,7 @@ struct PrivacyBadges: View {
         HStack(spacing: 10) {
             if preferences.hidesFromScreenSharing {
                 Image(systemName: "eye.slash")
-                    .help("Hidden from screen sharing, in the apps that allow it")
+                    .hoverTip("Hidden from screen sharing, in the apps that allow it")
                     .accessibilityLabel("Hidden from screen sharing")
                     .transition(.opacity)
             }

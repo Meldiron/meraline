@@ -49,7 +49,7 @@ struct LetterTiles: View {
                         .contentShape(.circle)
                 }
                 .buttonStyle(.plain)
-                .help("Shuffle Letters")
+                .hoverTip("Shuffle Letters")
                 .accessibilityLabel("Shuffle Letters")
                 .transition(.opacity.combined(with: .scale(scale: 0.6)))
             }

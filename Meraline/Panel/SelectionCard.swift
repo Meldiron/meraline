@@ -46,10 +46,10 @@ struct SelectionCard: View {
                 CardButton(symbol: "chevron.down", label: isExpanded ? "Show less" : "Show all", turn: .degrees(isExpanded ? 180 : 0)) {
                     isExpanded.toggle()
                 }
-                .help(isExpanded ? "Show less" : "Show all of it")
+                .hoverTip(isExpanded ? "Show less" : "Show all of it")
             }
             CardButton(symbol: "xmark", label: "Leave out the selected text", action: remove)
-                .help("Leave it out (⌫ in an empty input)")
+                .hoverTip("Leave it out (⌫ in an empty input)")
         }
         .lineLimit(1)
     }
@@ -95,7 +95,7 @@ struct SelectionQuote: View {
                         header.contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .help(isExpanded ? "Show less" : "Show all of it")
+                    .hoverTip(isExpanded ? "Show less" : "Show all of it")
                     .accessibilityLabel("\(selection.sourceLabel), \(selection.lengthLabel)")
                     .accessibilityHint(isExpanded ? "Shows less of the text" : "Shows all of the text")
                 } else {
@@ -152,7 +152,7 @@ struct SelectionHintRow: View {
             Button("Allow Access…", action: allow)
                 .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
             CardButton(symbol: "xmark", label: "Hide this hint", action: dismiss)
-                .help("Hide this hint. Settings › Permissions can allow access later.")
+                .hoverTip("Hide this hint. Settings › Permissions can allow access later.")
         }
         .padding(12)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))

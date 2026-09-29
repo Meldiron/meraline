@@ -92,7 +92,7 @@ struct PromptPresets: View {
                 hovered = nil
             }
         }
-        .help(help(for: preset, isApplied: isApplied))
+        .hoverTip(help(for: preset, isApplied: isApplied), edge: .bottom)
         .accessibilityLabel(preset.title.isEmpty ? "Preset" : preset.title)
         .accessibilityHint("Puts the preset in the input. Shift-click sends it.")
         .accessibilityAddTraits(isApplied ? .isSelected : [])

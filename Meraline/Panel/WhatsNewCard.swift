@@ -43,7 +43,7 @@ struct WhatsNewCard: View {
                 }
                 Button("Got It", action: dismiss)
                     .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
-                    .help("Hide What’s New until the next update")
+                    .hoverTip("Hide What’s New until the next update")
             }
         }
         .padding(12)
@@ -108,7 +108,7 @@ private struct NotePicture: View {
                         .frame(maxWidth: Self.maximumHeight * aspect)
                 }
                 .buttonStyle(.plain)
-                .help(caption.isEmpty ? "Open the picture" : caption)
+                .hoverTip(caption.isEmpty ? "Open the picture" : caption)
             } else if !failed {
                 // The shape of the README screenshots.
                 RoundedRectangle(cornerRadius: 10)

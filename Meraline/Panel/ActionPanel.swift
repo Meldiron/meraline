@@ -364,14 +364,14 @@ struct ActionBar: View {
                         }
                     }
                 }
-                .help(primary.shortcut.map { "\(primary.title) (\($0.text))" } ?? primary.title)
+                .hoverTip(primary.shortcut.map { "\(primary.title) (\($0.text))" } ?? primary.title)
             }
             segment(id: "actions", action: openActions) {
                 Text("Actions")
                     .foregroundStyle(.secondary)
                 KeyCaps(keys: ["⌘", "K"], size: 18)
             }
-            .help("More actions for this chat (⌘K)")
+            .hoverTip("More actions for this chat (⌘K)")
             .accessibilityLabel("Actions")
         }
         .font(.system(size: 12, weight: .medium))

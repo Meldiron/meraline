@@ -84,14 +84,14 @@ struct PresentedFileCard: View {
                     .truncationMode(.middle)
                     .contentTransition(.opacity)
             }
-            .help(file.path)
+            .hoverTip(file.path)
             Spacer(minLength: 8)
             if exists {
                 if let opener {
                     Button("Open in \(PresentedFile.appName(opener))") { actions.open(file) }
                         .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
                         .lineLimit(1)
-                        .help(file.isFolder ? "Open the folder in Finder" : "Open \(file.name) in \(PresentedFile.appName(opener))")
+                        .hoverTip(file.isFolder ? "Open the folder in Finder" : "Open \(file.name) in \(PresentedFile.appName(opener))")
                 }
                 iconButton("folder", label: "Show in Finder") { actions.showInFinder([file]) }
                 iconButton(notice == .copied ? "checkmark" : "doc.on.doc", label: "Copy") { actions.copy([file]) }
@@ -123,7 +123,7 @@ struct PresentedFileCard: View {
                 .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(.separator) }
         }
         .buttonStyle(.plain)
-        .help(enlarges ? (isEnlarged ? "Show it smaller" : "Show it larger") : file.name)
+        .hoverTip(enlarges ? (isEnlarged ? "Show it smaller" : "Show it larger") : file.name)
         .accessibilityLabel("Picture of \(file.name)")
         .accessibilityHint(enlarges ? (isEnlarged ? "Shows it smaller" : "Shows it larger") : "")
     }
@@ -161,7 +161,7 @@ struct PresentedFileCard: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
-        .help(label)
+        .hoverTip(label)
         .accessibilityLabel(label)
     }
 }

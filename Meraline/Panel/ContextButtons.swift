@@ -264,7 +264,7 @@ private struct ContextButton<Icon: View>: View {
         .buttonStyle(.plain)
         .disabled(status == .unavailable)
         .keyboardShortcut(key, modifiers: [.command, .shift])
-        .help(help)
+        .hoverTip(help, edge: .bottom)
         .accessibilityLabel(label)
         .accessibilityValue(status == .added ? "Added" : status == .unavailable ? "Nothing to add" : "")
         .accessibilityAddTraits(status == .added ? .isSelected : [])
@@ -346,7 +346,7 @@ private struct NoteCapsule: View {
                 Button("Allow…", action: allow)
                     .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
                     .controlSize(.small)
-                    .help("Ask macOS for Screen Recording access. Meraline takes one picture when you ask and records nothing.")
+                    .hoverTip("Ask macOS for Screen Recording access. Meraline takes one picture when you ask and records nothing.", edge: .bottom)
                 Button(action: dismiss) {
                     Image(systemName: "xmark")
                         .font(.system(size: 8, weight: .bold))

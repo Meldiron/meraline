@@ -481,7 +481,7 @@ private struct CodeBlockView: View {
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .help("Copy this code")
+                .hoverTip("Copy this code")
             }
             .padding(.leading, 12)
             .padding(.trailing, 6)

@@ -33,7 +33,7 @@ struct RematchTray: View {
             }
             .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
             .keyboardShortcut("r")
-            .help(offer.isAfterGame ? "Start \(offer.game.title) again (⌘R)" : "Play the next round (Return or ⌘R)")
+            .hoverTip(offer.isAfterGame ? "Start \(offer.game.title) again (⌘R)" : "Play the next round (Return or ⌘R)")
             if offer.isAfterGame {
                 Button(action: putAway) {
                     Image(systemName: "xmark")
@@ -43,7 +43,7 @@ struct RematchTray: View {
                         .contentShape(.circle)
                 }
                 .buttonStyle(.plain)
-                .help("Put Play Again away until the next game")
+                .hoverTip("Put Play Again away until the next game")
                 .accessibilityLabel("Put Play Again away")
             }
         }

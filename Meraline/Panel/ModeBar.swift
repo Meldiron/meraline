@@ -147,7 +147,7 @@ private struct ModeToggle: View {
         .onHover { inside in
             if inside { hovered = kind } else if hovered == kind { hovered = nil }
         }
-        .help(help(for: kind, shortcut: number > presetShortcuts ? " (⌘\(number))" : ""))
+        .hoverTip(help(for: kind, shortcut: number > presetShortcuts ? " (⌘\(number))" : ""))
         .accessibilityLabel(kind.title)
         .accessibilityAddTraits(isOn ? .isSelected : [])
     }
@@ -281,7 +281,7 @@ struct GameTray: View, Animatable {
         }
         .buttonStyle(.plain)
         .onHover { isControllerHovered = $0 }
-        .help(controllerHelp)
+        .hoverTip(controllerHelp)
         .accessibilityLabel(isOpen ? "Hide the games" : "Show the games")
         .accessibilityAddTraits(isOpen ? .isSelected : [])
     }
@@ -312,7 +312,7 @@ struct GameTray: View, Animatable {
         .onHover { inside in
             if inside { hovered = game } else if hovered == game { hovered = nil }
         }
-        .help(isPlaying ? "\(game.title): playing now. Click to start over." : "\(game.title): \(game.summary)")
+        .hoverTip(isPlaying ? "\(game.title): playing now. Click to start over." : "\(game.title): \(game.summary)")
         .accessibilityLabel(game.title)
         .accessibilityHint(game.summary)
         .accessibilityAddTraits(isPlaying ? .isSelected : [])
@@ -377,7 +377,7 @@ private struct HistoryButton: View {
         .actionPanelAnchor(.history)
         .animation(.snappy(duration: 0.3, extraBounce: 0.04), value: caption)
         .animation(.snappy(duration: 0.3), value: count)
-        .help(help)
+        .hoverTip(help)
         .accessibilityLabel("Recent chats")
         .accessibilityValue(count == 1 ? "1 chat" : "\(count) chats")
         .onChange(of: forgetting) { _, forgetting in

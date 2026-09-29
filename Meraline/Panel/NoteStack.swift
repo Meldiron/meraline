@@ -185,7 +185,7 @@ struct NoteStackBadge: View {
                 .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .help("Next Note (⌃⇥)")
+        .hoverTip("Next Note (⌃⇥)")
         .accessibilityLabel("Note \(stack.position) of \(stack.count)")
         .accessibilityHint("Shows the next note")
         .accessibilityAction(named: "Previous Note") { step(.previous) }
