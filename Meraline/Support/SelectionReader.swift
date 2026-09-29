@@ -37,21 +37,61 @@ enum SelectionReader {
     /// ⌘C goes through the window server first.
     private static let typedCopyWait: Duration = .milliseconds(250)
 
-    static func read() async -> Found? {
+    /// The result of the fast Accessibility read, done while the app in front still has the keyboard: a resolved
+    /// selection, nothing, or that the app needs its Copy command run (`copy`). The caller shows the window at
+    /// once for the first two, and can show it before the slow Copy fallback (`finish`) unless the app is opaque.
+    enum Read {
+        case found(Found)
+        case nothing
+        case copy(Copy)
+    }
+
+    /// An app that doesn't share its selection through Accessibility, to be asked to copy it (`finish`). Sendable,
+    /// so the fallback can run in a task: it keeps the pid, not the Accessibility element, and remakes it there.
+    struct Copy: Sendable {
+        let pid: pid_t
+        let appName: String?
+        let appURL: URL?
+        /// Describes nothing but its window (Zed), so it gets ⌘C, which needs the app still focused: read before
+        /// the window takes the keyboard.
+        let opaque: Bool
+    }
+
+    /// The fast, Accessibility-only read. Cheap for a responsive app, so the window can show right after it.
+    @MainActor static func begin() -> Read {
         guard AXIsProcessTrusted(), !IsSecureEventInputEnabled(),
               let app = NSWorkspace.shared.frontmostApplication,
-              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return .nothing }
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), messagingTimeout)
+        let clock = ContinuousClock()
+        let start = clock.now
         let element = AXUIElementCreateApplication(app.processIdentifier)
-
-        var answer = selection(in: element)
-        var method = "Accessibility"
-        if case .unknown(let opaque) = answer {
-            (answer, method) = await copySelection(in: element, typing: opaque)
+        defer { Log.panel.info("Selection Accessibility read took \(Self.milliseconds(since: start, clock: clock)) ms") }
+        switch selection(in: element) {
+        case .text(let text):
+            guard let selection = SelectedText(text, appName: app.localizedName, appURL: app.bundleURL) else { return .nothing }
+            Log.panel.info("Selection read through Accessibility, \(selection.text.count) characters")
+            return .found(.text(selection))
+        case .files(let urls):
+            Log.panel.info("Selection read through Accessibility, \(urls.count) file(s) or folder(s)")
+            return .found(.files(urls))
+        case .nothing:
+            return .nothing
+        case .unknown(let opaque):
+            return .copy(Copy(pid: app.processIdentifier, appName: app.localizedName, appURL: app.bundleURL, opaque: opaque))
         }
+    }
+
+    /// The slow fallback: ask the app to copy its selection and read it. For an app whose Copy works through its
+    /// menu the caller runs this after the window is up; only an opaque app needs it before.
+    @MainActor static func finish(_ copy: Copy) async -> Found? {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let (answer, method) = await copySelection(in: AXUIElementCreateApplication(copy.pid), typing: copy.opaque)
+        Log.panel.info("Selection Copy fallback (\(method)) took \(Self.milliseconds(since: start, clock: clock)) ms")
         switch answer {
         case .text(let text):
-            guard let selection = SelectedText(text, appName: app.localizedName, appURL: app.bundleURL) else { return nil }
+            guard let selection = SelectedText(text, appName: copy.appName, appURL: copy.appURL) else { return nil }
             Log.panel.info("Selection read through \(method), \(selection.text.count) characters")
             return .text(selection)
         case .files(let urls):
@@ -60,6 +100,10 @@ enum SelectionReader {
         case .nothing, .unknown:
             return nil
         }
+    }
+
+    private static func milliseconds(since start: ContinuousClock.Instant, clock: ContinuousClock) -> Int {
+        Int((clock.now - start) / .milliseconds(1))
     }
 
     private enum Answer: Equatable {

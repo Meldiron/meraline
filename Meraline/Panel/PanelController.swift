@@ -258,13 +258,34 @@ final class PanelController: NSObject {
         // While the shortcut picker is up, a shortcut it is trying may be this one too.
         guard !shortcutSetup.isPresented else { return show() }
         guard !isVisible, preferences.bringsSelection else { return toggle() }
-        isReadingSelection = true
-        Task {
-            // Only what is selected now: with nothing selected, an earlier selection leaves the draft.
-            let found = await SelectionReader.read()
-            session.bringCurrentSelection(text: found?.text, files: found?.files ?? [])
-            isReadingSelection = false
+        // The fast Accessibility read runs while the app in front still has the keyboard, then the window shows at
+        // once. Only the Copy-command fallback (browsers, editors) is slow; for apps that copy through their menu it
+        // runs after the window is up, so the window no longer waits on it. An opaque app (Zed) gets ⌘C, which needs
+        // that app still focused, so it reads before the window takes the keyboard. Only what is selected now comes:
+        // with nothing selected, an earlier selection leaves the draft.
+        switch SelectionReader.begin() {
+        case .found(let found):
+            session.bringCurrentSelection(text: found.text, files: found.files)
             show()
+        case .nothing:
+            session.bringCurrentSelection(text: nil, files: [])
+            show()
+        case .copy(let copy) where copy.opaque:
+            isReadingSelection = true
+            Task {
+                let found = await SelectionReader.finish(copy)
+                session.bringCurrentSelection(text: found?.text, files: found?.files ?? [])
+                isReadingSelection = false
+                show()
+            }
+        case .copy(let copy):
+            show()
+            isReadingSelection = true
+            Task {
+                let found = await SelectionReader.finish(copy)
+                session.bringCurrentSelection(text: found?.text, files: found?.files ?? [])
+                isReadingSelection = false
+            }
         }
     }
 
