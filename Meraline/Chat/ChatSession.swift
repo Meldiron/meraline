@@ -234,8 +234,8 @@ final class ChatSession {
         guard !isStreaming else { return false }
         guard let gameState else {
             guard fileNotice == nil, pictureNotice == nil, bulkNotice == nil else { return false }
-            // A decision takes a question, and text to decide about.
-            if isDeciding { return !draft.trimmed.isEmpty && hasDecisionState }
+            // A decision takes a question; context sharpens it but is optional.
+            if isDeciding { return !draft.trimmed.isEmpty }
             return !draft.trimmed.isEmpty || !draftImages.isEmpty || !draftFiles.isEmpty || !draftSelections.isEmpty
         }
         switch gameState.phase {
@@ -306,15 +306,15 @@ final class ChatSession {
     var isDeciding: Bool { preferences.mode == .decision && !isPlaying }
 
     /// What a decision is about: the texts of the chat so far and those waiting in the draft, the written one
-    /// included (see `DecisionRequest`). A decision needs at least one, so a follow-up asks about the same texts.
+    /// included (see `DecisionRequest`). Context is optional, but a follow-up asks about the same texts the chat kept.
     var decisionState: [SelectedText] {
         turns.flatMap(\.selections) + draftSelections + (typedSelection.map { [$0] } ?? [])
     }
 
     var hasDecisionState: Bool { !decisionState.isEmpty }
 
-    /// Whether a decision waits for text to decide about, for the row beside the input that says so. The card for
-    /// writing it stands in the row's place, so the row goes as soon as the card opens.
+    /// Whether a decision has no context yet, for the row beside the input that suggests adding some (it is
+    /// optional). The card for writing it stands in the row's place, so the row goes as soon as the card opens.
     var needsDecisionState: Bool { isDeciding && !hasDecisionState && typedState == nil }
 
     /// The text written in the window as a text of its own, or nil while there is none.

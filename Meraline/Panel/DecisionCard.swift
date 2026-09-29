@@ -2,12 +2,23 @@ import AppKit
 import SwiftUI
 
 /// What Jev decided, in the answer's place (see `Decision`): a glass disc with a check on green glass for Yes, a
-/// cross on red for No, a question mark on neutral glass for Not Sure, or a check on neutral glass for one of your
-/// own answers, which get no color; a ring around the disc is how sure Jev is, and beside it the answer and
-/// “82% confident”. Under them, every answer with its probability, the chosen one in the primary color — or, for
-/// answers in order (Jev's `score`), a scale that lays the levels out first to last with a marker where Jev placed
-/// the text, between two levels when it isn't sure. The check, the cross, the marker, and the words carry the
-/// meaning, so the colors are only a help, as in Show What Changed.
+/// cross on red for No, a question mark on neutral glass for Not Sure, or, for one of your own answers (a choice or
+/// a score), a check tinted by how sure Jev is — amber when it is only moderately sure, green when it is very sure.
+/// A ring around the disc is how sure Jev is, and beside it the answer and “82% confident”. Under them, every
+/// answer with its probability — or, for answers in order (Jev's `score`), a scale that lays the levels out first
+/// to last with a marker where Jev placed the text, between two levels when it isn't sure, coloured by that same
+/// confidence. The check, the cross, the marker, and the words carry the meaning, so the colors are only a help, as
+/// in Show What Changed.
+///
+/// A colour that follows how sure Jev is, for a choice or a score: red at the low end, amber in the middle, green
+/// when very sure — a decision shows the low end as Not Sure instead, so choices in practice run amber to green.
+private func confidenceColor(_ confidence: Double) -> Color {
+    let c = min(max(confidence, 0), 1)
+    let low = NSColor.removedText, mid = NSColor.systemOrange, high = NSColor.addedText
+    let blended = c >= 0.5 ? mid.blended(withFraction: (c - 0.5) * 2, of: high)
+                           : low.blended(withFraction: c * 2, of: mid)
+    return Color(nsColor: blended ?? high)
+}
 struct DecisionCard: View {
     let decision: Decision
     /// Under this confidence the card says Not Sure (see `Preferences.unsureBelow`).
@@ -37,7 +48,7 @@ struct DecisionCard: View {
                 Spacer(minLength: 0)
             }
             if decision.isOrdered {
-                ScaleRow(decision: decision, progress: ringDrawn)
+                ScaleRow(decision: decision, progress: ringDrawn, color: tint)
             } else {
                 ProbabilityRow(decision: decision)
             }
@@ -81,12 +92,14 @@ struct DecisionCard: View {
         }
     }
 
-    /// Green for Yes and red for No, deeper shades on light glass (see `NSColor.addedText`); nothing for the rest.
+    /// Green for Yes and red for No, deeper shades on light glass (see `NSColor.addedText`); for one of your own
+    /// answers, the colour of how sure Jev is; nothing while it is Not Sure.
     private var tint: Color? {
         switch verdict {
         case .yes: Color(nsColor: .addedText)
         case .no: Color(nsColor: .removedText)
-        case .unsure, .chosen: nil
+        case .chosen: confidenceColor(decision.confidence)
+        case .unsure: nil
         }
     }
 
@@ -147,6 +160,10 @@ private struct ScaleRow: View {
     let decision: Decision
     /// How far the meter is drawn, from none as the card appears to all of it, in step with the disc's ring.
     let progress: Double
+    /// The colour of how sure Jev is, for the meter and the marker; nil (neutral) while it is Not Sure.
+    let color: Color?
+
+    private var meterColor: Color { color ?? .primary }
 
     /// The marker's diameter and the track's height.
     private static let marker: CGFloat = 13
@@ -175,7 +192,7 @@ private struct ScaleRow: View {
                         .fill(.primary.opacity(0.08))
                         .frame(height: Self.track)
                     Capsule()
-                        .fill(.primary.opacity(0.35))
+                        .fill(meterColor.opacity(color == nil ? 0.35 : 0.55))
                         .frame(width: drawn, height: Self.track)
                     ForEach(Array(decision.options.enumerated()), id: \.offset) { index, _ in
                         Circle()
@@ -184,7 +201,7 @@ private struct ScaleRow: View {
                             .offset(x: cell * (CGFloat(index) + 0.5) - 1.5)
                     }
                     Circle()
-                        .fill(.primary)
+                        .fill(meterColor)
                         .overlay(Circle().stroke(.background, lineWidth: 2))
                         .frame(width: Self.marker, height: Self.marker)
                         .shadow(color: .black.opacity(0.15), radius: 1, y: 0.5)
@@ -267,12 +284,12 @@ struct DecisionStateRow: View {
             Image(systemName: "text.quote")
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
-                Text("What should Jev decide about?")
+                Text("What’s the context for this decision?")
                     .font(.system(size: 13, weight: .semibold))
-                Text("Add the text you selected or copied with the buttons above the window, or write it here. A decision needs text; pictures and files don’t count.")
+                Text("Add the text you selected or copied, or write it here — it’s optional.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
             }
             Spacer(minLength: 8)
             Button("Write It", action: write)

@@ -4,8 +4,8 @@ import Testing
 @testable import Meraline
 
 /// Decision mode: the answers a question names, the request TypeSafe's Jev gets and the reply it sends, and what
-/// the chat does with a decision. It refuses to ask without text, keeps the text for follow-ups, writes the
-/// answer in words, offers no rewrite, and plays no game against Jev.
+/// the chat does with a decision. Context is optional (the row only suggests it), it keeps any context for
+/// follow-ups, writes the answer in words, offers no rewrite, and plays no game against Jev.
 @MainActor
 struct DecisionTests {
     private typealias Support = GameTestSupport
@@ -186,13 +186,13 @@ struct DecisionTests {
 
     // MARK: The chat
 
-    @Test func aDecisionNeedsTextAndKeepsItForFollowUps() async throws {
+    @Test func aDecisionKeepsItsContextForFollowUps() async throws {
         let model = ScriptedModel(decisions: [Self.yes, Self.no])
         let (session, _) = Self.decisionSession(model)
         session.draft = "Is this urgent?"
         #expect(session.isDeciding)
-        #expect(!session.canSend, "nothing to decide about")
-        #expect(session.needsDecisionState)
+        #expect(session.canSend, "context is optional, so the question alone can be asked")
+        #expect(session.needsDecisionState, "the row still suggests adding context")
         session.writeState()
         #expect(!session.needsDecisionState, "the card to write it in stands in the row's place")
         session.removeTypedState()
@@ -233,6 +233,19 @@ struct DecisionTests {
         #expect(ChatSession.markdown(for: session.turns)?.contains("**Assistant**\n\nYes (82% confident)") == true)
     }
 
+    @Test func aDecisionCanBeAskedWithoutAnyContext() async throws {
+        let model = ScriptedModel(decisions: [Self.yes])
+        let (session, _) = Self.decisionSession(model)
+        session.draft = "Is 17 a prime number?"
+        #expect(session.canSend, "context is optional")
+        session.send()
+        await Support.settle(session)
+        let request = try #require(model.requests.last?.decision)
+        #expect(request.state.isEmpty, "no context was added")
+        #expect(request.question == "Is 17 a prime number?")
+        #expect(session.turns.last?.decision == Self.yes)
+    }
+
     @Test func textWrittenInTheWindowIsTheTextToDecideAbout() async throws {
         let unsure = Decision(options: [.init(label: "Yes", probability: 0.3), .init(label: "No", probability: 0.7)], isYesNo: true, confidence: 0.4)
         let model = ScriptedModel(decisions: [unsure])
@@ -241,7 +254,7 @@ struct DecisionTests {
         #expect(session.needsDecisionState)
         session.writeState()
         #expect(session.typedState == "")
-        #expect(!session.canSend, "an empty card is no text")
+        #expect(session.canSend, "the question alone can be asked; context is optional")
         #expect(!session.needsDecisionState, "the card stands in the row's place")
         session.typedState = "You won a prize, click here."
         #expect(session.canSend)
