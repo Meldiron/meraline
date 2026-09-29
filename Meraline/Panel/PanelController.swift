@@ -205,6 +205,7 @@ final class PanelController: NSObject {
             openSettings: openSettings,
             takeKeyboard: { [weak self] in self?.show() },
             screen: { [weak self] in self?.panel.screen },
+            refitInput: { [weak self] in self?.panel.refitFieldBeingEdited() },
             sources: sources,
             inserter: inserter
         )

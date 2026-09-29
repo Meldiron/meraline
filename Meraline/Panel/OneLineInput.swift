@@ -36,3 +36,22 @@ extension NSTextView {
         return true
     }
 }
+
+extension NSWindow {
+    /// Fits the view that clips the text of the field being edited back into the field, when it has outgrown it.
+    /// AppKit starts editing over whenever a field's placeholder changes, and when its text changed in the same
+    /// update, as stashing a draft about a selection empties the input and has it ask anything again, it sizes that
+    /// view to the text that was there. Text wider than the field then ran past it, under the pin and the gear and
+    /// off the card, and never scrolled. AppKit fits that view to the field whenever the field changes size, so the
+    /// field grows by a point and back; starting its editing over again would leave the old view behind, empty.
+    func refitFieldBeingEdited() {
+        guard let editor = firstResponder as? NSTextView, editor.isFieldEditor,
+              let field = editor.delegate as? NSTextField, let clip = editor.superview as? NSClipView,
+              clip.frame.width > field.bounds.width + 8 // the focus ring's room
+        else { return }
+        let size = field.frame.size
+        field.setFrameSize(NSSize(width: size.width + 1, height: size.height))
+        field.setFrameSize(size)
+        editor.scrollRangeToVisible(editor.selectedRange())
+    }
+}

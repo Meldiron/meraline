@@ -29,6 +29,8 @@ struct ChatPanelView: View {
     var takeKeyboard: () -> Void = {}
     /// The screen the window is on, for the screenshot button above the card.
     var screen: () -> NSScreen? = { NSScreen.main }
+    /// Fits the input's editing back into the input once its placeholder changed (see `refitFieldBeingEdited()`).
+    var refitInput: () -> Void = {}
     /// Where what the buttons above the card added came from.
     var sources = ContextSources()
     /// Insert Answer, for the chat's actions.
@@ -339,6 +341,7 @@ struct ChatPanelView: View {
                 .tint(.meralinePink)
                 .onSubmit(session.send)
                 .disabled(session.isStreaming)
+                .onChange(of: placeholder) { refitInput() }
 
             PinButton(preferences: preferences)
 
