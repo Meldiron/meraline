@@ -255,7 +255,8 @@ nonisolated struct DecisionBatch: Equatable, Sendable {
     /// "45 words", or "1 line".
     var count: String { "\(total.formatted()) \(scope.noun)\(total == 1 ? "" : "s")" }
 
-    /// The items by answer, in the answers' order, Not Sure last, leaving out answers no item got.
+    /// The items by answer, in the answers' order, Not Sure last, leaving out answers no item got; each answer's
+    /// items surest first, and those Jev is as sure of in the text's order.
     func groups(unsureBelow threshold: Double) -> [Group] {
         var byLabel: [String: [Item]] = [:]
         var unsure: [Item] = []
@@ -269,10 +270,16 @@ nonisolated struct DecisionBatch: Equatable, Sendable {
         var groups: [Group] = answers.options.compactMap { label in
             guard let items = byLabel[label] else { return nil }
             let verdict: Decision.Verdict = answers.isYesNo ? (label.lowercased() == "yes" ? .yes : .no) : .chosen
-            return Group(label: label, verdict: verdict, items: items)
+            return Group(label: label, verdict: verdict, items: Self.surestFirst(items))
         }
-        if !unsure.isEmpty { groups.append(Group(label: "Not sure", verdict: .unsure, items: unsure)) }
+        if !unsure.isEmpty { groups.append(Group(label: "Not sure", verdict: .unsure, items: Self.surestFirst(unsure))) }
         return groups
+    }
+
+    private static func surestFirst(_ items: [Item]) -> [Item] {
+        items.sorted {
+            $0.decision.confidence == $1.decision.confidence ? $0.id < $1.id : $0.decision.confidence > $1.decision.confidence
+        }
     }
 
     /// The batch in words, for the transcript, Copy Answer, and Insert Answer: the counts, then each answer with

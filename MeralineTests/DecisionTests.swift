@@ -445,6 +445,20 @@ struct DecisionTests {
         #expect(DecisionBatch(scope: .lines, answers: .yesNo, total: 1, items: []).summary(unsureBelow: 0.5) == "1 line")
     }
 
+    @Test func eachAnswersItemsComeSurestFirst() {
+        func yes(_ p: Double) -> Decision { Decision(options: [.init(label: "Yes", probability: p), .init(label: "No", probability: 1 - p)], isYesNo: true, confidence: abs(2 * p - 1)) }
+        let batch = DecisionBatch(scope: .words, answers: .yesNo, total: 7, items: [
+            .init(id: 0, text: "apple", decision: yes(0.8)), .init(id: 1, text: "run", decision: yes(0.2)),
+            .init(id: 2, text: "pear", decision: yes(0.95)), .init(id: 3, text: "blue", decision: yes(0.6)),
+            .init(id: 4, text: "plum", decision: yes(0.8)), .init(id: 5, text: "jump", decision: yes(0.05)),
+            .init(id: 6, text: "sky", decision: yes(0.35)),
+        ])
+        let groups = batch.groups(unsureBelow: 0.5)
+        #expect(groups.map(\.label) == ["Yes", "No", "Not sure"])
+        #expect(groups.map { $0.items.map(\.text) } == [["pear", "apple", "plum"], ["jump", "run"], ["sky", "blue"]], "surest first, ties in the text's order")
+        #expect(batch.summary(unsureBelow: 0.5).contains("Yes (3): pear, apple, plum"), "Copy Answer lists them the same way")
+    }
+
     @Test func aQuestionAboutEachLineIsAskedOfEveryLineAndCounted() async throws {
         func yes(_ p: Double) -> Decision { Decision(options: [.init(label: "Yes", probability: p), .init(label: "No", probability: 1 - p)], isYesNo: true, confidence: abs(2 * p - 1)) }
         let batch = DecisionBatch(scope: .lines, answers: .yesNo, total: 2, items: [.init(id: 0, text: "Call the bank", decision: yes(0.9)), .init(id: 1, text: "Buy milk", decision: yes(0.55))])
