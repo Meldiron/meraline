@@ -75,6 +75,13 @@ final class PanelLayout {
     /// The answers that show what they changed in the text their question was about, in their place, by turn
     /// (see `TextChanges`).
     var answersShowingChanges: Set<ChatSession.Turn.ID> = []
+    /// An answer of a bulk decision whose words or lines show under its header, by turn and answer (see
+    /// `BulkDecisionCard`); every answer starts folded.
+    struct OpenDecisionGroup: Hashable {
+        let turn: ChatSession.Turn.ID
+        let group: DecisionBatch.Group.ID
+    }
+    var openDecisionGroups: Set<OpenDecisionGroup> = []
     /// The last time the recent chats were forgotten, for the clock under the input to react to.
     var lastForgetting: Forgetting?
     /// Counts the drafts stashed in Recent Chats, for the clock under the input to say Stashed.
@@ -120,6 +127,17 @@ final class PanelLayout {
     /// Show What Changed under an answer, or Show Answer once the changes show.
     func toggleChanges(of turn: ChatSession.Turn.ID) {
         if answersShowingChanges.remove(turn) == nil { answersShowingChanges.insert(turn) }
+    }
+
+    /// The answers of a bulk decision whose words or lines show.
+    func openDecisionGroups(of turn: ChatSession.Turn.ID) -> Set<DecisionBatch.Group.ID> {
+        Set(openDecisionGroups.lazy.filter { $0.turn == turn }.map(\.group))
+    }
+
+    /// A click on an answer's header in a bulk decision: opens its words or lines, or folds them back.
+    func toggleDecisionGroup(_ group: DecisionBatch.Group.ID, of turn: ChatSession.Turn.ID) {
+        let key = OpenDecisionGroup(turn: turn, group: group)
+        if openDecisionGroups.remove(key) == nil { openDecisionGroups.insert(key) }
     }
 
     func noteForgotten(_ count: Int) {

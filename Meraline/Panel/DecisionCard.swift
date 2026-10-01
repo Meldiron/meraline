@@ -437,13 +437,18 @@ struct DecisionScopeToggle: View {
 
 /// The decisions about each word or line of a text, in the answer's place (see `DecisionBatch`): a line with the
 /// counts, then the words or lines grouped by answer, Yes on green, No on red, your own answers and Not Sure in
-/// neutral colors, words as capsules in a row that wraps and lines as a list, each with how sure Jev is. While
-/// the batches come, the line counts them up.
+/// neutral colors, words as capsules in a row that wraps and lines as a list, each with how sure Jev is, surest
+/// first. Every answer starts folded to its header, its count, and a chevron, so a long text reads as a short
+/// summary first; a click on the header opens its words or lines in place and folds them back (`openGroups`,
+/// which `PanelLayout` keeps by turn, in memory only). While the batches come, the line counts them up.
 struct BulkDecisionCard: View {
     let batch: DecisionBatch
     /// Under this confidence an item is Not Sure (see `Preferences.unsureBelow`).
     let unsureBelow: Double
     let isAnswering: Bool
+    /// The answers whose words or lines show under their header; the rest show the header alone.
+    var openGroups: Set<DecisionBatch.Group.ID> = []
+    var toggle: (DecisionBatch.Group.ID) -> Void = { _ in }
 
     var body: some View {
         let groups = batch.groups(unsureBelow: unsureBelow)
@@ -458,12 +463,24 @@ struct BulkDecisionCard: View {
                     .foregroundStyle(.secondary)
             }
             ForEach(groups) { group in
+                let isOpen = openGroups.contains(group.id)
                 VStack(alignment: .leading, spacing: 6) {
-                    header(of: group)
-                    if batch.scope == .words {
-                        words(of: group)
-                    } else {
-                        lines(of: group)
+                    Button {
+                        toggle(group.id)
+                    } label: {
+                        header(of: group, isOpen: isOpen).contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .help(isOpen ? "Hide the \(nouns(group.items.count))" : "Show the \(nouns(group.items.count))")
+                    .accessibilityLabel("\(group.label), \(group.items.count.formatted()) \(nouns(group.items.count))")
+                    .accessibilityValue(isOpen ? "Open" : "Folded")
+                    .accessibilityHint(isOpen ? "Folds them away" : "Shows them")
+                    if isOpen {
+                        if batch.scope == .words {
+                            words(of: group)
+                        } else {
+                            lines(of: group)
+                        }
                     }
                 }
             }
@@ -472,8 +489,14 @@ struct BulkDecisionCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
         .animation(.smooth(duration: 0.2), value: batch.items.count)
+        .animation(.smooth(duration: 0.25), value: openGroups)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(batch.summary(unsureBelow: unsureBelow))
+    }
+
+    /// "lines", or "line" for one.
+    private func nouns(_ count: Int) -> String {
+        "\(batch.scope.noun)\(count == 1 ? "" : "s")"
     }
 
     /// "12 of 45 words decided…", then "45 words · Yes 12 · No 30 · Not sure 3".
@@ -483,7 +506,9 @@ struct BulkDecisionCard: View {
         return counts.isEmpty ? batch.count : "\(batch.count) · \(counts)"
     }
 
-    private func header(of group: DecisionBatch.Group) -> some View {
+    /// The answer's symbol, its name and count, and a chevron that turns up while its items show. The whole row
+    /// takes the click, as a quote's header does.
+    private func header(of group: DecisionBatch.Group, isOpen: Bool) -> some View {
         HStack(spacing: 6) {
             Image(systemName: symbol(of: group.verdict))
                 .font(.system(size: group.verdict == .chosen ? 7 : 11, weight: .bold))
@@ -491,8 +516,14 @@ struct BulkDecisionCard: View {
                 .frame(width: 14)
             Text("\(group.label) · \(group.items.count.formatted())")
                 .font(.system(size: 13, weight: .semibold))
+            Image(systemName: "chevron.down")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(isOpen ? 180 : 0))
+                .accessibilityHidden(true)
         }
-        .accessibilityElement(children: .combine)
+        .lineLimit(1)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func words(of group: DecisionBatch.Group) -> some View {

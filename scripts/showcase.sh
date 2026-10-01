@@ -22,7 +22,7 @@
 #   note-stack    three answers torn off into one note: the last in front, the edges of the other two under it
 #   decision      Decision mode: Jev's Yes about a text selected in Mail, with how sure it is
 #   decision-levels  Decision mode: a priority placed along Low, Medium, and High, and the answers under the input
-#   decision-lines  Decision mode about each line: six tasks from Notes grouped under Yes, No, and Not sure
+#   decision-lines  Decision mode about each line: six tasks from Notes under Yes, No, and Not sure, Yes open and the rest folded
 #
 # Pictures go to docs/screenshots, as name.png (dark) and name-light.png, the names the README uses. Pictures
 # that need a real provider, an agent, or clicks come from scripts/screenshots.sh. Needs Screen Recording

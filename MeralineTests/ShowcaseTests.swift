@@ -291,6 +291,10 @@ struct ShowcaseTests {
             scene.session.draft = "Is this urgent?"
             scene.session.send()
             await GameTestSupport.settle(scene.session)
+            // Yes open on its three tasks, No and Not sure folded to their headers.
+            let turn = try #require(scene.session.turns.last)
+            let yes = try #require(batch.groups(unsureBelow: Decision.defaultUnsureBelow).first)
+            scene.controller.layout.toggleDecisionGroup(yes.id, of: turn.id)
             await Showcase.settle(1.5)
             try await stage.capturePanel(scene.panel, as: "decision-lines")
             stage.close(scene.panel)

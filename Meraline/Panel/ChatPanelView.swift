@@ -449,6 +449,8 @@ struct ChatPanelView: View {
                                 isAnswering: session.isStreaming && turn.id == session.turns.last?.id,
                                 showsChanges: layout.answersShowingChanges.contains(turn.id),
                                 toggleChanges: { layout.toggleChanges(of: turn.id) },
+                                openDecisionGroups: layout.openDecisionGroups(of: turn.id),
+                                toggleDecisionGroup: { layout.toggleDecisionGroup($0, of: turn.id) },
                                 isLastAnswer: turn.id == session.turns.last(where: { !$0.answer.isEmpty })?.id,
                                 unsureBelow: preferences.unsureBelow,
                                 agent: agentName,
@@ -613,6 +615,9 @@ private struct TurnView: View {
     /// Whether the answer shows what it changed in the text its question was about, in its place.
     let showsChanges: Bool
     let toggleChanges: () -> Void
+    /// The answers of a bulk decision whose words or lines show, and a click on an answer's header.
+    var openDecisionGroups: Set<DecisionBatch.Group.ID> = []
+    var toggleDecisionGroup: (DecisionBatch.Group.ID) -> Void = { _ in }
     /// Whether this is the last answer, whose changes ⌘D shows.
     var isLastAnswer = false
     /// Under this confidence a decision shows as Not Sure.
@@ -649,7 +654,7 @@ private struct TurnView: View {
                 .foregroundStyle(.secondary)
             }
             if let batch = turn.decisions {
-                BulkDecisionCard(batch: batch, unsureBelow: unsureBelow, isAnswering: isAnswering)
+                BulkDecisionCard(batch: batch, unsureBelow: unsureBelow, isAnswering: isAnswering, openGroups: openDecisionGroups, toggle: toggleDecisionGroup)
             } else if let decision = turn.decision {
                 DecisionCard(decision: decision, unsureBelow: unsureBelow)
             } else if !turn.answer.isEmpty {
