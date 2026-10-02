@@ -298,6 +298,37 @@ struct DecisionStateRow: View {
     }
 }
 
+/// Between the cards and the mode row, after a click on the scope switch under the input (`DecisionScopeToggle`):
+/// the chosen scope and what it decides about, the whole text too when it was switched back to, so the switch
+/// explains itself once it is used and never before. It goes with the question, with the chat, or at its cross
+/// (see `ChatSession.explainedScope`). Glass like the row that asks for context.
+struct DecisionScopeNote: View {
+    let scope: DecisionScope
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: scope.symbol)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(scope.title)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(scope.explanation)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            CardButton(symbol: "xmark", label: "Hide what the scope decides about", action: dismiss)
+                .help("Hide")
+        }
+        .padding(12)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(scope.title): \(scope.explanation)")
+    }
+}
+
 /// Text written in the window itself, opened with Tab in any mode (or Decision's Write It row, Add Text in the
 /// sparkle's panel, or a preset put in an empty draft), between the input and the row under it: a note of
 /// context for an LLM or agent, or the text a decision is about. Like a selected text's card: a header that

@@ -122,6 +122,16 @@ struct ChatPanelView: View {
                     .padding(.bottom, 10)
                     .transition(Self.cardRowTransition)
                 }
+                // What the scope switch under the input decides about, once it is clicked (see `DecisionScopeNote`).
+                if let scope = session.explainedScope, session.isDeciding {
+                    DecisionScopeNote(scope: scope) {
+                        session.explainedScope = nil
+                        isInputFocused = true
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                    .transition(Self.cardRowTransition)
+                }
                 ModeBar(preferences: preferences, session: session, layout: layout) { isInputFocused = true }
                     .padding(.leading, 14)
                     .padding(.trailing, 12)
@@ -305,6 +315,7 @@ struct ChatPanelView: View {
         .animation(.smooth(duration: Self.cardAnimation), value: session.bulkNotice)
         .animation(.smooth(duration: Self.cardAnimation), value: session.needsDecisionState)
         .animation(.smooth(duration: Self.cardAnimation), value: session.typedState == nil)
+        .animation(.smooth(duration: Self.cardAnimation), value: session.explainedScope)
         .animation(.smooth(duration: Self.cardAnimation), value: session.failure)
         .animation(.smooth(duration: Self.cardAnimation), value: session.nudge)
         .animation(.smooth(duration: Self.cardAnimation), value: session.rematch)

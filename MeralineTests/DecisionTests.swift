@@ -444,6 +444,28 @@ struct DecisionTests {
         #expect(session.turns.last?.decision == Self.yes)
     }
 
+    @Test func theScopeSwitchExplainsItselfOnceClicked() async throws {
+        let model = ScriptedModel(decisions: [Self.yes])
+        let (session, preferences) = Self.decisionSession(model)
+        #expect(session.explainedScope == nil, "never by itself")
+        session.chooseScope(.words)
+        #expect(preferences.decisionScope == .words)
+        #expect(session.explainedScope == .words)
+        session.chooseScope(.whole)
+        #expect(session.explainedScope == .whole, "the whole text is explained too, once switched back to")
+        session.draft = "Is this urgent?"
+        session.send()
+        await Support.settle(session)
+        #expect(session.turns.count == 1)
+        #expect(session.explainedScope == nil, "it goes with the question")
+        session.chooseScope(.lines)
+        session.reset()
+        #expect(session.explainedScope == nil, "and with the chat")
+        for scope in DecisionScope.allCases {
+            #expect(scope.explanation.contains(scope == .whole ? "whole" : scope.noun), "\(scope) explained")
+        }
+    }
+
     @Test func textWrittenInTheWindowIsTheTextToDecideAbout() async throws {
         let unsure = Decision(options: [.init(label: "Yes", probability: 0.3), .init(label: "No", probability: 0.7)], isYesNo: true, confidence: 0.4)
         let model = ScriptedModel(decisions: [unsure])

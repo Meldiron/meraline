@@ -46,7 +46,7 @@ struct ModeBar: View {
                     GlassEffectContainer {
                         HStack(spacing: 8) {
                             DecisionScopeToggle(scope: preferences.decisionScope) { scope in
-                                preferences.decisionScope = scope
+                                session.chooseScope(scope)
                                 focusInput()
                             }
                             DecisionAnswersBadge(answers: session.draftAnswers)

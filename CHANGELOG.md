@@ -11,6 +11,10 @@ When a version has an entry here, the Release workflow uses it as the release no
 - **A colon opens the Context card.** End a question in a colon, “Fix the grammar:” or “Find the bugs in this:”, in LLM or Agent mode, and the Context card opens under the input for the text, as a preset does when there is nothing to work on yet. The cursor stays in the input; Tab moves to the card.
 - **Tab closes an empty Context card.** Tab in the card with nothing written in it goes back to the input and takes the card away, so Tab opens and closes it. A card with text stays, as before.
 
+### Decision
+
+- **The scope switch explains itself.** Click Each Word, Each Line, or back to Whole Text under the input, and a note under the cards says what the choice decides about, up to the thousand words or lines a question takes. It goes with the question or the chat, and never shows on its own.
+
 ## v1.10.0 - 2026-10-02
 
 ### Ask

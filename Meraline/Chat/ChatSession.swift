@@ -151,6 +151,11 @@ final class ChatSession {
     /// opens the card, and empty from then until something is typed. It goes with the question as a text of its
     /// own (`SelectedText.typed`).
     var typedState: String?
+    /// The scope the switch under the input was last set to in this chat, for the note that says what it decides
+    /// about (see `DecisionScopeNote`): set by a click on the switch (`chooseScope(_:)`), the whole text too when
+    /// it was switched back to, and nil until then, once the question goes, and in a new chat, so the note never
+    /// shows by itself.
+    var explainedScope: DecisionScope?
     /// The images and files the last Finder selection brought (see `bring(files:)`), which the next one replaces.
     @ObservationIgnored private var broughtAttachments: Set<UUID> = []
     private(set) var turns: [Turn] = []
@@ -363,6 +368,13 @@ final class ChatSession {
         writeState()
     }
 
+    /// A click on the scope switch under the input (`DecisionScopeToggle`): the scope is kept in Settings, and
+    /// the note under the input says what it decides about until the question goes or the chat does.
+    func chooseScope(_ scope: DecisionScope) {
+        preferences.decisionScope = scope
+        explainedScope = scope
+    }
+
     /// The answers a question that names none picks from: Settings' answers, or Yes and No when they can't be
     /// read (see `DecisionAnswers`).
     var defaultAnswers: DecisionAnswers {
@@ -398,6 +410,7 @@ final class ChatSession {
         draftFiles = []
         draftSelections = []
         typedState = nil
+        explainedScope = nil
         failure = nil
         var turn = Turn(question: question, images: images, files: files, selections: selections)
         turn.provider = provider
@@ -876,6 +889,7 @@ final class ChatSession {
         draftFiles = []
         draftSelections = []
         typedState = nil
+        explainedScope = nil
         turns = []
         mode = .chat
         isStreaming = false
@@ -1153,6 +1167,7 @@ final class ChatSession {
         draftFiles = []
         draftSelections = []
         typedState = nil
+        explainedScope = nil
         failure = nil
     }
 

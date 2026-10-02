@@ -24,6 +24,7 @@ import WebKit
 ///   decision      Decision mode: Jev's Yes about a text selected in Mail, with how sure it is
 ///   decision-levels  Decision mode: a priority placed along Low, Medium, and High, and the answers under the input
 ///   decision-lines  Decision mode about each line: six tasks from Notes grouped under Yes, No, and Not sure
+///   decision-scope  Decision mode: the switch under the input set to each line, and the note that says what it decides about
 @MainActor
 @Suite(.serialized, .enabled(if: Showcase.output != nil, "scripts/showcase.sh takes these pictures"))
 struct ShowcaseTests {
@@ -313,6 +314,25 @@ struct ShowcaseTests {
             scene.controller.layout.toggleDecisionGroup(yes.id, of: turn.id)
             await Showcase.settle(1.5)
             try await stage.capturePanel(scene.panel, as: "decision-lines")
+            stage.close(scene.panel)
+        }
+    }
+
+    @Test func decisionScope() async throws {
+        guard Showcase.wants("decision-scope") else { return }
+        let lines = [
+            "Renew the office lease before Friday", "Order more coffee for the kitchen", "Reply to legal about the pricing page",
+            "Book the team dinner for next month", "Fix the checkout bug for European customers", "Update the on-call schedule",
+        ]
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.decisionPanel(on: stage)
+            scene.session.bring(try #require(SelectedText(lines.joined(separator: "\n"), appName: "Notes", appURL: URL(fileURLWithPath: "/System/Applications/Notes.app"))))
+            scene.session.draft = "Is this urgent?"
+            // As when Each Line is clicked: the note under the text says what the switch decides about.
+            scene.session.chooseScope(.lines)
+            await Showcase.settle(1.5)
+            try await stage.capturePanel(scene.panel, as: "decision-scope")
             stage.close(scene.panel)
         }
     }

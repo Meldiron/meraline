@@ -187,6 +187,15 @@ nonisolated enum DecisionScope: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// What the scope decides about, for the note under the input once the switch is clicked (`DecisionScopeNote`).
+    var explanation: String {
+        switch self {
+        case .whole: "The question is decided about the text as a whole, in one answer."
+        case .words: "Every word of the text gets a decision of its own, and the answer groups the words by what was decided. Up to \(Self.itemLimit.formatted()) words."
+        case .lines: "Every line of the text gets a decision of its own, and the answer groups the lines by what was decided. Up to \(Self.itemLimit.formatted()) lines."
+        }
+    }
+
     /// "word" or "line", for counts; nothing for the whole text.
     var noun: String {
         switch self {
