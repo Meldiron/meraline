@@ -25,9 +25,12 @@ struct PromptPresets: View {
     @State private var isShiftDown = false
     @State private var flagsMonitor: Any?
 
-    /// Room around the row inside its scroll view, which would otherwise clip the capsules' shadow. Below, it
-    /// reaches the card's top and no further.
+    /// Room around the row inside its scroll view, which would otherwise clip the capsules' shadow: above and
+    /// below, as much as lies between the row and the window's top and the card's top, which clip it anyway, and by
+    /// the buttons on the left, no more, since the scroll view would lie over them and take their clicks. Only at
+    /// the end by the gear does the row have the room the shadow reaches (`shadowRoomTrailing`).
     private static let shadowRoom = ContextButtons.inset
+    private static let shadowRoomTrailing = ContextButtons.shadowRoom
     /// How far a capsule sinks while it goes, from above the card to its edge.
     private static let sinking = ContextButtons.inset
 
@@ -43,7 +46,8 @@ struct PromptPresets: View {
             }
             .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
             .padding(Self.shadowRoom)
-            .frame(minWidth: room + Self.shadowRoom * 2, alignment: .trailing)
+            .padding(.trailing, Self.shadowRoomTrailing - Self.shadowRoom)
+            .frame(minWidth: room + Self.shadowRoom + Self.shadowRoomTrailing, alignment: .trailing)
         }
         .scrollIndicators(.never)
         .scrollBounceBehavior(.basedOnSize)
@@ -52,6 +56,7 @@ struct PromptPresets: View {
         .accessibilityHidden(!isShown)
         .frame(height: ContextButtons.size + Self.shadowRoom * 2)
         .padding(-Self.shadowRoom)
+        .padding(.trailing, Self.shadowRoom - Self.shadowRoomTrailing)
         .frame(maxWidth: .infinity)
         .onGeometryChange(for: CGFloat.self, of: \.size.width) { room = $0 }
         .background {

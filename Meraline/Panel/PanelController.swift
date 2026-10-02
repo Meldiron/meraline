@@ -147,7 +147,11 @@ final class PanelLayout {
 
 final class PanelController: NSObject {
     static let width: CGFloat = 640
+    /// The window's margin around the card, at its sides and top, where the card's shadow fades out.
     static let margin: CGFloat = 32
+    /// The window's margin under the card, more than at its sides: the card's shadow is offset downward, and at the
+    /// sides' margin it still showed, cut off in a hard line at the window's edge.
+    static let marginBelow: CGFloat = 48
     private static var windowWidth: CGFloat { width + margin * 2 }
 
     private let panel: FloatingPanel
@@ -260,7 +264,7 @@ final class PanelController: NSObject {
         guard panel.isVisible else { return nil }
         let frame = panel.frame
         let top = frame.maxY - roomAbove - Self.margin - ContextButtons.roomAbove
-        let bottom = frame.minY + Self.margin
+        let bottom = frame.minY + Self.marginBelow
         return NSRect(x: frame.minX + Self.margin, y: bottom, width: Self.width, height: max(0, top - bottom))
     }
 

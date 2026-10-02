@@ -446,8 +446,10 @@ struct ActionPanelHost: View {
     let roomAbove: CGFloat
     let report: (ActionPanelSpan?) -> Void
 
-    /// The space kept between a panel and the window's edge.
-    static let inset: CGFloat = 8
+    /// The space kept between a panel and the window's top, where its shadow fades out, and its bottom, where the
+    /// shadow, offset downward, reaches further.
+    static let inset: CGFloat = 24
+    static let insetBelow: CGFloat = 40
 
     var body: some View {
         GeometryReader { proxy in

@@ -16,6 +16,10 @@ struct ContextButtons: View {
     static let size: CGFloat = 32
     /// From the window's top to the circles, and from the circles to the card.
     static let inset: CGFloat = 10
+    /// How far the circles' shadow reaches, and the capsules' that share it (`Announcements`, `ChatTimer`,
+    /// `CostNudges`, `PromptPresets`): the room kept between one of them and an edge that would clip it, the
+    /// window's bottom or the end of a scroll view, so the shadow fades out instead of ending in a line.
+    static let shadowRoom: CGFloat = 24
     /// How much the row adds above the card, beyond the window's usual margin.
     static let roomAbove: CGFloat = inset + size + inset - PanelController.margin
 

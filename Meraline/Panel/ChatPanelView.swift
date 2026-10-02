@@ -210,8 +210,9 @@ struct ChatPanelView: View {
             }
             .shadow(color: .black.opacity(0.28), radius: 22, y: 10)
         }
-        .padding(PanelController.margin)
+        .padding([.horizontal, .top], PanelController.margin)
         .padding(.top, ContextButtons.roomAbove)
+        .padding(.bottom, PanelController.marginBelow)
         .padding(.bottom, hasAnnouncements || session.expiresAt != nil || !costNudges.isEmpty ? Announcements.roomBelow : 0)
         .overlay(alignment: .top) {
             HStack(spacing: 12) {
@@ -239,21 +240,21 @@ struct ChatPanelView: View {
             // Lined up with the buttons above the card.
             Announcements(whatsNew: whatsNew, update: offeredUpdate, openUpdate: openUpdate, hideUpdate: updateNotice.hide, crash: crashNotice, copyDiagnostics: copyDiagnostics)
                 .padding(.leading, PanelController.margin + 18)
-                .padding(.bottom, Announcements.inset)
+                .padding(.bottom, Announcements.shadowRoom)
         }
         .overlay(alignment: .bottomTrailing) {
             // Lined up with the footer's actions.
             if let expiresAt = session.expiresAt {
                 ChatTimer(expiresAt: expiresAt) { session.addTime(minutes: $0) }
                     .padding(.trailing, PanelController.margin + 12)
-                    .padding(.bottom, Announcements.inset)
+                    .padding(.bottom, Announcements.shadowRoom)
                     .transition(.opacity)
             }
             // In the timer's place before there is a chat.
             if !costNudges.isEmpty {
                 CostNudges(nudges: costNudges)
                     .padding(.trailing, PanelController.margin + 12)
-                    .padding(.bottom, Announcements.inset)
+                    .padding(.bottom, Announcements.shadowRoom)
                     .transition(.opacity)
             }
         }
@@ -310,7 +311,7 @@ struct ChatPanelView: View {
     /// Fits the window to the card, taller above it while a panel of actions opens upward past its top, and
     /// lower while one reaches below it, with room for the panel's shadow.
     private func fitWindow() {
-        let panelBottom = actionPanelSpan.map { $0.bottom + 28 } ?? 0
+        let panelBottom = actionPanelSpan.map { $0.bottom + ActionPanelHost.insetBelow } ?? 0
         onHeightChange(max(roomAbove + cardHeight, panelBottom), roomAbove)
     }
 

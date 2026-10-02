@@ -53,7 +53,8 @@ struct ShortcutPicker: View {
             .glassEffect(.regular, in: .rect(cornerRadius: 26))
             .shadow(color: .black.opacity(0.28), radius: 22, y: 10)
         }
-        .padding(PanelController.margin)
+        .padding([.horizontal, .top], PanelController.margin)
+        .padding(.bottom, PanelController.marginBelow)
         .fixedSize(horizontal: false, vertical: true)
         .onGeometryChange(for: CGFloat.self, of: \.size.height) { onHeightChange($0) }
         .frame(maxHeight: .infinity, alignment: .top)

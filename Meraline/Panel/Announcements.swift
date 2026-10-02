@@ -7,10 +7,12 @@ import SwiftUI
 struct Announcements: View {
     /// The capsules' height, like the circles above the card.
     static let size = ContextButtons.size
-    /// From the card to the capsules, and from the capsules to the window's bottom.
+    /// From the card to the capsules.
     static let inset = ContextButtons.inset
-    /// How much the row adds below the card, beyond the window's usual margin, while it shows.
-    static let roomBelow: CGFloat = inset + size + inset - PanelController.margin
+    /// From the capsules to the window's bottom, where their shadow fades out.
+    static let shadowRoom = ContextButtons.shadowRoom
+    /// How much the row adds below the card, beyond the window's margin under it, while it shows.
+    static let roomBelow: CGFloat = inset + size + shadowRoom - PanelController.marginBelow
 
     let whatsNew: WhatsNew
     /// The update to offer, found or staged, if its capsule wasn't hidden (see `UpdateNotice`).
