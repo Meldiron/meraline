@@ -4,20 +4,30 @@ Notable changes in each Meraline release, newest first.
 
 When a version has an entry here, the Release workflow uses it as the release notes on GitHub and in the in-app update window. A version without an entry gets the list of commits since the previous tag instead. Headings are `## vX.Y.Z - YYYY-MM-DD`.
 
-## Unreleased
+## v1.10.0 - 2026-10-02
 
 ### Ask
 
 - **The Context card takes the keyboard.** Tab, Decision's Write It, and Add Text in the sparkle's panel open the card under the input with the cursor in it, so you can paste or type at once; the cursor used to stay in the input. Tab in the card goes back to the input.
+
+![The Context card under the input with the cursor in it, holding a message written by hand, and a question above it asking for a friendly reply](https://raw.githubusercontent.com/Meldiron/meraline/v1.10.0/docs/screenshots/add-text-light.png)
 - **What changed stands out.** In Show What Changed, the text that stayed as it was is now gray, and the words that went and came sit on deeper red and green, so three edits in a long page are found at a glance instead of hunted for among white text. The strike through what went stays.
+
+![A grammar fix shown as the selected text: the words that stayed in gray, the words that went struck through on red, the words that came on green, and Show Answer under it with how much changed](https://raw.githubusercontent.com/Meldiron/meraline/v1.10.0/docs/screenshots/what-changed-light.png)
 - **Presets open the Context card.** Click Fix Grammar, Anti-Slop, Find Bugs, or any other preset with nothing to work on yet, and the Context card opens under the input with the cursor in it, ready for the text. With text selected or copied, or a file or picture attached, the preset fills the input as before. The default presets now end as sentences rather than a colon, since the text comes on the card, not after them.
+
+![Fix Grammar put in the input with nothing to work on yet, and the Context card open under it with the cursor in it and the text pasted in](https://raw.githubusercontent.com/Meldiron/meraline/v1.10.0/docs/screenshots/preset-text-light.png)
 
 ### Decision
 
 - **The surest first.** When Jev decides about each word or line, each answer lists its words or lines surest first, so the clearest calls lead and the near misses sit at the bottom. Copy Answer lists them the same way.
 - **Answers fold.** Each answer's words or lines now sit folded under its header, the count beside it, so a long text's decisions read as a short summary first. Click a header to open its words or lines, and again to fold them back.
+
+![Decision mode about each line: six tasks from Notes under Yes, No, and Not sure, Yes open with its three tasks and how sure Jev is of each, the others folded to their counts](https://raw.githubusercontent.com/Meldiron/meraline/v1.10.0/docs/screenshots/decision-lines-light.png)
 - **Decision models through OpenRouter.** Settings › Decision Models has OpenRouter beside TypeSafe, on the key you use for OpenRouter’s LLMs, pasted once for both. Pick TypeSafe’s Jev, Liquid’s D1, Upstage’s Solar Decide, Together’s Tev1, or Jared Palmer’s Kev, every decision model OpenRouter serves, and Settings › Usage counts what each answer cost as OpenRouter reports it.
 - **Decisions on this Mac.** Settings › Decision Models has Ollama too: turn it on, and Bespoke Labs’ Nimble or Together’s Tev1 decides on your Mac, with no key and nothing leaving it, as Ollama’s LLMs answer. It takes Ollama 0.35 or newer and a model pulled in Terminal, “ollama pull nimble” (9 GB) or “ollama pull tev1” (4 GB, or “tev1:0.8b” for a small one). A decision about each word or line goes eight at a time, since Ollama’s models read a request in prompts of 2,050 tokens, and Settings › Usage counts them as free.
+
+![Settings › Decision Models: TypeSafe, OpenRouter, and Ollama in the sidebar, and Ollama's pane with Use Ollama turned on, nimble as its model, and under it what to pull in Terminal](https://raw.githubusercontent.com/Meldiron/meraline/v1.10.0/docs/screenshots/decision-models-light.png)
 
 ### Fixes
 
