@@ -542,12 +542,14 @@ final class PanelController: NSObject {
                 return event
             }
             // Tab opens the card for writing a note to send with the question (`ChatSession.writeState`), in any
-            // mode, and gives it the keyboard; from the card it goes back to the input. Decision also offers the
-            // card on its own row. It no longer sends — Return already does — and does nothing while an answer
-            // streams or a game is on.
+            // mode, and gives it the keyboard; from the card it goes back to the input, and takes the card away
+            // when nothing was written in it (`leaveTypedState`), so Tab closes what Tab opened. Decision also
+            // offers the card on its own row. It no longer sends — Return already does — and does nothing while
+            // an answer streams or a game is on.
             if event.keyCode == UInt16(kVK_Tab), modifiers.isEmpty {
                 if !self.session.isStreaming {
                     if let editor = self.panel.firstResponder as? NSTextView, !editor.isFieldEditor {
+                        self.session.leaveTypedState()
                         self.focusInput()
                     } else {
                         self.session.writeState()

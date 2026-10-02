@@ -89,6 +89,23 @@ struct TypedStateCardTests {
         #expect(session.typedState == nil, "a game takes no card")
     }
 
+    @Test func tabFromAnEmptyCardClosesIt() {
+        let session = Support.session(ScriptedModel())
+        session.leaveTypedState()
+        #expect(session.typedState == nil, "nothing to leave")
+        session.writeState()
+        session.leaveTypedState()
+        #expect(session.typedState == nil, "an empty card goes, so Tab closes what Tab opened")
+        session.writeState()
+        session.typedState = " \n"
+        session.leaveTypedState()
+        #expect(session.typedState == nil, "spacing alone is nothing written")
+        session.writeState()
+        session.typedState = "their going"
+        session.leaveTypedState()
+        #expect(session.typedState == "their going", "one with text stays")
+    }
+
     private static func textView(in view: NSView) -> NSTextView? {
         if let textView = view as? NSTextView { return textView }
         return view.subviews.lazy.compactMap(textView(in:)).first

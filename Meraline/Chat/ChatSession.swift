@@ -338,6 +338,13 @@ final class ChatSession {
         typedState = nil
     }
 
+    /// Tab from the card: an empty card goes, so Tab closes what Tab opened, and one with text stays; the input
+    /// takes the keyboard either way (see `PanelController`).
+    func leaveTypedState() {
+        guard let typedState, typedState.trimmed.isEmpty else { return }
+        self.typedState = nil
+    }
+
     /// Whether a question ends in a colon ("Fix the grammar:"), which says the text comes next.
     nonisolated static func endsInColon(_ draft: String) -> Bool {
         draft.trimmed.hasSuffix(":")
