@@ -230,6 +230,8 @@ Then open Meraline. A sparkle appears in your menu bar, and the window opens so 
 
 That's it. Press <kbd>⌥</kbd> <kbd>Space</kbd> whenever you have a question.
 
+The window's glass is the system's: on macOS 27, the Liquid Glass slider in **System Settings › Appearance** makes it clearer or more opaque, and there is nothing to set in Meraline.
+
 > [!TIP]
 > ChatGPT, Gemini, Copilot, and Raycast also use <kbd>⌥</kbd> <kbd>Space</kbd> by default, and macOS quietly gives the shortcut to whichever app grabbed it last. The first time Meraline opens, it checks for them and offers another shortcut, such as <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>Space</kbd>, to try before you keep it. If Meraline doesn't open later, pick another in **Settings › General**.
 
