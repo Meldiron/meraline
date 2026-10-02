@@ -183,6 +183,73 @@ struct LiveDecisionTests {
         #expect(live.pending.isEmpty)
     }
 
+    @Test func questionsKeptFromTheInputAreAskedBesideThePresets() async throws {
+        let decider = ScriptedDecider()
+        decider.answers["Is it polite?"] = Self.no
+        let (session, _) = Self.session(decider)
+        let live = session.liveDecisions
+        session.writeState()
+        session.typedState = "Send me the file now."
+        session.draft = "Is it polite?"
+        await Self.settle(session)
+        #expect(decider.asks.count == 1)
+        #expect(live.answer(for: live.questions[0]) == Self.no)
+
+        // The plus on the input's capsule: the question is kept, the input empties, and the answer goes with it.
+        session.keepLiveQuestion()
+        #expect(session.draft.isEmpty)
+        #expect(live.keptQuestions.map(\.text) == ["Is it polite?"])
+        let kept = try #require(live.questions.first)
+        #expect(kept.keptID == live.keptQuestions[0].id && kept.id == "kept.\(live.keptQuestions[0].id.uuidString)")
+        #expect(kept.title == "Is it polite?" && kept.isOn && kept.symbol == "text.bubble" && kept.presetID == nil)
+        #expect(!live.questions.contains { $0.source == .input }, "the input is empty, so it has no capsule")
+        #expect(live.answer(for: kept) == Self.no, "the input's answer carries over")
+        #expect(live.pending.isEmpty)
+        await Self.settle(session)
+        #expect(decider.asks.count == 1, "nothing asked again")
+
+        // A second one is asked at once, with a preset turned on; the text changing asks every one that is on.
+        session.draft = "Does it say thank you?"
+        session.keepLiveQuestion()
+        session.toggleLivePreset("urgent")
+        await Self.settle(session)
+        #expect(decider.asks.last?.questions.map(\.question) == ["Does it say thank you?", "Is this urgent?"])
+        session.typedState = "Send me the file now, please."
+        await Self.settle(session)
+        #expect(decider.asks.last?.questions.map(\.question) == ["Is it polite?", "Does it say thank you?", "Is this urgent?"])
+        #expect(live.questions.map(\.id).prefix(2).allSatisfy { $0.hasPrefix("kept.") }, "kept questions come before the presets")
+        #expect(session.usage.summary(.day).liveDecisions == 6)
+
+        // Off and on keeps the answer; the cross removes.
+        let second = live.keptQuestions[1]
+        session.toggleLiveQuestion(second.id)
+        #expect(live.keptQuestions[1].isOn == false)
+        #expect(live.answer(for: live.questions[1]) == nil)
+        session.toggleLiveQuestion(second.id)
+        #expect(live.answer(for: live.questions[1]) == Self.yes, "kept while off")
+        session.removeLiveQuestion(second.id)
+        #expect(live.keptQuestions.count == 1)
+        #expect(!live.questions.contains { $0.keptID == second.id })
+
+        // Keeping the same question again turns it on rather than doubling it; an empty input keeps nothing.
+        session.toggleLiveQuestion(live.keptQuestions[0].id)
+        #expect(!live.keptQuestions[0].isOn)
+        session.draft = "Is it polite?"
+        session.keepLiveQuestion()
+        #expect(live.keptQuestions.count == 1 && live.keptQuestions[0].isOn)
+        session.keepLiveQuestion()
+        #expect(live.keptQuestions.count == 1)
+
+        // A new chat keeps them; forgetting every chat forgets them too.
+        session.reset()
+        #expect(live.keptQuestions.count == 1)
+        session.writeState()
+        #expect(live.questions.first?.keptID != nil)
+        _ = session.forgetAll()
+        #expect(live.keptQuestions.isEmpty)
+        #expect(live.questions.isEmpty)
+    }
+
     @Test func anAskOvertakenByTypingIsDropped() async throws {
         let decider = ScriptedDecider()
         decider.delay = .milliseconds(150)

@@ -25,7 +25,7 @@
 #   decision-levels  Decision mode: a priority placed along Low, Medium, and High, and the answers under the input
 #   decision-lines  Decision mode about each line: six tasks from Notes under Yes, No, and Not sure, Yes open and the rest folded
 #   decision-scope  Decision mode: six tasks from Notes, the switch under the input set to each line, and the note that says what it decides about
-#   decision-live  Decision mode: the Context card deciding as you type, the question in the input and three presets answered on their chips
+#   decision-live  Decision mode: the Context card deciding as you type, the question in the input, one kept from it, and three presets answered on glass capsules
 #   decision-models  Settings › Decision Models: the three providers in the sidebar, and Ollama's pane turned on with Nimble and what to pull
 #
 # Pictures go to docs/screenshots, as name.png (dark) and name-light.png, the names the README uses. Pictures

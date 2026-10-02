@@ -1,13 +1,24 @@
 import Foundation
 import Observation
 
-/// A question the Context card decides live (see `LiveDecisions`): the one in the input, or one of Decision's
-/// presets, which a click on its chip turns on or off. Each is a question less the answers it names, and those
-/// answers (see `DecisionAnswers.split`), with the title and icon its chip wears.
+/// A question kept from the input with the plus on its capsule (see `ChatSession.keepLiveQuestion()`): asked
+/// beside the presets while it is on, until its cross removes it, every chat is forgotten, or Meraline quits. In
+/// memory only, like a draft; a question for keeps is a preset, in Settings › Prompt.
+nonisolated struct KeptQuestion: Equatable, Identifiable, Sendable {
+    let id: UUID
+    let text: String
+    var isOn: Bool
+}
+
+/// A question the Context card decides live (see `LiveDecisions`): the one in the input, one kept from it, or
+/// one of Decision's presets, which a click on its capsule turns on or off. Each is a question less the answers it
+/// names, and those answers (see `DecisionAnswers.split`), with the title and icon its capsule wears.
 nonisolated struct LiveQuestion: Equatable, Hashable, Sendable, Identifiable {
     enum Source: Equatable, Hashable, Sendable {
         /// The question typed in the input, asked whenever there is one.
         case input
+        /// A question kept from the input, by its id, asked while it is on (see `KeptQuestion`).
+        case kept(UUID)
         /// A preset of Decision mode, by its id, asked while it is on (see `Preferences.livePresets`).
         case preset(PromptPreset.ID)
     }
@@ -24,12 +35,17 @@ nonisolated struct LiveQuestion: Equatable, Hashable, Sendable, Identifiable {
     var id: String {
         switch source {
         case .input: "input"
+        case .kept(let id): "kept.\(id.uuidString)"
         case .preset(let id): "preset.\(id)"
         }
     }
 
     var presetID: PromptPreset.ID? {
         if case .preset(let id) = source { id } else { nil }
+    }
+
+    var keptID: UUID? {
+        if case .kept(let id) = source { id } else { nil }
     }
 
     /// What the chip asks, for `DecisionClient.decide(_:about:settings:provider:)`.
@@ -41,6 +57,13 @@ nonisolated struct LiveQuestion: Equatable, Hashable, Sendable, Identifiable {
         let split = DecisionAnswers.split(draft, fallback: fallback)
         guard !split.question.isEmpty else { return nil }
         return LiveQuestion(source: .input, title: split.question, symbol: "text.cursor", question: split.question, answers: split.answers, isOn: true)
+    }
+
+    /// A kept question, or nil for one that names only answers.
+    static func kept(_ kept: KeptQuestion, fallback: DecisionAnswers) -> LiveQuestion? {
+        let split = DecisionAnswers.split(kept.text, fallback: fallback)
+        guard !split.question.isEmpty else { return nil }
+        return LiveQuestion(source: .kept(kept.id), title: split.question, symbol: "text.bubble", question: split.question, answers: split.answers, isOn: kept.isOn)
     }
 
     /// A preset's question, or nil for one with no text; its chip wears the preset's title and icon.
@@ -58,11 +81,14 @@ nonisolated struct LiveQuestion: Equatable, Hashable, Sendable, Identifiable {
 /// The decisions the Context card makes as you type, in Decision mode, once its Live switch is on (see
 /// `Preferences.liveDecisions`): after each pause in typing (`debounce`), the question in the input and the
 /// presets turned on (`LiveQuestion`) go to the decision provider in use in one request about the chat's texts and
-/// the card's (`DecisionClient.decide(_:about:settings:provider:)`), and each answer shows on its chip under the
-/// text, without a turn in the chat; Return still asks for a decision there. One ask is in flight at a time: a
-/// change before the reply comes drops it, so a chip never jumps back to an older text's answer. An answer is
-/// kept while its text and question stay the same, so turning a preset on asks only that preset, and turning it
-/// off and on again asks nothing. All of it lives in memory; the ledger counts the decisions and what they took.
+/// the card's (`DecisionClient.decide(_:about:settings:provider:)`), and each answer shows on its capsule under
+/// the text, without a turn in the chat; Return still asks for a decision there. The plus on the input's capsule
+/// keeps its question as one of its own (`keptQuestions`), so several of yours are asked beside the presets. One
+/// ask is in flight at a time: a change before the reply comes drops it, so a capsule never jumps back to an older
+/// text's answer. An answer is kept while its text and question stay the same, whichever capsule asks it, so
+/// turning a preset on asks only that preset, turning it off and on again asks nothing, and a question kept from
+/// the input takes the input's answer with it. All of it lives in memory; the ledger counts the decisions and
+/// what they took.
 @MainActor
 @Observable
 final class LiveDecisions {
@@ -97,8 +123,10 @@ final class LiveDecisions {
 
     typealias Decide = @MainActor ([DecisionQuestion], [SelectedText], ProviderSettings, Provider) async throws -> DecisionClient.LiveReply
 
-    /// The questions the card shows, the input's first, then every preset, on or off.
+    /// The questions the card shows, the input's first, then those kept from it, then every preset, on or off.
     private(set) var questions: [LiveQuestion] = []
+    /// The questions kept from the input, in the order they were kept (see `keep(_:)`).
+    private(set) var keptQuestions: [KeptQuestion] = []
     /// The latest answer to each question, by its id, about the current texts.
     private(set) var answers: [LiveQuestion.ID: Answer] = [:]
     /// The questions waiting for an answer, in the debounce or on their way.
@@ -108,6 +136,8 @@ final class LiveDecisions {
     /// How long typing pauses before the questions go; `debounce` outside tests.
     @ObservationIgnored var debounce = LiveDecisions.debounce
     @ObservationIgnored private var task: Task<Void, Never>?
+    /// Whether the task is still waiting out the pause, which a click then skips.
+    @ObservationIgnored private var isDelaying = false
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var lastAsk: Ask?
     @ObservationIgnored private let preferences: Preferences
@@ -135,6 +165,34 @@ final class LiveDecisions {
     /// Whether nothing is asked: no question in the input and no preset on, for the line that says what to do.
     var asksNothing: Bool { !questions.contains(where: \.isOn) }
 
+    // MARK: Kept questions
+
+    /// Keeps `text` as a question of its own, on, or turns the one with that text on again.
+    func keep(_ text: String) {
+        let text = text.trimmed
+        guard !text.isEmpty else { return }
+        if let index = keptQuestions.firstIndex(where: { $0.text == text }) {
+            keptQuestions[index].isOn = true
+            return
+        }
+        keptQuestions.append(KeptQuestion(id: UUID(), text: text, isOn: true))
+        Log.chat.info("Live decisions keep a question, \(keptQuestions.count) kept")
+    }
+
+    func toggleKept(_ id: UUID) {
+        guard let index = keptQuestions.firstIndex(where: { $0.id == id }) else { return }
+        keptQuestions[index].isOn.toggle()
+    }
+
+    func removeKept(_ id: UUID) {
+        keptQuestions.removeAll { $0.id == id }
+    }
+
+    /// Forgets every kept question, as forgetting every chat does.
+    func forgetKeptQuestions() {
+        keptQuestions = []
+    }
+
     /// What the card asks now, or nil to show nothing (the switch off, another mode, the card closed). Called on
     /// every change of the text or the question, so a pause of `debounce` after the last one sends the ask, with
     /// `atOnce` right away, as a click on a chip or the switch does. The same ask again changes nothing.
@@ -144,22 +202,31 @@ final class LiveDecisions {
             lastAsk = nil
             task?.cancel()
             task = nil
+            isDelaying = false
             questions = []
             answers = [:]
             pending = []
             failure = nil
             return
         }
-        if let lastAsk, lastAsk == ask { return }
+        // The same ask again changes nothing, unless a click asks for it at once while typing's pause runs.
+        if let lastAsk, lastAsk == ask, !(atOnce && isDelaying) { return }
         lastAsk = ask
         task?.cancel()
         task = nil
+        isDelaying = false
         generation += 1
         questions = ask.questions
         // The answers still about these texts and these questions stay, a preset's while it is off too, so turning
-        // it on again asks nothing; the rest go with what changed.
+        // it on again asks nothing, and a question asked under another name, as one kept from the input is, takes
+        // that answer; the rest go with what changed.
+        let known = Dictionary(answers.values.map { ($0.about, $0.decision) }, uniquingKeysWith: { first, _ in first })
         answers = answers.filter { id, answer in
             ask.questions.contains { $0.id == id && answer.about == About(ask.state, $0) }
+        }
+        for question in ask.questions where answers[question.id] == nil {
+            let about = About(ask.state, question)
+            if let decision = known[about] { answers[question.id] = Answer(decision: decision, about: about) }
         }
         failure = nil
         let unanswered = ask.questions.filter { $0.isOn && answers[$0.id] == nil }
@@ -173,9 +240,11 @@ final class LiveDecisions {
         let distinct = unanswered.filter { seen.insert(About(ask.state, $0)).inserted }
         let generation = generation
         let delay = atOnce ? Duration.zero : debounce
+        isDelaying = delay > .zero
         task = Task { [weak self] in
             if delay > .zero { try? await Task.sleep(for: delay) }
             guard !Task.isCancelled, let self, self.generation == generation else { return }
+            isDelaying = false
             do {
                 let reply = try await decide(distinct.map(\.decisionQuestion), ask.state, ask.settings, ask.provider)
                 guard !Task.isCancelled, self.generation == generation else { return }

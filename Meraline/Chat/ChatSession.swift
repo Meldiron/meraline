@@ -398,13 +398,15 @@ final class ChatSession {
         return LiveDecisions.Ask(state: decisionState, questions: liveQuestions, provider: provider, settings: preferences[provider])
     }
 
-    /// The questions the Context card decides live: the input's, when there is one, then Decision's presets in
-    /// their order, each on or off (`Preferences.livePresets`).
+    /// The questions the Context card decides live: the input's, when there is one, then those kept from it
+    /// (`LiveDecisions.keptQuestions`), then Decision's presets in their order, each on or off
+    /// (`Preferences.livePresets`).
     var liveQuestions: [LiveQuestion] {
         let fallback = defaultAnswers
         let on = preferences.livePresets
         let input = LiveQuestion.input(draft, fallback: fallback).map { [$0] } ?? []
-        return input + preferences[presets: .decision].compactMap { LiveQuestion.preset($0, isOn: on.contains($0.id), fallback: fallback) }
+        let kept = liveDecisions.keptQuestions.compactMap { LiveQuestion.kept($0, fallback: fallback) }
+        return input + kept + preferences[presets: .decision].compactMap { LiveQuestion.preset($0, isOn: on.contains($0.id), fallback: fallback) }
     }
 
     /// Tells the live decisions what to ask, after a change of the text, the question, the mode, or the provider;
@@ -420,10 +422,33 @@ final class ChatSession {
         refreshLiveDecisions(atOnce: true)
     }
 
-    /// A click on a preset's chip under the Context card's text: the preset is asked with the others from now on,
-    /// or no longer.
+    /// A click on a preset's capsule under the Context card's text: the preset is asked with the others from now
+    /// on, or no longer.
     func toggleLivePreset(_ id: PromptPreset.ID) {
         if preferences.livePresets.remove(id) == nil { preferences.livePresets.insert(id) }
+        refreshLiveDecisions(atOnce: true)
+    }
+
+    /// The plus on the input's capsule under the Context card's text: the question in the input is kept as a
+    /// question of its own (`KeptQuestion`), asked beside the presets with the answer it has, and the input
+    /// empties for the next one.
+    func keepLiveQuestion() {
+        let text = draft.trimmed
+        guard !text.isEmpty else { return }
+        liveDecisions.keep(text)
+        draft = ""
+        refreshLiveDecisions(atOnce: true)
+    }
+
+    /// A click on a kept question's capsule: it is asked from now on, or no longer.
+    func toggleLiveQuestion(_ id: UUID) {
+        liveDecisions.toggleKept(id)
+        refreshLiveDecisions(atOnce: true)
+    }
+
+    /// The cross on a kept question's capsule.
+    func removeLiveQuestion(_ id: UUID) {
+        liveDecisions.removeKept(id)
         refreshLiveDecisions(atOnce: true)
     }
 
@@ -1155,6 +1180,9 @@ final class ChatSession {
         let open = turns.isEmpty ? 0 : 1
         reset(keepingChat: false)
         offeredSelection = nil
+        // Questions kept for the live decisions are typed text too.
+        liveDecisions.forgetKeptQuestions()
+        refreshLiveDecisions()
         return open + forgetHistory()
     }
 

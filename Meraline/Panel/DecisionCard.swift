@@ -336,7 +336,7 @@ struct DecisionScopeNote: View {
 /// text of its own, quoted in the conversation as Context, like a selection, and ⌘Return sends from it (see
 /// `PanelController`). Whoever opens it gives it the keyboard (see `PanelLayout.stateFocusRequest`). In Decision
 /// mode its header has a Live switch (`LiveSwitch`): on, the card decides as you type, and the answers show on
-/// chips under the text (`LiveDecisionStrip`, see `LiveDecisions`).
+/// glass capsules under the text (`LiveDecisionStrip`, see `LiveDecisions`).
 struct TypedStateCard: View {
     @Binding var text: String
     /// Decision mode, where the text is what Jev decides about; in the other modes it goes with the question.
@@ -349,6 +349,11 @@ struct TypedStateCard: View {
     var isFocused: FocusState<Bool>.Binding
     var toggleLive: () -> Void = {}
     var togglePreset: (PromptPreset.ID) -> Void = { _ in }
+    /// The plus on the input's capsule keeps its question; a kept question's capsule turns it on or off, and its
+    /// cross removes it (see `KeptQuestion`).
+    var keepLive: () -> Void = {}
+    var toggleKept: (UUID) -> Void = { _ in }
+    var removeKept: (UUID) -> Void = { _ in }
     let remove: () -> Void
 
     @State private var textHeight: CGFloat = 0
@@ -414,7 +419,7 @@ struct TypedStateCard: View {
             .padding(.horizontal, 4)
             .background(.primary.opacity(0.04), in: .rect(cornerRadius: 10))
             if isDeciding, let live, live.isOn {
-                LiveDecisionStrip(live: live, unsureBelow: unsureBelow, togglePreset: togglePreset)
+                LiveDecisionStrip(live: live, unsureBelow: unsureBelow, togglePreset: togglePreset, keep: keepLive, toggleKept: toggleKept, removeKept: removeKept)
                     .padding(.top, 2)
             }
         }
@@ -462,40 +467,41 @@ private struct LiveSwitch: View {
     }
 }
 
-/// Under the Context card's text while Live is on (see `LiveDecisions`): a chip for the question in the input and
-/// one for each of Decision's presets, which a click turns on or off, each with its answer once it comes — a
-/// check in green for Yes, a cross in red for No, a question mark for Not Sure, or a check tinted by how sure the
-/// model is of one of your own answers, as `DecisionCard` has them — the answer, and how sure. A chip that is on
-/// wears the pink symbol and semibold title of a chosen segment. Flat fills inside the card's glass, as the
-/// probability row under a decision has them, never glass in glass.
+/// Under the Context card's text while Live is on (see `LiveDecisions`): a glass capsule for each question, the
+/// input's first, then those kept from it, then Decision's presets, each with its answer once it comes: a check on
+/// green glass for Yes, a cross on red for No, a question mark on plain glass for Not Sure, or a check on glass
+/// tinted by how sure the model is of one of your own answers, as `DecisionCard`'s disc has them, then the answer
+/// and how sure. A capsule that is on and waiting wears the pink of a chosen segment; one that is off is plain
+/// glass with secondary text. A click on a preset's or a kept question's capsule turns it on or off; the plus on
+/// the input's keeps its question (`keep`), which frees the input for the next, and the cross on a kept question's
+/// removes it. Each capsule is a glass container of its own, so its fade reaches its glass, as the follow-ups' are,
+/// and none rotates, so the glass never swells into a disc. The check, the cross, and the words carry the meaning;
+/// the tints are only a help.
 struct LiveDecisionStrip: View {
     let live: LiveDecisions
     /// Under this confidence a decision says Not Sure (see `Preferences.unsureBelow`).
     let unsureBelow: Double
     let togglePreset: (PromptPreset.ID) -> Void
+    var keep: () -> Void = {}
+    var toggleKept: (UUID) -> Void = { _ in }
+    var removeKept: (UUID) -> Void = { _ in }
+
+    @State private var hovered: LiveQuestion.ID?
+
+    /// A capsule comes in and goes with its glass, since each has a container of its own.
+    static let transition: AnyTransition = .opacity.combined(with: .scale(scale: 0.92))
+    private static let height: CGFloat = 28
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            FlowLayout(spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            FlowLayout(spacing: 8) {
                 ForEach(live.questions) { question in
-                    if let id = question.presetID {
-                        Button { togglePreset(id) } label: { chip(question) }
-                            .buttonStyle(.plain)
-                            .help(question.isOn ? "Stop asking “\(question.title)” as you type" : "Ask “\(question.title)” as you type")
-                            .accessibilityLabel(question.title)
-                            .accessibilityValue(value(of: question))
-                            .accessibilityAddTraits(question.isOn ? .isSelected : [])
-                    } else {
-                        chip(question)
-                            .help("The question in the input, decided as you type")
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("The question in the input: \(question.title)")
-                            .accessibilityValue(value(of: question))
-                    }
+                    capsule(question)
+                        .transition(Self.transition)
                 }
             }
             if live.asksNothing {
-                Text("Ask in the input, or turn on a preset, and the answer shows here as you type.")
+                Text("Ask in the input, or turn on a preset, and the answer shows here as you type. The plus on a question keeps it.")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -508,20 +514,74 @@ struct LiveDecisionStrip: View {
             }
         }
         .padding(.horizontal, 2)
+        .padding(.bottom, 2)
         .animation(.smooth(duration: 0.2), value: live.questions)
-        .animation(.smooth(duration: 0.2), value: live.answers)
+        .animation(.smooth(duration: 0.25), value: live.answers)
         .animation(.smooth(duration: 0.2), value: live.pending)
         .animation(.smooth(duration: 0.2), value: live.failure)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Live decisions")
     }
 
-    /// The question's icon and title, and while it is on, its answer, a spinner while the answer is on its way,
-    /// or an ellipsis while there is no text to decide about.
-    private func chip(_ question: LiveQuestion) -> some View {
+    /// One question's glass capsule: the input's with a plus to keep it, a kept question's with a cross to remove
+    /// it, a preset's on its own; a click on a kept question's or a preset's label turns it on or off.
+    private func capsule(_ question: LiveQuestion) -> some View {
         let answer = live.answer(for: question)
         let verdict = answer?.verdict(unsureBelow: unsureBelow)
-        return HStack(spacing: 5) {
+        let isHovered = hovered == question.id
+        return GlassEffectContainer {
+            HStack(spacing: 0) {
+                switch question.source {
+                case .input:
+                    label(question, answer: answer, verdict: verdict, trailsButton: true)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("The question in the input: \(question.title)")
+                        .accessibilityValue(value(of: question))
+                    Button(action: keep) {
+                        trailing("plus", highlighted: isHovered)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Keep asking this: it stays as a question of its own, and the input is free for the next")
+                    .accessibilityLabel("Keep asking this")
+                case .kept(let id):
+                    Button { toggleKept(id) } label: {
+                        label(question, answer: answer, verdict: verdict, trailsButton: true)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .help(question.isOn ? "Stop asking “\(question.title)” as you type" : "Ask “\(question.title)” as you type")
+                    .accessibilityLabel(question.title)
+                    .accessibilityValue(value(of: question))
+                    .accessibilityAddTraits(question.isOn ? .isSelected : [])
+                    Button { removeKept(id) } label: {
+                        trailing("xmark", highlighted: isHovered)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove the question")
+                    .accessibilityLabel("Remove “\(question.title)”")
+                case .preset(let id):
+                    Button { togglePreset(id) } label: {
+                        label(question, answer: answer, verdict: verdict, trailsButton: false)
+                            .contentShape(.capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .help(question.isOn ? "Stop asking “\(question.title)” as you type" : "Ask “\(question.title)” as you type")
+                    .accessibilityLabel(question.title)
+                    .accessibilityValue(value(of: question))
+                    .accessibilityAddTraits(question.isOn ? .isSelected : [])
+                }
+            }
+            .glassEffect(glass(for: question, verdict: verdict, answer: answer), in: .capsule)
+        }
+        .onHover { isOver in
+            if isOver { hovered = question.id } else if hovered == question.id { hovered = nil }
+        }
+    }
+
+    /// The question's icon and title, and while it is on, its answer, a spinner while the answer is on its way, or
+    /// an ellipsis while there is no text to decide about.
+    private func label(_ question: LiveQuestion, answer: Decision?, verdict: Decision.Verdict?, trailsButton: Bool) -> some View {
+        HStack(spacing: 5) {
             Image(systemName: question.symbol)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(question.isOn ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
@@ -535,6 +595,8 @@ struct LiveDecisionStrip: View {
                     Image(systemName: symbol(of: verdict))
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(tint(of: verdict, answer).map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
+                        .contentTransition(.symbolEffect(.replace))
+                        .symbolEffect(.bounce, value: answer)
                         .padding(.leading, 2)
                     Text(verdict == .unsure ? "Not sure" : answer.chosen.label)
                         .font(.system(size: 12, weight: .semibold))
@@ -555,10 +617,35 @@ struct LiveDecisionStrip: View {
                 }
             }
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .background(fill(of: verdict, isOn: question.isOn), in: .capsule)
-        .contentShape(.capsule)
+        .padding(.leading, 11)
+        .padding(.trailing, trailsButton ? 3 : 13)
+        .frame(height: Self.height)
+    }
+
+    /// The plus or the cross at a capsule's end: quiet until the pointer is over the capsule.
+    private func trailing(_ symbol: String, highlighted: Bool) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(highlighted ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
+            .frame(width: 20, height: Self.height)
+            .padding(.trailing, 4)
+            .contentShape(.rect)
+    }
+
+    /// The capsule's glass: plain while the question is off, the chosen segment's pink while it is on and waiting,
+    /// then green for Yes, red for No, the colour of how sure the model is for one of your own answers, and plain
+    /// again for Not Sure. Every capsule answers the pointer, since each takes a click.
+    private func glass(for question: LiveQuestion, verdict: Decision.Verdict?, answer: Decision?) -> Glass {
+        guard question.isOn else { return .regular.interactive() }
+        switch verdict {
+        case .yes?: return .regular.tint(Color(nsColor: .addedText).opacity(0.3)).interactive()
+        case .no?: return .regular.tint(Color(nsColor: .removedText).opacity(0.3)).interactive()
+        case .chosen?:
+            guard let answer else { return .regular.interactive() }
+            return .regular.tint(confidenceColor(answer.confidence).opacity(0.3)).interactive()
+        case .unsure?: return .regular.interactive()
+        case nil: return .regular.tint(.meralinePink.opacity(0.22)).interactive()
+        }
     }
 
     private func symbol(of verdict: Decision.Verdict) -> String {
@@ -576,15 +663,6 @@ struct LiveDecisionStrip: View {
         case .no: Color(nsColor: .removedText)
         case .chosen: confidenceColor(decision.confidence)
         case .unsure: nil
-        }
-    }
-
-    private func fill(of verdict: Decision.Verdict?, isOn: Bool) -> AnyShapeStyle {
-        switch verdict {
-        case .yes?: AnyShapeStyle(Color(nsColor: .addedText).opacity(0.12))
-        case .no?: AnyShapeStyle(Color(nsColor: .removedText).opacity(0.12))
-        case .chosen?, .unsure?: AnyShapeStyle(.primary.opacity(0.09))
-        case nil: AnyShapeStyle(.primary.opacity(isOn ? 0.09 : 0.04))
         }
     }
 

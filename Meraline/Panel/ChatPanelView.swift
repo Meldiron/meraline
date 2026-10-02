@@ -116,7 +116,8 @@ struct ChatPanelView: View {
                 if session.typedState != nil, !session.isPlaying {
                     TypedStateCard(
                         text: typedState, isDeciding: session.isDeciding, live: session.liveDecisions, unsureBelow: preferences.unsureBelow,
-                        isFocused: $isStateFocused, toggleLive: session.toggleLiveDecisions, togglePreset: session.toggleLivePreset(_:)
+                        isFocused: $isStateFocused, toggleLive: session.toggleLiveDecisions, togglePreset: session.toggleLivePreset(_:),
+                        keepLive: session.keepLiveQuestion, toggleKept: session.toggleLiveQuestion(_:), removeKept: session.removeLiveQuestion(_:)
                     ) {
                         session.removeTypedState()
                         isInputFocused = true

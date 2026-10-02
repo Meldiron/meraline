@@ -25,7 +25,7 @@ import WebKit
 ///   decision-levels  Decision mode: a priority placed along Low, Medium, and High, and the answers under the input
 ///   decision-lines  Decision mode about each line: six tasks from Notes grouped under Yes, No, and Not sure
 ///   decision-scope  Decision mode: the switch under the input set to each line, and the note that says what it decides about
-///   decision-live  Decision mode: the Context card deciding as you type, the question in the input and three presets answered on their chips
+///   decision-live  Decision mode: the Context card deciding as you type, the question in the input, one kept from it, and three presets answered on glass capsules
 @MainActor
 @Suite(.serialized, .enabled(if: Showcase.output != nil, "scripts/showcase.sh takes these pictures"))
 struct ShowcaseTests {
@@ -344,6 +344,7 @@ struct ShowcaseTests {
         // What each question is answered with, by its wording: the input's, and the presets turned on.
         let answers: [String: Decision] = [
             "Is this ready to send?": yes(0.88),
+            "Does it name a deadline?": yes(0.12),
             "Is this urgent?": yes(0.94),
             "What is the tone of this text?": Decision(options: [.init(label: "Friendly", probability: 0.22), .init(label: "Neutral", probability: 0.71), .init(label: "Angry", probability: 0.07)], confidence: 0.7),
             "How high a priority is this?": Decision(options: [.init(label: "Low", probability: 0.04), .init(label: "Medium", probability: 0.2), .init(label: "High", probability: 0.76)], isOrdered: true, score: 1.72, confidence: 0.76),
@@ -351,9 +352,11 @@ struct ShowcaseTests {
         for appearance in Showcase.appearances {
             let stage = ShowcaseStage(appearance)
             let scene = try Self.decisionPanel(on: stage, live: answers, presets: ["urgent", "tone", "priority"])
+            // A question kept from the input with the plus on its capsule, beside the presets.
+            scene.session.liveDecisions.keep("Does it name a deadline?")
             scene.session.draft = "Is this ready to send?"
             await Showcase.settle(1.0)
-            // With the keyboard in the card, as while the text is being typed and the chips answer under it.
+            // With the keyboard in the card, as while the text is being typed and the capsules answer under it.
             await Showcase.waitForIdle()
             scene.panel.makeKey()
             await Showcase.settle(0.3)
