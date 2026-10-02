@@ -307,6 +307,11 @@ struct ChatPanelView: View {
         .onChange(of: hasConversation) {
             if !hasConversation, layout.actionPanel?.kind == .chat { layout.actionPanel = nil }
         }
+        .onChange(of: session.turns.isEmpty) {
+            // The next chat's conversation comes in at its own size (see `conversation`).
+            if session.turns.isEmpty { conversationHeight = 0 }
+        }
+        .animation(.smooth(duration: Self.cardAnimation), value: session.turns.isEmpty)
         .animation(.smooth(duration: Self.cardAnimation), value: session.draftImages)
         .animation(.smooth(duration: Self.cardAnimation), value: session.draftFiles)
         .animation(.smooth(duration: Self.cardAnimation), value: session.draftSelections)
@@ -512,7 +517,11 @@ struct ChatPanelView: View {
                 .onGeometryChange(for: CGFloat.self, of: \.size.height) { conversationHeight = $0 }
                 .environment(\.answerZoom, layout.answerZoom.scale)
             }
-            .frame(height: min(conversationHeight, layout.maximumConversationHeight))
+            // Unmeasured, as a chat's first question goes, the conversation is as tall as its content, so it comes
+            // in at its size and the card grows to it with its animation instead of jumping once it is measured;
+            // measured, it follows its content as an answer streams, never past the room the screen gives it.
+            .frame(height: conversationHeight > 0 ? min(conversationHeight, layout.maximumConversationHeight) : nil)
+            .frame(maxHeight: layout.maximumConversationHeight)
             .defaultScrollAnchor(.bottom)
             .scrollEdgeEffectStyle(.soft, for: .vertical)
             // .defaultScrollAnchor(.bottom, for: .sizeChanges) drifted after a few answers; scroll the bottom marker
@@ -691,10 +700,14 @@ private struct TurnView: View {
             } else if let decision = turn.decision {
                 DecisionCard(decision: decision, unsureBelow: unsureBelow)
             } else if !turn.answer.isEmpty {
+                // One fades into the other in place: the same text, so the words that changed light up in their
+                // colors. A view on its way out takes no room, so the card never holds both.
                 if showsChanges, let changes = turn.changes {
                     ChangesView(changes: changes)
+                        .transition(.opacity)
                 } else {
                     MarkdownView(markdown: turn.answer)
+                        .transition(.opacity)
                 }
             }
             if let changes = turn.changes {
@@ -722,6 +735,14 @@ private struct TurnView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // What comes and goes in a turn fades, instead of appearing in a cut: the thinking line gives way to the
+        // answer's first words, the answer to what it changed and back, and an agent's ask, its tools, and the
+        // files it hands over come in place. The words of a streaming answer come as they are.
+        .animation(.smooth(duration: ChatPanelView.cardAnimation), value: turn.answer.isEmpty)
+        .animation(.smooth(duration: ChatPanelView.cardAnimation), value: showsChanges)
+        .animation(.smooth(duration: ChatPanelView.cardAnimation), value: turn.pendingPrompt?.id)
+        .animation(.smooth(duration: ChatPanelView.cardAnimation), value: turn.tools.count)
+        .animation(.smooth(duration: ChatPanelView.cardAnimation), value: turn.presentedFiles.count)
     }
 }
 

@@ -11,6 +11,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - **A colon opens the Context card.** End a question in a colon, “Fix the grammar:” or “Find the bugs in this:”, in LLM or Agent mode, and the Context card opens under the input for the text, as a preset does when there is nothing to work on yet. The cursor stays in the input; Tab moves to the card.
 - **Tab closes an empty Context card.** Tab in the card with nothing written in it goes back to the input and takes the card away, so Tab opens and closes it. A card with text stays, as before.
 - **The window fades in and out.** ⌥ Space fades the window in as the card rises into place, and fades it out as it closes, instead of showing and hiding it in a cut. Pressing the shortcut during the fade turns it around. With Reduce Motion only the fade remains.
+- **Fewer cuts in the chat.** A chat's first question brings the conversation in smoothly, the thinking line fades into the answer's first words, and Show What Changed and Show Answer fade one into the other. An agent's ask, its tools, and the files it hands over fade in too.
 
 ### Decision
 

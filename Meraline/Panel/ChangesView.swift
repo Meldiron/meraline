@@ -88,6 +88,7 @@ struct ChangesToggle: View {
             Button(action: toggle) {
                 Label(isShowingChanges ? "Show Answer" : "Show What Changed", systemImage: isShowingChanges ? "text.alignleft" : "plus.forwardslash.minus")
                     .font(.system(size: 11, weight: .medium))
+                    .contentTransition(.symbolEffect(.replace))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 4)
