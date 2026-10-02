@@ -2,14 +2,22 @@ import KeyboardShortcuts
 import SwiftUI
 
 /// What the window shows: the shortcut picker on the first launch, until it is answered or put away, and the
-/// chat otherwise. The chat fades in when the picker is done, with the keyboard in its input.
+/// chat otherwise. The chat fades in when the picker is done, with the keyboard in its input. Whichever shows
+/// fades in and rises into place as the window opens, and fades out sinking back as it closes
+/// (`PanelLayout.isShown`, set by `PanelController`, which orders the window out once the fade is done); with
+/// Reduce Motion only the fade remains.
 struct PanelRoot: View {
     let setup: ShortcutSetup
+    let layout: PanelLayout
     let chat: ChatPanelView
     let onHeightChange: (CGFloat) -> Void
     let focusInput: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
+        let shown = layout.isShown
+        let moves = shown || reduceMotion
         Group {
             if setup.isPresented {
                 ShortcutPicker(setup: setup, onHeightChange: onHeightChange)
@@ -21,6 +29,13 @@ struct PanelRoot: View {
             }
         }
         .animation(.smooth(duration: 0.25), value: setup.isPresented)
+        .opacity(shown ? 1 : 0)
+        // Both ways ease out: an ease in on the way out held still for half its time and then dropped, a pop.
+        .animation(.easeOut(duration: shown ? PanelController.fadeIn : PanelController.fadeOut), value: shown)
+        // Scaled whole, glass included, from the window's top, where the card hangs; never rotated.
+        .scaleEffect(moves ? 1 : 0.97, anchor: .top)
+        .offset(y: moves ? 0 : 6)
+        .animation(shown ? .snappy(duration: 0.3, extraBounce: 0.05) : .easeOut(duration: PanelController.fadeOut), value: shown)
     }
 }
 

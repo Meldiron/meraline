@@ -521,6 +521,8 @@ struct ShowcaseTests {
             shortcutSetup: ShortcutSetup(defaults: defaults), openSettings: { _ in }
         )
         let panel = try #require(NSApp.windows.first { $0 is FloatingPanel && !before.contains(ObjectIdentifier($0)) })
+        // Placed, not shown through `show()`, so the content is told it is up, or it stays faded out.
+        controller.layout.isShown = true
         stage.place(panel)
         return PanelScene(session: session, panel: panel, controller: controller, model: model)
     }

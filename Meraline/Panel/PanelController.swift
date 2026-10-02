@@ -63,6 +63,9 @@ final class PanelLayout {
         let count: Int
     }
 
+    /// Whether the window is up, or on its way up: the card rises into place as it turns true and sinks as it turns
+    /// false (`PanelRoot`), while `PanelController` fades the window.
+    var isShown = false
     var maximumConversationHeight: CGFloat = 480
     /// Requests to give the keyboard to the input.
     var focusRequest = 0
@@ -208,14 +211,16 @@ final class PanelController: NSObject {
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = true
         panel.becomesKeyOnlyIfNeeded = false
-        panel.animationBehavior = .utilityWindow
+        // The content fades itself in and out (`PanelRoot`, as `show()` and `close()` ask); the system's
+        // utility-window behavior showed the window in a cut.
+        panel.animationBehavior = .none
         panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         panel.delegate = self
         panel.onEscape = { [weak self] in self?.handleEscape() }
         panel.onClose = { [weak self] in self?.close() }
         panel.onMagnify = { [weak self] in self?.magnify($0) }
         observeScreenSharingPreference()
-        inserter.closeWindow = { [weak self] in self?.close() }
+        inserter.closeWindow = { [weak self] in self?.close(animated: false) }
         AnswerNotes.shared.configure(preferences: preferences) { [weak self] in self?.cardFrame }
 
         let view = ChatPanelView(
@@ -235,7 +240,7 @@ final class PanelController: NSObject {
             sources: sources,
             inserter: inserter
         )
-        let root = PanelRoot(setup: shortcutSetup, chat: view, onHeightChange: { [weak self] in self?.fit(height: $0) }) { [weak self] in
+        let root = PanelRoot(setup: shortcutSetup, layout: layout, chat: view, onHeightChange: { [weak self] in self?.fit(height: $0) }) { [weak self] in
             self?.layout.focusRequest += 1
         }
         hostingView.rootView = AnyView(root)
@@ -261,7 +266,18 @@ final class PanelController: NSObject {
         }
     }
 
-    var isVisible: Bool { panel.isVisible }
+    /// Whether the window is up. One fading out counts as closed, so ⌥ Space during its fade brings it back.
+    var isVisible: Bool { panel.isVisible && !isClosing }
+    /// Whether the window is fading out, before it is ordered out.
+    private var isClosing = false
+    /// Counts the closes begun, so a close undone by `show()` doesn't order the window out when its time comes.
+    private var closes = 0
+    /// How long the content takes to fade in, as the card rises into place, and to fade out, as it sinks back
+    /// (`PanelRoot`, in SwiftUI, which Core Animation draws smoothly however busy the main thread is; a fade of the
+    /// window's own alpha ran on a main-thread timer and showed in two or three steps). The window is ordered out by
+    /// the clock, not the fade's end.
+    static let fadeIn: TimeInterval = 0.18
+    static let fadeOut: TimeInterval = 0.15
 
     /// The card on the screen while the window is up, for a torn-off answer to open beside.
     private var cardFrame: NSRect? {
@@ -355,6 +371,17 @@ final class PanelController: NSObject {
     }
 
     func show() {
+        if isClosing {
+            // Brought back during its fade out: the fade turns around, and the window is as it was.
+            isClosing = false
+            closes += 1
+            layout.isShown = true
+            panel.makeKeyAndOrderFront(nil)
+            requestFocus()
+            installKeyMonitor()
+            sources.windowOpened()
+            return
+        }
         guard !panel.isVisible else {
             panel.makeKeyAndOrderFront(nil)
             layout.focusRequest += 1
@@ -368,10 +395,22 @@ final class PanelController: NSObject {
         layout.maximumConversationHeight = max(220, screen.visibleFrame.height * 0.6)
         sizeContent()
         place(on: screen)
+        // The content fades in as the card rises into place; with Reduce Motion it only fades.
         panel.makeKeyAndOrderFront(nil)
-        layout.focusRequest += 1
+        layout.isShown = true
+        requestFocus()
         installKeyMonitor()
         sources.windowOpened()
+    }
+
+    /// Gives the keyboard to the input a moment after the window shows: a focus set in the update that starts the
+    /// content's fade, from nothing, never took, as one set in the update that inserts the Context card doesn't
+    /// (`PanelLayout.stateFocusRequest`).
+    private func requestFocus() {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(40))
+            self?.layout.focusRequest += 1
+        }
     }
 
     /// Gives the keyboard back to the input, with the cursor after its text: a field that takes the keyboard
@@ -385,15 +424,30 @@ final class PanelController: NSObject {
         }
     }
 
-    func close() {
-        guard panel.isVisible else { return }
+    /// Closes the window: it fades out as the card sinks, then is ordered out. Insert Answer closes it without the
+    /// fade, since its paste needs the keyboard back in the app in front at once.
+    func close(animated: Bool = true) {
+        guard panel.isVisible, !isClosing else { return }
         shortcutSetup.dismiss()
         whatsNew.isExpanded = false
         session.withdrawOfferedSelection()
         sources.windowClosed()
         layout.actionPanel = nil
-        panel.orderOut(nil)
         removeKeyMonitor()
+        layout.isShown = false
+        guard animated else {
+            panel.orderOut(nil)
+            return
+        }
+        isClosing = true
+        closes += 1
+        let close = closes
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.fadeOut + 0.03))
+            guard let self, self.closes == close else { return }
+            self.isClosing = false
+            self.panel.orderOut(nil)
+        }
     }
 
     /// The Mac slept or locked, and Settings › General › Privacy says to forget (see `AwayWatcher`): every chat goes,
