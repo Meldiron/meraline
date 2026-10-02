@@ -32,7 +32,8 @@ nonisolated struct PromptPreset: Codable, Hashable, Identifiable, Sendable {
 
     /// The presets a mode starts with, until its list is changed: for the LLMs, work on a text, Translate into the
     /// language chosen for answers; for the agents, work on the files attached and on the web; for decisions,
-    /// questions, two of which name their answers after the question mark (see `DecisionAnswers`).
+    /// questions, two of which name their answers after the question mark (see `DecisionAnswers`). Each ends as a
+    /// sentence, not with a colon: the text comes on a card of its own, never after the preset in the input.
     static func defaults(for kind: ProviderKind, in language: AnswerLanguage) -> [PromptPreset] {
         switch kind {
         case .llm: defaults(in: language)
@@ -44,19 +45,19 @@ nonisolated struct PromptPreset: Codable, Hashable, Identifiable, Sendable {
     static let agentDefaults = [
         PromptPreset(
             id: "findBugs", title: "Find Bugs", symbol: "ant",
-            text: "Look through the files attached for bugs, edge cases, and code that could break, and list each one with where it is and how to fix it:"
+            text: "Look through the files attached for bugs, edge cases, and code that could break, and list each one with where it is and how to fix it."
         ),
         PromptPreset(
             id: "explainCode", title: "Explain Code", symbol: "text.magnifyingglass",
-            text: "Explain what the files attached do and how their parts fit together, briefly and in plain words:"
+            text: "Explain what the files attached do and how their parts fit together, briefly and in plain words."
         ),
         PromptPreset(
             id: "writeTests", title: "Write Tests", symbol: "checklist",
-            text: "Write tests for the code attached, in its own language and test framework, covering the edge cases, and hand the test file over:"
+            text: "Write tests for the code attached, in its own language and test framework, covering the edge cases, and hand the test file over."
         ),
         PromptPreset(
             id: "research", title: "Research", symbol: "globe",
-            text: "Search the web and answer this in a short summary with its sources, newest first:"
+            text: "Search the web and answer this in a short summary with its sources, newest first."
         ),
     ]
 
@@ -72,19 +73,19 @@ nonisolated struct PromptPreset: Codable, Hashable, Identifiable, Sendable {
         [
             PromptPreset(
                 id: "fixGrammar", title: "Fix Grammar", symbol: "text.badge.checkmark",
-                text: "Fix the grammar, spelling, and punctuation of this text without changing its wording, tone, or language, and reply with the corrected text only:"
+                text: "Fix the grammar, spelling, and punctuation of this text without changing its wording, tone, or language, and reply with the corrected text only."
             ),
             PromptPreset(
                 id: "antiSlop", title: "Anti-Slop", symbol: "eraser",
-                text: "Rewrite this text so it doesn’t read as written by AI: cut filler, hedging, and buzzwords such as delve, seamless, or robust, “not just X but Y”, lists of three, em dashes, and emoji, and keep its meaning, voice, and language. Reply with the rewritten text only:"
+                text: "Rewrite this text so it doesn’t read as written by AI: cut filler, hedging, and buzzwords such as delve, seamless, or robust, “not just X but Y”, lists of three, em dashes, and emoji, and keep its meaning, voice, and language. Reply with the rewritten text only."
             ),
             PromptPreset(
                 id: "anonymize", title: "Anonymize", symbol: "theatermasks",
-                text: "Anonymize this text: replace the names of people and companies, emails, phone numbers, addresses, and any other detail that could identify someone with placeholders such as [Name] or [Email], change nothing else, and reply with the anonymized text only:"
+                text: "Anonymize this text: replace the names of people and companies, emails, phone numbers, addresses, and any other detail that could identify someone with placeholders such as [Name] or [Email], change nothing else, and reply with the anonymized text only."
             ),
             PromptPreset(
                 id: "translate", title: "Translate", symbol: "translate",
-                text: "Translate this text into \(language.name), keeping its tone and formatting, and reply with the translation only:"
+                text: "Translate this text into \(language.name), keeping its tone and formatting, and reply with the translation only."
             ),
         ]
     }
@@ -153,12 +154,22 @@ nonisolated struct PromptPreset: Codable, Hashable, Identifiable, Sendable {
 extension ChatSession {
     /// A click on a preset's capsule above the card: its text goes in the input (see
     /// `PromptPreset.draft(_:applying:among:toggling:)`), and with Shift the question goes at once, with whatever
-    /// else the draft holds.
-    func apply(_ preset: PromptPreset, among presets: [PromptPreset], sending: Bool) {
-        guard !isStreaming, !isPlaying else { return }
+    /// else the draft holds. A preset put in with nothing in the draft for it to work on, no text, file, or
+    /// picture, opens the card for writing the text by hand (`writeState()`), or finds it open already; whether it
+    /// did, for the card to take the keyboard. A preset taken out again, or sent, leaves the keyboard where it is.
+    @discardableResult
+    func apply(_ preset: PromptPreset, among presets: [PromptPreset], sending: Bool) -> Bool {
+        guard !isStreaming, !isPlaying else { return false }
+        let takesOut = !sending && PromptPreset.applied(in: draft, among: presets)?.id == preset.id
         draft = PromptPreset.draft(draft, applying: preset, among: presets, toggling: !sending)
-        Log.panel.info("Preset \(sending ? "sent" : "put in the input")")
-        if sending { send() }
+        Log.panel.info("Preset \(sending ? "sent" : takesOut ? "taken out of the input" : "put in the input")")
+        if sending {
+            send()
+            return false
+        }
+        guard !takesOut, draftSelections.isEmpty, draftFiles.isEmpty, draftImages.isEmpty else { return false }
+        writeState()
+        return typedState != nil
     }
 
     /// Runs a preset on the last answer, from the chat's actions or its ⌘1…⌘9, as a rewrite: the model reads the

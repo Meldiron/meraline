@@ -339,6 +339,27 @@ struct ShowcaseTests {
         }
     }
 
+    @Test func presetText() async throws {
+        guard Showcase.wants("preset-text") else { return }
+        let presets = PromptPreset.defaults(in: .english)
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage)
+            await Showcase.settle(1.0)
+            // With the keyboard, as when Fix Grammar is clicked with nothing to work on yet: the card opens for
+            // the text and takes the keyboard, and the text is pasted in.
+            await Showcase.waitForIdle()
+            scene.panel.makeKey()
+            await Showcase.settle(0.3)
+            if scene.session.apply(presets[0], among: presets, sending: false) { scene.controller.layout.stateFocusRequest += 1 }
+            scene.session.typedState = "hi all, their going to move the launch meeting to thursday because the the slides isnt ready yet, sorry for the late notice"
+            await Showcase.settle(1.5)
+            #expect(Self.moveCursorToEnd(ofCardIn: scene.panel), "the card has the keyboard")
+            try await stage.capturePanel(scene.panel, as: "preset-text")
+            stage.close(scene.panel)
+        }
+    }
+
     /// Puts the cursor after the text of the card for context written by hand, when it has the keyboard, so the
     /// picture shows the card as it is after typing; whether it had it. Otherwise the input has the keyboard, with
     /// its text all selected, which the picture shows too.

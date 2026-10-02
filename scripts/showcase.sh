@@ -15,6 +15,7 @@
 #   prompt-games  further down the same page: the games, one of them changed, and Why?
 #   follow-ups    an answer about DNS with three follow-ups under it
 #   presets       the presets above an empty chat, Fix Grammar put in the input for a text selected in Mail
+#   preset-text   Fix Grammar put in the input with nothing to work on: the Context card open under it with the keyboard
 #   prompt-presets  Settings › Prompt › Presets: the four defaults and one of your own
 #   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
 #   cost-nudge    the empty panel with what LLMs and agents have cost today

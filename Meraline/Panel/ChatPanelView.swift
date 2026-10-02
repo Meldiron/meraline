@@ -231,8 +231,13 @@ struct ChatPanelView: View {
                     ForEach(ProviderKind.allCases) { kind in
                         let presets = presets(for: kind)
                         PromptPresets(presets: presets, draft: session.draft, isShown: !hasConversation && preferences.mode == kind) { preset, sends in
-                            session.apply(preset, among: presets, sending: sends)
-                            if !sends { isInputFocused = true }
+                            // A preset put in with nothing to work on opens the card for its text, which takes
+                            // the keyboard; otherwise the input keeps it.
+                            if session.apply(preset, among: presets, sending: sends) {
+                                focusState()
+                            } else if !sends {
+                                isInputFocused = true
+                            }
                         }
                     }
                 }

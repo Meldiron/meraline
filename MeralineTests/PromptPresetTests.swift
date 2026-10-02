@@ -34,6 +34,15 @@ struct PromptPresetTests {
         #expect(PromptPreset.defaults(in: .czech)[3].text.contains("into Czech"))
     }
 
+    /// The text a preset works on comes on a card of its own, so no default ends with a colon waiting for it.
+    @Test func theDefaultsEndAsSentences() {
+        for kind in ProviderKind.allCases {
+            for preset in PromptPreset.defaults(for: kind, in: .english) {
+                #expect(!preset.text.hasSuffix(":"), "\(preset.title)")
+            }
+        }
+    }
+
     @Test func aClickPutsThePresetAheadOfWhatWasTyped() {
         #expect(PromptPreset.draft("", applying: fix, among: presets) == "\(fix.text) ")
         #expect(PromptPreset.draft("  their going  ", applying: fix, among: presets) == "\(fix.text) their going")
@@ -80,23 +89,51 @@ struct PromptPresetTests {
         session.apply(fix, among: presets, sending: false)
         #expect(session.draft == "\(fix.text) ")
         #expect(session.turns.isEmpty)
+        #expect(session.typedState == "", "the card opens for the text to work on")
 
         session.bring(try #require(SelectedText("helo how r u", appName: "Mail")))
         session.apply(translate, among: presets, sending: true)
         await Support.settle(session)
         #expect(session.draft.isEmpty)
+        #expect(session.typedState == nil, "the card, left empty, goes with the question and adds nothing")
         #expect(session.turns.count == 1)
         #expect(session.turns[0].question == translate.text)
+        #expect(session.turns[0].selections.map(\.sourceLabel) == ["Mail"])
         let message = try #require(model.lastMessages.last)
         #expect(message.hasPrefix("<selected_text from=\"Mail\">\nhelo how r u\n</selected_text>"))
         #expect(message.hasSuffix(translate.text))
     }
 
+    @Test func aPresetOpensTheCardForItsTextUnlessTheDraftHasSomethingToWorkOn() throws {
+        let session = Support.session(ScriptedModel())
+        #expect(session.apply(fix, among: presets, sending: false), "put in with nothing to work on, it opens the card, which takes the keyboard")
+        #expect(session.typedState == "")
+        session.typedState = "their going"
+        #expect(session.apply(translate, among: presets, sending: false), "another preset finds the card open and hands it the keyboard again")
+        #expect(session.typedState == "their going")
+        #expect(!session.apply(translate, among: presets, sending: false), "taken out again, it leaves the keyboard where it is")
+        #expect(session.typedState == "their going", "and the card stays")
+        #expect(PromptPreset.applied(in: session.draft, among: presets) == nil)
+
+        session.reset()
+        #expect(session.typedState == nil)
+        session.bring(try #require(SelectedText("helo how r u", appName: "Mail")))
+        #expect(!session.apply(fix, among: presets, sending: false), "a selection is the text to work on")
+        #expect(session.typedState == nil)
+        #expect(session.draft == "\(fix.text) ")
+
+        session.reset()
+        session.bring(Support.image())
+        #expect(!session.apply(fix, among: presets, sending: false), "as is a picture")
+        #expect(session.typedState == nil)
+    }
+
     @Test func aGameTakesNoPreset() {
         let session = Support.session(ScriptedModel())
         session.startGame(.rhymeDuel)
-        session.apply(fix, among: presets, sending: false)
+        #expect(!session.apply(fix, among: presets, sending: false))
         #expect(session.draft.isEmpty)
+        #expect(session.typedState == nil)
     }
 
     // MARK: Settings
