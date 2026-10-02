@@ -136,6 +136,7 @@ final class ChatSession {
             // A colon typed at the end of the question says the text comes next, so the card for writing it
             // opens by itself (see `writeStateAfterColon()`).
             if Self.endsInColon(draft), !Self.endsInColon(oldValue) { writeStateAfterColon() }
+            if draft != oldValue { refreshLiveDecisions() }
         }
     }
     private(set) var draftImages: [ImageAttachment] = []
@@ -143,14 +144,21 @@ final class ChatSession {
     /// Text selected in other apps, or copied, for the next question, in the order it came (see `bring(_:)`).
     /// Only you put it here: the selection button, the clipboard button, the Services menu, or
     /// `meraline://ask?selection=`.
-    private(set) var draftSelections: [SelectedText] = []
+    private(set) var draftSelections: [SelectedText] = [] {
+        didSet { refreshLiveDecisions() }
+    }
     /// The text selected in the app in front when the shortcut opened the window. It stays out of the draft
     /// until the selection button above the card adds it (see `toggleOfferedSelection()`).
     private(set) var offeredSelection: SelectedText?
     /// Text written in the window for a decision, while its card is open (see `writeState()`): nil until Write It
     /// opens the card, and empty from then until something is typed. It goes with the question as a text of its
     /// own (`SelectedText.typed`).
-    var typedState: String?
+    var typedState: String? {
+        didSet { if typedState != oldValue { refreshLiveDecisions() } }
+    }
+    /// The decisions the Context card makes as you type, in Decision mode, while its Live switch is on (see
+    /// `LiveDecisions`); `refreshLiveDecisions()` tells it what to ask.
+    let liveDecisions: LiveDecisions
     /// The scope the switch under the input was last set to in this chat, for the note that says what it decides
     /// about (see `DecisionScopeNote`): set by a click on the switch (`chooseScope(_:)`), the whole text too when
     /// it was switched back to, and nil until then, once the question goes, and in a new chat, so the note never
@@ -227,17 +235,20 @@ final class ChatSession {
     /// The count of how Meraline is used: questions, answers, tokens, games, never their words (see `UsageLedger`).
     @ObservationIgnored let usage: UsageLedger
 
-    /// `stream` talks to the provider; tests pass one that replies on its own, and their own
-    /// `workspaceRoot` so they never touch the app's workspaces.
+    /// `stream` talks to the provider, and `decideLive` asks the live decisions on the Context card; tests pass
+    /// ones that reply on their own, and their own `workspaceRoot` so they never touch the app's workspaces.
+    /// `stream` comes first so a trailing closure is still it.
     init(
         preferences: Preferences,
         workspaceRoot: URL = ChatWorkspace.defaultRoot,
         usage: UsageLedger = .shared,
-        stream: @escaping @MainActor (ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> = LLMClient.stream
+        stream: @escaping @MainActor (ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> = LLMClient.stream,
+        decideLive: @escaping LiveDecisions.Decide = DecisionClient.decide
     ) {
         self.preferences = preferences
         self.workspaceRoot = workspaceRoot
         self.usage = usage
+        liveDecisions = LiveDecisions(preferences: preferences, usage: usage, decide: decideLive)
         streamReplies = stream
     }
 
@@ -373,6 +384,47 @@ final class ChatSession {
     func chooseScope(_ scope: DecisionScope) {
         preferences.decisionScope = scope
         explainedScope = scope
+    }
+
+    // MARK: Live decisions
+
+    /// What the Context card decides live right now (see `LiveDecisions`): the chat's texts and the draft's, the
+    /// question in the input and the presets turned on (`liveQuestions`), for the decision provider in use. Nil,
+    /// which shows nothing, while the Live switch is off, outside Decision mode, while the card is closed, and
+    /// while an answer comes.
+    var liveAsk: LiveDecisions.Ask? {
+        guard preferences.liveDecisions, isDeciding, typedState != nil, !isStreaming,
+              let provider = preferences.activeProvider, provider.kind == .decision else { return nil }
+        return LiveDecisions.Ask(state: decisionState, questions: liveQuestions, provider: provider, settings: preferences[provider])
+    }
+
+    /// The questions the Context card decides live: the input's, when there is one, then Decision's presets in
+    /// their order, each on or off (`Preferences.livePresets`).
+    var liveQuestions: [LiveQuestion] {
+        let fallback = defaultAnswers
+        let on = preferences.livePresets
+        let input = LiveQuestion.input(draft, fallback: fallback).map { [$0] } ?? []
+        return input + preferences[presets: .decision].compactMap { LiveQuestion.preset($0, isOn: on.contains($0.id), fallback: fallback) }
+    }
+
+    /// Tells the live decisions what to ask, after a change of the text, the question, the mode, or the provider;
+    /// `atOnce` skips the pause typing gets, for a click.
+    func refreshLiveDecisions(atOnce: Bool = false) {
+        liveDecisions.update(liveAsk, atOnce: atOnce)
+    }
+
+    /// The Live switch on the Context card: the card starts deciding as you type, or stops.
+    func toggleLiveDecisions() {
+        preferences.liveDecisions.toggle()
+        Log.chat.info("Live decisions turned \(preferences.liveDecisions ? "on" : "off")")
+        refreshLiveDecisions(atOnce: true)
+    }
+
+    /// A click on a preset's chip under the Context card's text: the preset is asked with the others from now on,
+    /// or no longer.
+    func toggleLivePreset(_ id: PromptPreset.ID) {
+        if preferences.livePresets.remove(id) == nil { preferences.livePresets.insert(id) }
+        refreshLiveDecisions(atOnce: true)
     }
 
     /// The answers a question that names none picks from: Settings' answers, or Yes and No when they can't be

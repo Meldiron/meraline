@@ -334,13 +334,21 @@ struct DecisionScopeNote: View {
 /// context for an LLM or agent, or the text a decision is about. Like a selected text's card: a header that
 /// counts its words, a field of a few lines that grows with the text, and a cross. It goes with the question as a
 /// text of its own, quoted in the conversation as Context, like a selection, and ⌘Return sends from it (see
-/// `PanelController`). Whoever opens it gives it the keyboard (see `PanelLayout.stateFocusRequest`).
+/// `PanelController`). Whoever opens it gives it the keyboard (see `PanelLayout.stateFocusRequest`). In Decision
+/// mode its header has a Live switch (`LiveSwitch`): on, the card decides as you type, and the answers show on
+/// chips under the text (`LiveDecisionStrip`, see `LiveDecisions`).
 struct TypedStateCard: View {
     @Binding var text: String
     /// Decision mode, where the text is what Jev decides about; in the other modes it goes with the question.
     var isDeciding = false
+    /// The decisions made as you type, for the switch and the chips, in Decision mode.
+    var live: LiveDecisions?
+    /// Under this confidence a live decision says Not Sure (see `Preferences.unsureBelow`).
+    var unsureBelow = Decision.defaultUnsureBelow
     /// Whether the card's editor has the keyboard, which the window hands it as the card opens.
     var isFocused: FocusState<Bool>.Binding
+    var toggleLive: () -> Void = {}
+    var togglePreset: (PromptPreset.ID) -> Void = { _ in }
     let remove: () -> Void
 
     @State private var textHeight: CGFloat = 0
@@ -364,6 +372,9 @@ struct TypedStateCard: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
+                if isDeciding, let live {
+                    LiveSwitch(isOn: live.isOn, toggle: toggleLive)
+                }
                 CardButton(symbol: "xmark", label: "Leave out the context", action: remove)
                     .help("Leave it out")
             }
@@ -402,6 +413,10 @@ struct TypedStateCard: View {
             }
             .padding(.horizontal, 4)
             .background(.primary.opacity(0.04), in: .rect(cornerRadius: 10))
+            if isDeciding, let live, live.isOn {
+                LiveDecisionStrip(live: live, unsureBelow: unsureBelow, togglePreset: togglePreset)
+                    .padding(.top, 2)
+            }
         }
         .padding(.leading, 14)
         .padding(.trailing, 10)
@@ -414,6 +429,169 @@ struct TypedStateCard: View {
 
     private var words: Int {
         text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
+    }
+}
+
+/// The Live switch in the Context card's header, in Decision mode: a bolt and the word, which turn pink and
+/// semibold while the card decides as you type (see `LiveDecisions`), like the mode toggle's chosen segment.
+/// Glass like the cross beside it.
+private struct LiveSwitch: View {
+    let isOn: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 4) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(isOn ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
+                Text("Live")
+                    .font(.system(size: 11, weight: isOn ? .semibold : .medium))
+                    .foregroundStyle(isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 20)
+            .glassEffect(isOn ? .regular.tint(.meralinePink.opacity(0.22)).interactive() : .regular.interactive(), in: .capsule)
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .help(isOn ? "Stop deciding as you type" : "Decide as you type: the answers show here, without sending")
+        .accessibilityLabel("Live decisions")
+        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+}
+
+/// Under the Context card's text while Live is on (see `LiveDecisions`): a chip for the question in the input and
+/// one for each of Decision's presets, which a click turns on or off, each with its answer once it comes — a
+/// check in green for Yes, a cross in red for No, a question mark for Not Sure, or a check tinted by how sure the
+/// model is of one of your own answers, as `DecisionCard` has them — the answer, and how sure. A chip that is on
+/// wears the pink symbol and semibold title of a chosen segment. Flat fills inside the card's glass, as the
+/// probability row under a decision has them, never glass in glass.
+struct LiveDecisionStrip: View {
+    let live: LiveDecisions
+    /// Under this confidence a decision says Not Sure (see `Preferences.unsureBelow`).
+    let unsureBelow: Double
+    let togglePreset: (PromptPreset.ID) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            FlowLayout(spacing: 6) {
+                ForEach(live.questions) { question in
+                    if let id = question.presetID {
+                        Button { togglePreset(id) } label: { chip(question) }
+                            .buttonStyle(.plain)
+                            .help(question.isOn ? "Stop asking “\(question.title)” as you type" : "Ask “\(question.title)” as you type")
+                            .accessibilityLabel(question.title)
+                            .accessibilityValue(value(of: question))
+                            .accessibilityAddTraits(question.isOn ? .isSelected : [])
+                    } else {
+                        chip(question)
+                            .help("The question in the input, decided as you type")
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("The question in the input: \(question.title)")
+                            .accessibilityValue(value(of: question))
+                    }
+                }
+            }
+            if live.asksNothing {
+                Text("Ask in the input, or turn on a preset, and the answer shows here as you type.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let failure = live.failure {
+                Text(failure)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 2)
+        .animation(.smooth(duration: 0.2), value: live.questions)
+        .animation(.smooth(duration: 0.2), value: live.answers)
+        .animation(.smooth(duration: 0.2), value: live.pending)
+        .animation(.smooth(duration: 0.2), value: live.failure)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Live decisions")
+    }
+
+    /// The question's icon and title, and while it is on, its answer, a spinner while the answer is on its way,
+    /// or an ellipsis while there is no text to decide about.
+    private func chip(_ question: LiveQuestion) -> some View {
+        let answer = live.answer(for: question)
+        let verdict = answer?.verdict(unsureBelow: unsureBelow)
+        return HStack(spacing: 5) {
+            Image(systemName: question.symbol)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(question.isOn ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
+                .frame(width: 14)
+            Text(question.title)
+                .font(.system(size: 12, weight: question.isOn ? .semibold : .medium))
+                .foregroundStyle(question.isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                .lineLimit(1)
+            if question.isOn {
+                if let answer, let verdict {
+                    Image(systemName: symbol(of: verdict))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(tint(of: verdict, answer).map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
+                        .padding(.leading, 2)
+                    Text(verdict == .unsure ? "Not sure" : answer.chosen.label)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                    Text(Decision.percent(answer.confidence))
+                        .font(.system(size: 11))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                } else if live.isPending(question) {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .padding(.leading, 2)
+                } else {
+                    Text("…")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(fill(of: verdict, isOn: question.isOn), in: .capsule)
+        .contentShape(.capsule)
+    }
+
+    private func symbol(of verdict: Decision.Verdict) -> String {
+        switch verdict {
+        case .yes, .chosen: "checkmark"
+        case .no: "xmark"
+        case .unsure: "questionmark"
+        }
+    }
+
+    /// Green for Yes and red for No, how sure the model is for one of your own answers, nothing for Not Sure.
+    private func tint(of verdict: Decision.Verdict, _ decision: Decision) -> Color? {
+        switch verdict {
+        case .yes: Color(nsColor: .addedText)
+        case .no: Color(nsColor: .removedText)
+        case .chosen: confidenceColor(decision.confidence)
+        case .unsure: nil
+        }
+    }
+
+    private func fill(of verdict: Decision.Verdict?, isOn: Bool) -> AnyShapeStyle {
+        switch verdict {
+        case .yes?: AnyShapeStyle(Color(nsColor: .addedText).opacity(0.12))
+        case .no?: AnyShapeStyle(Color(nsColor: .removedText).opacity(0.12))
+        case .chosen?, .unsure?: AnyShapeStyle(.primary.opacity(0.09))
+        case nil: AnyShapeStyle(.primary.opacity(isOn ? 0.09 : 0.04))
+        }
+    }
+
+    private func value(of question: LiveQuestion) -> String {
+        guard question.isOn else { return "Off" }
+        guard let answer = live.answer(for: question) else { return live.isPending(question) ? "Deciding" : "Nothing to decide about yet" }
+        return answer.summary(unsureBelow: unsureBelow)
     }
 }
 

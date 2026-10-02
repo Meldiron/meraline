@@ -104,6 +104,8 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
     /// Decisions that arrived, answers to questions asked in Decision mode, and those under the Not Sure line.
     var decisions = 0
     var unsureDecisions = 0
+    /// Of them, the ones the Context card made as you typed (see `LiveDecisions`).
+    var liveDecisions = 0
 
     /// Games by `Game.rawValue`. Their runs of wins add up in order, so tallies are summed earliest first.
     var games: [String: GameTally] = [:]
@@ -354,6 +356,7 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
         sum.filesHandedOver = a.filesHandedOver + b.filesHandedOver
         sum.decisions = a.decisions + b.decisions
         sum.unsureDecisions = a.unsureDecisions + b.unsureDecisions
+        sum.liveDecisions = a.liveDecisions + b.liveDecisions
         sum.games = a.games.merging(b.games, uniquingKeysWith: +)
         sum.answersCopied = a.answersCopied + b.answersCopied
         sum.answersInserted = a.answersInserted + b.answersInserted
@@ -437,6 +440,7 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
         filesHandedOver = try int(.filesHandedOver)
         decisions = try int(.decisions)
         unsureDecisions = try int(.unsureDecisions)
+        liveDecisions = try int(.liveDecisions)
         games = try values.decodeIfPresent([String: GameTally].self, forKey: .games) ?? [:]
         answersCopied = try int(.answersCopied)
         answersInserted = try int(.answersInserted)

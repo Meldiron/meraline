@@ -242,6 +242,9 @@ struct UsagePane: View {
         Section("Decisions") {
             row("Decisions", UsageInsights.compact(insights.tally.decisions), "yes, no, or one of your answers, from a decision model")
             row("Not sure", UsageInsights.compact(insights.tally.unsureDecisions), "\(UsageInsights.percent(Double(insights.tally.unsureDecisions) / Double(max(1, insights.tally.decisions)))) of them, under the line set in Settings › Prompt")
+            if insights.tally.liveDecisions > 0 {
+                row("As you typed", UsageInsights.compact(insights.tally.liveDecisions), "of them, made live on the Context card")
+            }
         }
     }
 

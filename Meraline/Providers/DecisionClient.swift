@@ -1,5 +1,15 @@
 import Foundation
 
+/// One of several questions asked about the same texts in one request (see `DecisionClient.decide(_:about:settings:provider:)`),
+/// named by `id` in the request and in the reply: the live decisions on the Context card ask the question in the
+/// input and the presets turned on at once (see `LiveDecisions`).
+nonisolated struct DecisionQuestion: Equatable, Hashable, Sendable, Identifiable {
+    let id: String
+    /// The question less the answers it named, and those answers (see `DecisionAnswers.split`).
+    let question: String
+    let answers: DecisionAnswers
+}
+
 /// A question for a System One model, TypeSafe's Jev or another (see `DecisionClient`): the texts it is about,
 /// which go as the request's state,
 /// the question, less the answers it named, and the answers it picks from (see `DecisionAnswers`). About each
@@ -32,7 +42,9 @@ nonisolated struct DecisionRequest: Equatable, Sendable {
     }
 
     /// The text with the app it came from, or the texts in order.
-    private var textsJSON: [String: Any] {
+    private var textsJSON: [String: Any] { Self.textsJSON(of: state) }
+
+    static func textsJSON(of state: [SelectedText]) -> [String: Any] {
         func entry(_ text: SelectedText) -> [String: Any] {
             var entry: [String: Any] = ["text": text.text]
             if let source = text.appName { entry["from"] = source }
@@ -48,7 +60,9 @@ nonisolated struct DecisionRequest: Equatable, Sendable {
     /// (`choice`), or levels in order (`score`).
     var questionJSON: [String: Any] { questionJSON(instructions: question) }
 
-    private func questionJSON(instructions: Any) -> [String: Any] {
+    private func questionJSON(instructions: Any) -> [String: Any] { Self.questionJSON(instructions: instructions, answers: answers) }
+
+    static func questionJSON(instructions: Any, answers: DecisionAnswers) -> [String: Any] {
         switch answers.kind {
         case .yesNo:
             ["type": "noul", "instructions": instructions]
@@ -86,6 +100,16 @@ nonisolated struct DecisionRequest: Equatable, Sendable {
         }
         return ["model": model, "state": state, "questions": questions]
     }
+
+    /// The request that asks `questions` about `state` at once, each named by its id, as the live decisions on the
+    /// Context card do (see `LiveDecisions`); the reply names its answers the same way.
+    static func body(model: String, state: [SelectedText], questions: [DecisionQuestion]) -> [String: Any] {
+        var named: [String: Any] = [:]
+        for question in questions {
+            named[question.id] = questionJSON(instructions: question.question, answers: question.answers)
+        }
+        return ["model": model, "state": textsJSON(of: state), "questions": named]
+    }
 }
 
 /// The System One endpoint, `POST /v1/systemone`, at TypeSafe, at OpenRouter, which serves Jev and other labs'
@@ -112,7 +136,7 @@ nonisolated enum DecisionClient {
                     let decision = request.decision ?? probe
                     let model = model(of: request.settings, provider: request.provider)
                     if decision.items.isEmpty {
-                        let data = try await post(decision.body(model: model), for: decision, settings: request.settings, provider: request.provider)
+                        let data = try await post(decision.body(model: model), about: decision.state, settings: request.settings, provider: request.provider)
                         let reply = try decode(data, for: decision.answers, from: request.provider)
                         continuation.yield(.usage(reply.usage, adds: false))
                         continuation.yield(.decision(reply.decision))
@@ -122,7 +146,7 @@ nonisolated enum DecisionClient {
                         for offset in stride(from: 0, to: decision.items.count, by: size) {
                             try Task.checkCancellation()
                             let body = decision.body(model: model, itemsFrom: offset, count: size, trimmed: request.provider.trimsDecisionState)
-                            let data = try await post(body, for: decision, settings: request.settings, provider: request.provider)
+                            let data = try await post(body, about: decision.state, settings: request.settings, provider: request.provider)
                             let reply = try decodeBatch(data, for: decision, from: offset, count: size, provider: request.provider)
                             batch.items += reply.items
                             continuation.yield(.usage(reply.usage, adds: true))
@@ -144,9 +168,32 @@ nonisolated enum DecisionClient {
         return model.isEmpty ? provider.defaultModel : model
     }
 
+    /// Several questions about the same texts, answered in one request, or as many as the provider takes
+    /// (`Provider.questionsPerRequest`), for the live decisions on the Context card (see `LiveDecisions`): every
+    /// answer by its question's id, and what the requests took together.
+    static func decide(_ questions: [DecisionQuestion], about state: [SelectedText], settings: ProviderSettings, provider: Provider) async throws -> LiveReply {
+        let model = model(of: settings, provider: provider)
+        var reply = LiveReply(decisions: [:], usage: .zero)
+        for batch in batches(of: questions, for: provider) {
+            try Task.checkCancellation()
+            let data = try await post(DecisionRequest.body(model: model, state: state, questions: batch), about: state, settings: settings, provider: provider)
+            let part = try decodeLive(data, for: batch, from: provider)
+            reply.decisions.merge(part.decisions) { _, new in new }
+            reply.usage = reply.usage.merging(part.usage, adding: true)
+        }
+        return reply
+    }
+
+    /// The questions in the groups that go in one request each: all of them for Jev and OpenRouter, eight at a
+    /// time for Ollama, whose prompts carry every question of a request.
+    static func batches(of questions: [DecisionQuestion], for provider: Provider) -> [[DecisionQuestion]] {
+        let size = provider.questionsPerRequest
+        return stride(from: 0, to: questions.count, by: size).map { Array(questions[$0..<min($0 + size, questions.count)]) }
+    }
+
     /// Posts `body` and reads the reply, or throws with what the server said.
-    private static func post(_ body: [String: Any], for decision: DecisionRequest, settings: ProviderSettings, provider: Provider) async throws -> Data {
-        let (data, response) = try await session.data(for: urlRequest(body, for: decision, settings: settings, provider: provider))
+    private static func post(_ body: [String: Any], about state: [SelectedText], settings: ProviderSettings, provider: Provider) async throws -> Data {
+        let (data, response) = try await session.data(for: urlRequest(body, about: state, settings: settings, provider: provider))
         guard let http = response as? HTTPURLResponse else {
             throw LLMError.provider("The server sent a response Meraline doesn’t understand.")
         }
@@ -160,13 +207,18 @@ nonisolated enum DecisionClient {
     /// The HTTP request for `decision` about the whole text, with the key as a bearer token, when the provider
     /// takes one, and the model from Settings, or the provider's default when none is set.
     static func urlRequest(_ decision: DecisionRequest, settings: ProviderSettings, provider: Provider = .typeSafe) throws -> URLRequest {
-        try urlRequest(decision.body(model: model(of: settings, provider: provider)), for: decision, settings: settings, provider: provider)
+        try urlRequest(decision.body(model: model(of: settings, provider: provider)), about: decision.state, settings: settings, provider: provider)
     }
 
-    private static func urlRequest(_ body: [String: Any], for decision: DecisionRequest, settings: ProviderSettings, provider: Provider) throws -> URLRequest {
+    /// The HTTP request that asks `questions` about `state` at once (see `decide(_:about:settings:provider:)`).
+    static func urlRequest(_ questions: [DecisionQuestion], about state: [SelectedText], settings: ProviderSettings, provider: Provider = .typeSafe) throws -> URLRequest {
+        try urlRequest(DecisionRequest.body(model: model(of: settings, provider: provider), state: state, questions: questions), about: state, settings: settings, provider: provider)
+    }
+
+    private static func urlRequest(_ body: [String: Any], about state: [SelectedText], settings: ProviderSettings, provider: Provider) throws -> URLRequest {
         let key = settings.apiKey.trimmed
         if provider.keyPolicy == .required && key.isEmpty { throw LLMError.missingKey(provider) }
-        guard !decision.state.isEmpty else { throw LLMError.provider("A decision needs text to decide about.") }
+        guard !state.isEmpty else { throw LLMError.provider("A decision needs text to decide about.") }
         guard var components = URLComponents(string: settings.baseURL.trimmed),
               components.scheme == "https" || components.scheme == "http",
               components.host?.isEmpty == false else {
@@ -196,6 +248,12 @@ nonisolated enum DecisionClient {
         let usage: TokenUsage
     }
 
+    /// The answers to several questions asked at once, by question id, and what they took.
+    struct LiveReply: Equatable, Sendable {
+        var decisions: [DecisionQuestion.ID: Decision]
+        var usage: TokenUsage
+    }
+
     /// The reply's answer about the whole text as a `Decision` over `answers`.
     static func decode(_ data: Data, for answers: DecisionAnswers, from provider: Provider = .typeSafe) throws -> Reply {
         let response = try JSONDecoder().decode(SystemOneResponse.self, from: data)
@@ -213,6 +271,18 @@ nonisolated enum DecisionClient {
             items.append(DecisionBatch.Item(id: index, text: request.items[index], decision: try decision(from: answer, for: request.answers, provider: provider)))
         }
         return BatchReply(items: items, usage: usage(of: response))
+    }
+
+    /// The reply's answers to `questions`, each read as `decode` reads one, by the question's id. A question the
+    /// model didn't answer fails the reply.
+    static func decodeLive(_ data: Data, for questions: [DecisionQuestion], from provider: Provider = .typeSafe) throws -> LiveReply {
+        let response = try JSONDecoder().decode(SystemOneResponse.self, from: data)
+        var decisions: [DecisionQuestion.ID: Decision] = [:]
+        for question in questions {
+            guard let answer = response.answers[question.id] else { throw LLMError.emptyResponse }
+            decisions[question.id] = try decision(from: answer, for: question.answers, provider: provider)
+        }
+        return LiveReply(decisions: decisions, usage: usage(of: response))
     }
 
     /// What the reply says it took: tokens, the cost when the server says (OpenRouter does), and the model.

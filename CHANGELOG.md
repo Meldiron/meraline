@@ -16,6 +16,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 ### Decision
 
 - **The scope switch explains itself.** Click Each Word, Each Line, or back to Whole Text under the input, and a note under the cards says what the choice decides about, up to the thousand words or lines a question takes. It goes with the question or the chat, and never shows on its own.
+- **Decisions as you type.** The Context card has a Live switch in Decision mode. Turn it on, and after each pause in typing the card asks the decision model about its text, without sending anything to the chat, and shows the answer on a chip under the text: a check in green for Yes, a cross in red for No, how sure it is beside it. The question in the input is asked, and so is any preset you turn on: click Urgent?, Tone, or Priority on the card and watch a draft message decided three ways at once, in one request. An answer stays while its text and question stay, so turning a preset on asks only that preset; typing again asks everything that is on. Return still asks for a decision in the chat. Off until you turn it on, since every pause asks the model, and Settings › Usage counts the live decisions among the rest.
 
 ## v1.10.0 - 2026-10-02
 

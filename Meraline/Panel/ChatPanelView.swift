@@ -114,7 +114,10 @@ struct ChatPanelView: View {
                         .transition(Self.cardRowTransition)
                 }
                 if session.typedState != nil, !session.isPlaying {
-                    TypedStateCard(text: typedState, isDeciding: session.isDeciding, isFocused: $isStateFocused) {
+                    TypedStateCard(
+                        text: typedState, isDeciding: session.isDeciding, live: session.liveDecisions, unsureBelow: preferences.unsureBelow,
+                        isFocused: $isStateFocused, toggleLive: session.toggleLiveDecisions, togglePreset: session.toggleLivePreset(_:)
+                    ) {
                         session.removeTypedState()
                         isInputFocused = true
                     }
@@ -300,6 +303,8 @@ struct ChatPanelView: View {
             if !Calendar.current.isDate(today, inSameDayAs: .now) { today = .now }
         }
         .onChange(of: layout.stateFocusRequest) { focusState() }
+        // The live decisions follow the mode, the provider, and the presets too, which the session doesn't watch itself.
+        .onChange(of: session.liveAsk) { session.refreshLiveDecisions() }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in today = .now }
         .onChange(of: session.isStreaming) {
             if !session.isStreaming && layout.actionPanel == nil { isInputFocused = true }

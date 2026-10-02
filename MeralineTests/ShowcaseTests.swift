@@ -25,6 +25,7 @@ import WebKit
 ///   decision-levels  Decision mode: a priority placed along Low, Medium, and High, and the answers under the input
 ///   decision-lines  Decision mode about each line: six tasks from Notes grouped under Yes, No, and Not sure
 ///   decision-scope  Decision mode: the switch under the input set to each line, and the note that says what it decides about
+///   decision-live  Decision mode: the Context card deciding as you type, the question in the input and three presets answered on their chips
 @MainActor
 @Suite(.serialized, .enabled(if: Showcase.output != nil, "scripts/showcase.sh takes these pictures"))
 struct ShowcaseTests {
@@ -337,6 +338,35 @@ struct ShowcaseTests {
         }
     }
 
+    @Test func decisionLive() async throws {
+        guard Showcase.wants("decision-live") else { return }
+        func yes(_ p: Double) -> Decision { Decision(options: [.init(label: "Yes", probability: p), .init(label: "No", probability: 1 - p)], isYesNo: true, confidence: abs(2 * p - 1)) }
+        // What each question is answered with, by its wording: the input's, and the presets turned on.
+        let answers: [String: Decision] = [
+            "Is this ready to send?": yes(0.88),
+            "Is this urgent?": yes(0.94),
+            "What is the tone of this text?": Decision(options: [.init(label: "Friendly", probability: 0.22), .init(label: "Neutral", probability: 0.71), .init(label: "Angry", probability: 0.07)], confidence: 0.7),
+            "How high a priority is this?": Decision(options: [.init(label: "Low", probability: 0.04), .init(label: "Medium", probability: 0.2), .init(label: "High", probability: 0.76)], isOrdered: true, score: 1.72, confidence: 0.76),
+        ]
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.decisionPanel(on: stage, live: answers, presets: ["urgent", "tone", "priority"])
+            scene.session.draft = "Is this ready to send?"
+            await Showcase.settle(1.0)
+            // With the keyboard in the card, as while the text is being typed and the chips answer under it.
+            await Showcase.waitForIdle()
+            scene.panel.makeKey()
+            await Showcase.settle(0.3)
+            scene.session.writeState()
+            scene.controller.layout.stateFocusRequest += 1
+            scene.session.typedState = "Hi team, checkout has been down for European customers since 9:40 and payments fail with a 502. I’m on it, but we may need to pause the campaign until it’s fixed."
+            await Showcase.settle(1.5)
+            #expect(Self.moveCursorToEnd(ofCardIn: scene.panel), "the card has the keyboard")
+            try await stage.capturePanel(scene.panel, as: "decision-live")
+            stage.close(scene.panel)
+        }
+    }
+
     @Test func costNudge() async throws {
         guard Showcase.wants("cost-nudge") else { return }
         for appearance in Showcase.appearances {
@@ -485,15 +515,27 @@ struct ShowcaseTests {
     }
 
     /// The real panel on the stage in Decision mode, TypeSafe answering with `decisions`, or with `batches` about
-    /// each word or line of the `scope`.
-    private static func decisionPanel(on stage: ShowcaseStage, decisions: [Decision] = [], batches: [DecisionBatch] = [], scope: DecisionScope = .whole) throws -> PanelScene {
+    /// each word or line of the `scope`, and, with `live`, deciding as you type on the Context card, each question
+    /// answered by its wording, with `presets` turned on.
+    private static func decisionPanel(
+        on stage: ShowcaseStage, decisions: [Decision] = [], batches: [DecisionBatch] = [], scope: DecisionScope = .whole,
+        live: [String: Decision]? = nil, presets: Set<String> = []
+    ) throws -> PanelScene {
         let (preferences, defaults) = preferences()
         preferences[.typeSafe] = ProviderSettings(model: "jev-latest", baseURL: Provider.typeSafe.defaultBaseURL, apiKey: "demo", isEnabled: true)
         preferences.setDefaultProvider(.typeSafe, for: .decision)
         preferences.mode = .decision
         preferences.decisionScope = scope
+        if live != nil {
+            preferences.liveDecisions = true
+            preferences.livePresets = presets
+        }
         let model = ScriptedModel(decisions: decisions, batches: batches)
-        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { model.stream($0) }
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil), stream: { model.stream($0) }) { questions, _, _, _ in
+            var decisions: [String: Decision] = [:]
+            for question in questions { decisions[question.id] = live?[question.question] }
+            return DecisionClient.LiveReply(decisions: decisions, usage: .zero)
+        }
         return try place(session, preferences: preferences, defaults: defaults, model: model, on: stage)
     }
 
