@@ -148,8 +148,8 @@ nonisolated struct Decision: Equatable, Sendable {
     }
 }
 
-/// What a decision is about: the whole text, or each of its words or lines, one decision apiece, asked of Jev a
-/// hundred questions a request (see `DecisionClient`). The switch at the games' place under the input picks it,
+/// What a decision is about: the whole text, or each of its words or lines, one decision apiece, asked a hundred
+/// questions a request, or as many as the provider takes (see `DecisionClient`, `Provider.questionsPerRequest`). The switch at the games' place under the input picks it,
 /// and `Preferences.decisionScope` keeps it.
 nonisolated enum DecisionScope: String, CaseIterable, Identifiable, Sendable {
     case whole
@@ -158,7 +158,8 @@ nonisolated enum DecisionScope: String, CaseIterable, Identifiable, Sendable {
 
     var id: Self { self }
 
-    /// The most words or lines one question decides about, and how many go in one request.
+    /// The most words or lines one question decides about, and how many go in one request, unless the provider
+    /// takes fewer (`Provider.questionsPerRequest`).
     static let itemLimit = 1_000
     static let batchSize = 100
 

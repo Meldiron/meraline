@@ -107,7 +107,7 @@ struct GeneralPane: View {
             } header: {
                 Text("Providers")
             } footer: {
-                Text("Apple Intelligence, and Ollama running a model on this Mac, answer without your question leaving it.")
+                Text("Apple Intelligence, and Ollama running a model on this Mac, answer and decide without your question leaving it.")
             }
         }
         .formStyle(.grouped)
@@ -331,6 +331,9 @@ struct ProviderPane: View {
                 } else if let portal = provider.keyPortal {
                     if let owner = provider.sharesKey {
                         Text("The same key as \(owner.name) under \(owner.kind.pluralTitle): paste it once, and both use it.")
+                    }
+                    if provider == .ollamaDecision {
+                        Text("Needs Ollama 0.35 or newer with a decision model pulled: in Terminal, “ollama pull nimble” (9 GB) or “ollama pull tev1” (4 GB).")
                     }
                     Link(provider.keyPolicy == .none ? "Install \(provider.name)" : "Get an API key", destination: portal)
                 }

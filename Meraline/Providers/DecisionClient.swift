@@ -18,18 +18,31 @@ nonisolated struct DecisionRequest: Equatable, Sendable {
     /// A word's or line's question, by its place among the items.
     static func itemID(_ index: Int) -> String { "item_\(index)" }
 
+    /// The most characters the texts may have to go in a trimmed request beside its batch's items (see
+    /// `body(model:itemsFrom:count:trimmed:)`), so a word is read in its sentence when the text is short, and
+    /// left to the item and the question when it isn't.
+    static let trimmedTextLimit = 2_000
+
     /// Jev's state: the text with the app it came from, or the texts in order, and the words or lines when the
     /// question is about each.
     var stateJSON: [String: Any] {
+        var json = textsJSON
+        if !items.isEmpty { json["items"] = items }
+        return json
+    }
+
+    /// The text with the app it came from, or the texts in order.
+    private var textsJSON: [String: Any] {
         func entry(_ text: SelectedText) -> [String: Any] {
             var entry: [String: Any] = ["text": text.text]
             if let source = text.appName { entry["from"] = source }
             return entry
         }
-        var json: [String: Any] = state.count == 1 ? entry(state[0]) : ["texts": state.map(entry)]
-        if !items.isEmpty { json["items"] = items }
-        return json
+        return state.count == 1 ? entry(state[0]) : ["texts": state.map(entry)]
     }
+
+    /// Whether the texts are short enough to go in a trimmed request.
+    var textsFitTrimmed: Bool { state.reduce(0) { $0 + $1.text.count } <= Self.trimmedTextLimit }
 
     /// The question as Jev takes it: its yes/no question (`noul`), a set of answers with no descriptions
     /// (`choice`), or levels in order (`score`).
@@ -53,33 +66,45 @@ nonisolated struct DecisionRequest: Equatable, Sendable {
 
     /// The request about `count` items from `offset` on, a question each, named by its place: the question, which
     /// item it is about by its name in the state, and the item itself, as TypeSafe's docs ask questions about one
-    /// item among many.
-    func body(model: String, itemsFrom offset: Int, count: Int) -> [String: Any] {
-        var questions: [String: Any] = [:]
-        for index in offset..<min(offset + count, items.count) {
-            questions[Self.itemID(index)] = questionJSON(instructions: ["question": question, "about": "items[\(index)]", "item": items[index]])
+    /// item among many. Trimmed (`Provider.trimsDecisionState`), the state holds only the batch's items, which the
+    /// questions name from 0, and the texts only when they are short (`trimmedTextLimit`), so each of Ollama's
+    /// prompts, which carries the state and every question of the request, fits its 2,050 tokens. The questions
+    /// keep their names by their place among all the items, so the reply reads the same either way.
+    func body(model: String, itemsFrom offset: Int, count: Int, trimmed: Bool = false) -> [String: Any] {
+        let end = min(offset + count, items.count)
+        var state: [String: Any]
+        if trimmed {
+            state = textsFitTrimmed ? textsJSON : [:]
+            state["items"] = Array(items[offset..<end])
+        } else {
+            state = stateJSON
         }
-        return ["model": model, "state": stateJSON, "questions": questions]
+        var questions: [String: Any] = [:]
+        for index in offset..<end {
+            let place = trimmed ? index - offset : index
+            questions[Self.itemID(index)] = questionJSON(instructions: ["question": question, "about": "items[\(place)]", "item": items[index]])
+        }
+        return ["model": model, "state": state, "questions": questions]
     }
 }
 
-/// The System One endpoint, `POST /v1/systemone`, at TypeSafe or at OpenRouter, which serves Jev and other labs'
-/// decision models over the same contract: a state and named questions in, and for each a typed answer with
-/// probabilities out, in one JSON body a few hundred milliseconds later, never a stream. Meraline asks one question
-/// a request and reads its answer into a `Decision`, with what the reply says it took, and cost when it says, for
-/// the usage ledger.
+/// The System One endpoint, `POST /v1/systemone`, at TypeSafe, at OpenRouter, which serves Jev and other labs'
+/// decision models over the same contract, or at Ollama on this Mac, which serves Nimble and Tev1 over it too: a
+/// state and named questions in, and for each a typed answer with probabilities out, in one JSON body a few
+/// hundred milliseconds later, never a stream. Meraline asks one question a request and reads its answer into a
+/// `Decision`, with what the reply says it took, and cost when it says, for the usage ledger.
 nonisolated enum DecisionClient {
     private static let session = URLSession(configuration: .ephemeral)
 
     /// What Test Connection asks, since it has no text of yours.
     static let probe = DecisionRequest(
-        state: [SelectedText("Meraline is testing its connection to TypeSafe.")!],
+        state: [SelectedText("Meraline is testing its connection to a decision model.")!],
         question: "Is this a test?",
         answers: .yesNo
     )
 
-    /// One reply about the whole text, or, about each word or line, one for every hundred items, the batch so far
-    /// after each so the card fills as they come.
+    /// One reply about the whole text, or, about each word or line, one for every hundred items, or as many as the
+    /// provider takes (`Provider.questionsPerRequest`), the batch so far after each so the card fills as they come.
     static func stream(_ request: ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -93,11 +118,12 @@ nonisolated enum DecisionClient {
                         continuation.yield(.decision(reply.decision))
                     } else {
                         var batch = DecisionBatch(scope: decision.scope, answers: decision.answers, total: decision.items.count, items: [])
-                        for offset in stride(from: 0, to: decision.items.count, by: DecisionScope.batchSize) {
+                        let size = request.provider.questionsPerRequest
+                        for offset in stride(from: 0, to: decision.items.count, by: size) {
                             try Task.checkCancellation()
-                            let body = decision.body(model: model, itemsFrom: offset, count: DecisionScope.batchSize)
+                            let body = decision.body(model: model, itemsFrom: offset, count: size, trimmed: request.provider.trimsDecisionState)
                             let data = try await post(body, for: decision, settings: request.settings, provider: request.provider)
-                            let reply = try decodeBatch(data, for: decision, from: offset, count: DecisionScope.batchSize, provider: request.provider)
+                            let reply = try decodeBatch(data, for: decision, from: offset, count: size, provider: request.provider)
                             batch.items += reply.items
                             continuation.yield(.usage(reply.usage, adds: true))
                             continuation.yield(.decisions(batch))
@@ -131,15 +157,15 @@ nonisolated enum DecisionClient {
         return data
     }
 
-    /// The HTTP request for `decision` about the whole text, with the key as a bearer token and the model from
-    /// Settings, or the provider's default when none is set.
+    /// The HTTP request for `decision` about the whole text, with the key as a bearer token, when the provider
+    /// takes one, and the model from Settings, or the provider's default when none is set.
     static func urlRequest(_ decision: DecisionRequest, settings: ProviderSettings, provider: Provider = .typeSafe) throws -> URLRequest {
         try urlRequest(decision.body(model: model(of: settings, provider: provider)), for: decision, settings: settings, provider: provider)
     }
 
     private static func urlRequest(_ body: [String: Any], for decision: DecisionRequest, settings: ProviderSettings, provider: Provider) throws -> URLRequest {
         let key = settings.apiKey.trimmed
-        guard !key.isEmpty else { throw LLMError.missingKey(provider) }
+        if provider.keyPolicy == .required && key.isEmpty { throw LLMError.missingKey(provider) }
         guard !decision.state.isEmpty else { throw LLMError.provider("A decision needs text to decide about.") }
         guard var components = URLComponents(string: settings.baseURL.trimmed),
               components.scheme == "https" || components.scheme == "http",
@@ -152,9 +178,10 @@ nonisolated enum DecisionClient {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = 60
+        // A model on this Mac loads into memory on its first request, which takes a while.
+        request.timeoutInterval = provider.runsOnThisMac ? 120 : 60
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        if !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
     }

@@ -3,8 +3,8 @@ import Foundation
 import Testing
 @testable import Meraline
 
-/// Decision mode: the answers a question names, the request a decision model gets (TypeSafe's Jev directly, or any
-/// through OpenRouter) and the reply it sends, and what the chat does with a decision. Context is optional (the row only suggests it), it keeps any context for
+/// Decision mode: the answers a question names, the request a decision model gets (TypeSafe's Jev directly, any
+/// through OpenRouter, or Nimble or Tev1 through Ollama on this Mac) and the reply it sends, and what the chat does with a decision. Context is optional (the row only suggests it), it keeps any context for
 /// follow-ups, writes the answer in words, offers no rewrite, and plays no game against Jev.
 @MainActor
 struct DecisionTests {
@@ -37,7 +37,7 @@ struct DecisionTests {
 
     @Test func typeSafeIsADecisionModelOfItsOwnMode() {
         #expect(Provider.typeSafe.kind == .decision)
-        #expect(ProviderKind.decision.providers == [.typeSafe, .openRouterDecision])
+        #expect(ProviderKind.decision.providers == [.typeSafe, .openRouterDecision, .ollamaDecision])
         #expect(Provider.typeSafe.keyPolicy == .required)
         #expect(Provider.typeSafe.defaultModel == "jev-latest")
         #expect(!SystemPrompt.allCases.contains(.chat(.decision)), "Jev takes no prompt, so Settings › Prompt has none for it")
@@ -82,6 +82,107 @@ struct DecisionTests {
         #expect(table.price(for: provider, model: "liquid/d1") == d1)
         #expect(table.price(for: provider, model: "inception/mercury-decide:free") == .jev)
         #expect(table.price(for: provider, model: "typesafe/jev-1.13") == .jev)
+    }
+
+    @Test func ollamaDecidesOnThisMac() throws {
+        let provider = Provider.ollamaDecision
+        #expect(provider.kind == .decision)
+        #expect(provider.name == "Ollama" && provider.symbol == Provider.ollama.symbol && provider.tint == Provider.ollama.tint)
+        #expect(provider.keyPolicy == .none && provider.sharesKey == nil && provider.keyPortal == Provider.ollama.keyPortal)
+        #expect(provider.runsOnThisMac && Provider.ollama.runsOnThisMac && Provider.apple.runsOnThisMac)
+        #expect(!Provider.typeSafe.runsOnThisMac && !Provider.openRouterDecision.runsOnThisMac && !Provider.custom.runsOnThisMac)
+        #expect(provider.defaultModel == "nimble")
+        #expect(provider.suggestedModels == ["nimble", "tev1", "tev1:0.8b"] && provider.suggestedModels.first == provider.defaultModel)
+        #expect(provider.defaultBaseURL == "http://127.0.0.1:11434/v1")
+        #expect(Provider.allCases.last == .apple, "the on-device model still sorts last")
+        #expect(PromptPreset.exists(provider.symbol))
+
+        // Off until Settings turns it on, like Ollama under LLMs, and then ready with a model and no key.
+        var settings = ProviderSettings(model: "nimble", baseURL: provider.defaultBaseURL, apiKey: "", isEnabled: false)
+        #expect(!settings.isReady(for: provider))
+        settings.isEnabled = true
+        #expect(settings.isReady(for: provider))
+        #expect(!ProviderSettings(model: "", baseURL: provider.defaultBaseURL, apiKey: "", isEnabled: true).isReady(for: provider), "a model is needed, as under LLMs")
+
+        // The request goes to Ollama's System One endpoint on this Mac, with no key and time for the model to load.
+        let mail = try #require(SelectedText("Production is down.", appName: "Mail"))
+        let request = DecisionRequest(state: [mail], question: "Is this urgent?", answers: .yesNo)
+        settings.model = ""
+        let urlRequest = try DecisionClient.urlRequest(request, settings: settings, provider: provider)
+        #expect(urlRequest.url?.absoluteString == "http://127.0.0.1:11434/v1/systemone")
+        #expect(urlRequest.value(forHTTPHeaderField: "Authorization") == nil)
+        #expect(urlRequest.timeoutInterval == 120)
+        let sentBody = try #require(urlRequest.httpBody)
+        let sent = try #require(JSONSerialization.jsonObject(with: sentBody) as? [String: Any])
+        #expect(sent["model"] as? String == "nimble", "the provider's default model when none is set")
+
+        // Free, whatever the price list says, in the ledger too.
+        #expect(PriceTable(prices: [:], fetched: .now).price(for: provider, model: "nimble") == .free)
+        #expect(UsageLedger(file: nil).price(for: provider, model: "tev1:0.8b") == .free)
+
+        // Its replies, as tev1 answered on 2026-10-02: Jev's shapes, with a confidence and a legend on a set and levels.
+        let yes = try DecisionClient.decode(Data("""
+        {"model":"tev1:0.8b","answers":{"decision":{"type":"noul","noul":0.9141597037372717}},"usage":{"input_tokens":126,"output_tokens":1}}
+        """.utf8), for: .yesNo, from: provider)
+        #expect(yes.decision.chosen.label == "Yes" && yes.usage == TokenUsage(input: 126, output: 1, model: "tev1:0.8b"))
+        let team = try DecisionClient.decode(Data("""
+        {"model":"tev1:0.8b","answers":{"decision":{"type":"choice","choice":"Billing","probabilities":{"Billing":0.9609486554519427,"Technical":0.036720162678455744,"Sales":0.0023311818696014554},"confidence":0.8418476852320123}},"usage":{"input_tokens":138,"output_tokens":1}}
+        """.utf8), for: DecisionAnswers(options: ["Billing", "Technical", "Sales"], isOrdered: false), from: provider)
+        #expect(team.decision.chosen.label == "Billing" && abs(team.decision.confidence - 0.8418476852320123) < 1e-12)
+        let level = try DecisionClient.decode(Data("""
+        {"model":"tev1:0.8b","answers":{"decision":{"type":"score","score":1.4048956374281032,"legend":{"0":"Low","1":"Medium","2":"High"},"probabilities":{"0":0.15461484198520098,"1":0.2858746786014951,"2":0.559510479413304},"confidence":0.11568948716450045}},"usage":{"input_tokens":134,"output_tokens":1}}
+        """.utf8), for: DecisionAnswers(options: ["Low", "Medium", "High"], isOrdered: true), from: provider)
+        #expect(level.decision.chosen.label == "High" && level.decision.isOrdered)
+        let score = try #require(level.decision.score)
+        #expect(abs(score - 1.4048956374281032) < 1e-12)
+        #expect(StreamDecoder.errorMessage(from: Data(#"{"error":"model \"nimble\" not found, try pulling it first"}"#.utf8)) == "model \"nimble\" not found, try pulling it first", "Ollama's error reads as it is")
+
+        // Turned on in Settings, it is the decision model when it is the only one ready; Ollama under LLMs is its own switch.
+        let preferences = Self.preferences(Self.throwaway())
+        #expect(preferences.readyProviders(for: .decision).isEmpty)
+        var ollama = preferences[provider]
+        ollama.isEnabled = true
+        preferences[provider] = ollama
+        #expect(preferences.readyProviders(for: .decision) == [provider] && preferences.defaultProvider(for: .decision) == provider)
+        #expect(!preferences[.ollama].isEnabled && preferences.readyProviders(for: .llm).isEmpty)
+    }
+
+    @Test func ollamaGetsEightQuestionsARequestAboutOnlyTheirItems() throws {
+        // Ollama reads every question of a request in each prompt, and a prompt takes at most 2,050 tokens.
+        #expect(Provider.ollamaDecision.questionsPerRequest == 8 && Provider.ollamaDecision.trimsDecisionState)
+        #expect(Provider.typeSafe.questionsPerRequest == DecisionScope.batchSize && !Provider.typeSafe.trimsDecisionState)
+        #expect(Provider.openRouterDecision.questionsPerRequest == DecisionScope.batchSize && !Provider.openRouterDecision.trimsDecisionState)
+
+        let lines = (1...20).map { "Task \($0)" }
+        let notes = try #require(SelectedText(lines.joined(separator: "\n"), appName: "Notes"))
+        let request = DecisionRequest(state: [notes], question: "Is this urgent?", answers: .yesNo, scope: .lines, items: lines)
+        let body = request.body(model: "tev1", itemsFrom: 8, count: 8, trimmed: true)
+        let state = try #require(body["state"] as? [String: Any])
+        #expect(state["items"] as? [String] == Array(lines[8..<16]), "only the batch's items")
+        #expect(state["text"] as? String == notes.text && state["from"] as? String == "Notes", "and the text, since it is short")
+        let questions = try #require(body["questions"] as? [String: [String: Any]])
+        #expect(questions.count == 8 && questions["item_7"] == nil && questions["item_16"] == nil)
+        #expect(questions["item_8"]?["instructions"] as? [String: String] == ["question": "Is this urgent?", "about": "items[0]", "item": "Task 9"], "named by its place among all the items, about its place in the batch")
+        #expect(questions["item_15"]?["instructions"] as? [String: String] == ["question": "Is this urgent?", "about": "items[7]", "item": "Task 16"])
+        #expect(JSONSerialization.isValidJSONObject(body))
+        let untrimmed = request.body(model: "tev1", itemsFrom: 8, count: 8)
+        #expect((untrimmed["state"] as? [String: Any])?["items"] as? [String] == lines, "Jev gets them all")
+        #expect((untrimmed["questions"] as? [String: [String: Any]])?["item_8"]?["instructions"] as? [String: String] == ["question": "Is this urgent?", "about": "items[8]", "item": "Task 9"])
+
+        // A long text stays out of a trimmed request, so the items alone are the state.
+        let long = (1...400).map { "Task \($0) needs doing" }
+        let essay = try #require(SelectedText(long.joined(separator: "\n"), appName: "Notes"))
+        let longRequest = DecisionRequest(state: [essay], question: "Is this urgent?", answers: .yesNo, scope: .lines, items: long)
+        #expect(!longRequest.textsFitTrimmed && request.textsFitTrimmed)
+        let longState = try #require(longRequest.body(model: "tev1", itemsFrom: 392, count: 8, trimmed: true)["state"] as? [String: Any])
+        #expect(longState.keys.sorted() == ["items"] && longState["items"] as? [String] == Array(long[392...]))
+
+        // The reply reads as any batch does, as tev1 answered on 2026-10-02.
+        let batch = try DecisionClient.decodeBatch(Data("""
+        {"model":"tev1:0.8b","answers":{"item_8":{"type":"noul","noul":0.7657548779340712},"item_9":{"type":"noul","noul":0.25}},"usage":{"input_tokens":906,"output_tokens":4}}
+        """.utf8), for: request, from: 8, count: 2, provider: .ollamaDecision)
+        #expect(batch.items.map(\.id) == [8, 9] && batch.items.map(\.text) == ["Task 9", "Task 10"])
+        #expect(batch.items.map { $0.decision.chosen.label } == ["Yes", "No"])
     }
 
     @Test func openRoutersKeyIsPastedOnceForLLMsAndDecisions() {

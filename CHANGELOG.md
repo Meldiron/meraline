@@ -11,6 +11,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - **The surest first.** When Jev decides about each word or line, each answer lists its words or lines surest first, so the clearest calls lead and the near misses sit at the bottom. Copy Answer lists them the same way.
 - **Answers fold.** Each answer's words or lines now sit folded under its header, the count beside it, so a long text's decisions read as a short summary first. Click a header to open its words or lines, and again to fold them back.
 - **Decision models through OpenRouter.** Settings › Decision Models has OpenRouter beside TypeSafe, on the key you use for OpenRouter’s LLMs, pasted once for both. Pick TypeSafe’s Jev, Liquid’s D1, Upstage’s Solar Decide, Together’s Tev1, or Jared Palmer’s Kev, every decision model OpenRouter serves, and Settings › Usage counts what each answer cost as OpenRouter reports it.
+- **Decisions on this Mac.** Settings › Decision Models has Ollama too: turn it on, and Bespoke Labs’ Nimble or Together’s Tev1 decides on your Mac, with no key and nothing leaving it, as Ollama’s LLMs answer. It takes Ollama 0.35 or newer and a model pulled in Terminal, “ollama pull nimble” (9 GB) or “ollama pull tev1” (4 GB, or “tev1:0.8b” for a small one). A decision about each word or line goes eight at a time, since Ollama’s models read a request in prompts of 2,050 tokens, and Settings › Usage counts them as free.
 
 ## v1.9.0 - 2026-09-29
 

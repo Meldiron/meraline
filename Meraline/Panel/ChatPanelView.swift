@@ -1296,7 +1296,7 @@ private struct SetupRow: View {
         switch kind {
         case .llm: "Add an API key or turn on a local model to start asking."
         case .agent: "Install Claude Code, Codex, or OpenCode, then turn it on in Settings."
-        case .decision: "Add a TypeSafe or OpenRouter API key in Settings, and a decision model answers yes or no about the text you add."
+        case .decision: "Add a TypeSafe or OpenRouter API key in Settings, or turn on Ollama, and a decision model answers yes or no about the text you add."
         }
     }
 

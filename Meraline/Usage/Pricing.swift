@@ -70,7 +70,7 @@ nonisolated struct PriceTable: Codable, Equatable, Sendable {
     /// they are, and the others by their lab and name, dates and dots aside. Nil when the table has no such
     /// model, and the answer waits unpriced.
     func price(for provider: Provider, model: String) -> ModelPrice? {
-        if provider.isOnDevice || provider == .ollama { return .free }
+        if provider.runsOnThisMac { return .free }
         let model = model.trimmed
         if provider.isDecisionModel { return prices[model] ?? prices[String(model.prefix { $0 != ":" })] ?? .jev }
         guard !model.isEmpty else { return nil }
@@ -95,7 +95,7 @@ nonisolated struct PriceTable: Codable, Equatable, Sendable {
         case .anthropic, .claudeCode: ["anthropic"]
         case .openAI, .codex: ["openai"]
         case .gemini: ["google"]
-        case .openRouter, .custom, .opencode, .ollama, .apple, .typeSafe, .openRouterDecision: []
+        case .openRouter, .custom, .opencode, .ollama, .apple, .typeSafe, .openRouterDecision, .ollamaDecision: []
         }
     }
 

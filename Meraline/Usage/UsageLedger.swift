@@ -250,7 +250,7 @@ final class UsageLedger {
 
     /// The price of `model` at `provider`, as the table has it; a model on this Mac is free, table or none.
     func price(for provider: Provider, model: String) -> ModelPrice? {
-        prices?.price(for: provider, model: model) ?? ((provider.isOnDevice || provider == .ollama) ? .free : nil)
+        prices?.price(for: provider, model: model) ?? (provider.runsOnThisMac ? .free : nil)
     }
 
     /// The price of the model a tally is keyed by.
