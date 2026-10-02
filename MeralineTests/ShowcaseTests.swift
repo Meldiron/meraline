@@ -443,7 +443,7 @@ struct ShowcaseTests {
 
     // MARK: Scenes
 
-    private struct PanelScene {
+    struct PanelScene {
         let session: ChatSession
         let panel: NSWindow
         let controller: PanelController
@@ -452,7 +452,7 @@ struct ShowcaseTests {
 
     /// Preferences as the screenshots have them: Anthropic ready, the window pinned, in a throwaway suite with
     /// `values` in it and no Keychain.
-    private static func preferences(_ values: [String: Any] = [:]) -> (Preferences, UserDefaults) {
+    static func preferences(_ values: [String: Any] = [:]) -> (Preferences, UserDefaults) {
         let suite = "MeralineShowcase.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
@@ -470,11 +470,18 @@ struct ShowcaseTests {
     }
 
     /// The real panel on the stage, answering from `replies`.
-    private static func panel(on stage: ShowcaseStage, replies: [String] = []) throws -> PanelScene {
+    static func panel(on stage: ShowcaseStage, replies: [String] = []) throws -> PanelScene {
         let (preferences, defaults) = preferences()
         let model = ScriptedModel(replies)
         let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { model.stream($0) }
         return try place(session, preferences: preferences, defaults: defaults, model: model, on: stage)
+    }
+
+    /// The real panel on the stage, answering through `stream`, for an answer that comes as a model's does.
+    static func panel(on stage: ShowcaseStage, stream: @escaping @MainActor (ChatRequest) -> AsyncThrowingStream<StreamOutput, Error>) throws -> PanelScene {
+        let (preferences, defaults) = preferences()
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil), stream: stream)
+        return try place(session, preferences: preferences, defaults: defaults, model: ScriptedModel(), on: stage)
     }
 
     /// The real panel on the stage in Decision mode, TypeSafe answering with `decisions`, or with `batches` about
@@ -503,7 +510,7 @@ struct ShowcaseTests {
         return try place(session, preferences: preferences, defaults: defaults, model: ScriptedModel(), on: stage)
     }
 
-    private static func place(
+    static func place(
         _ session: ChatSession, preferences: Preferences, defaults: UserDefaults, model: ScriptedModel, on stage: ShowcaseStage
     ) throws -> PanelScene {
         let before = Set(NSApp.windows.map(ObjectIdentifier.init))

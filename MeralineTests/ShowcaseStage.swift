@@ -12,7 +12,7 @@ import SwiftUI
 /// keyboard for about a second: the panel without activating the test host, as Meraline's own window does, and
 /// Settings by activating it, handing activation back to the app that had it.
 nonisolated enum Showcase {
-    private static let environment = ProcessInfo.processInfo.environment
+    static let environment = ProcessInfo.processInfo.environment
 
     /// Where the pictures go. Unset, as in every other test run, the showcase is skipped.
     static let output: URL? = environment["MERALINE_SHOWCASE"].map { URL(filePath: $0, directoryHint: .isDirectory) }
@@ -69,8 +69,8 @@ final class ShowcaseStage {
     static let desktop = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)))
 
     let appearance: Showcase.Appearance
-    private let backdrop: NSWindow
-    private let screen: NSScreen
+    let backdrop: NSWindow
+    let screen: NSScreen
 
     init(_ appearance: Showcase.Appearance) {
         self.appearance = appearance
@@ -174,7 +174,7 @@ final class ShowcaseStage {
         return found
     }
 
-    private func display() async throws -> SCDisplay {
+    func display() async throws -> SCDisplay {
         let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
         let content = try await SCShareableContent.current
         guard let display = content.displays.first(where: { $0.displayID == number }) else { throw ShowcaseError.windowNotFound }
