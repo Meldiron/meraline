@@ -10,6 +10,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 - **The surest first.** When Jev decides about each word or line, each answer lists its words or lines surest first, so the clearest calls lead and the near misses sit at the bottom. Copy Answer lists them the same way.
 - **Answers fold.** Each answer's words or lines now sit folded under its header, the count beside it, so a long text's decisions read as a short summary first. Click a header to open its words or lines, and again to fold them back.
+- **Decision models through OpenRouter.** Settings › Decision Models has OpenRouter beside TypeSafe, on the key you use for OpenRouter’s LLMs, pasted once for both. Pick TypeSafe’s Jev, Liquid’s D1, Upstage’s Solar Decide, Together’s Tev1, or Jared Palmer’s Kev, every decision model OpenRouter serves, and Settings › Usage counts what each answer cost as OpenRouter reports it.
 
 ## v1.9.0 - 2026-09-29
 

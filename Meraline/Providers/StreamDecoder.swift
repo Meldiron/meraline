@@ -172,7 +172,7 @@ nonisolated enum StreamDecoder {
         case .claudeCode: try claudeCode(payload, knownServers: knownServers)
         case .codex: try codex(payload)
         case .opencode: try opencode(payload, knownServers: knownServers)
-        case .apple, .typeSafe: .ignored
+        case .apple, .typeSafe, .openRouterDecision: .ignored
         }
     }
 
@@ -241,7 +241,7 @@ nonisolated enum StreamDecoder {
                 input: tokens?.input, output: tokens.map { ($0.output ?? 0) + ($0.reasoning ?? 0) },
                 cacheRead: tokens?.cache?.read, cacheWrite: tokens?.cache?.write, cost: part.cost
             ), adds: true)
-        case .apple, .typeSafe:
+        case .apple, .typeSafe, .openRouterDecision:
             return nil
         }
     }

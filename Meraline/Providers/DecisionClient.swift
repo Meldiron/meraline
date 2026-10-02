@@ -1,6 +1,7 @@
 import Foundation
 
-/// A question for TypeSafe's Jev (see `DecisionClient`): the texts it is about, which go as the request's state,
+/// A question for a System One model, TypeSafe's Jev or another (see `DecisionClient`): the texts it is about,
+/// which go as the request's state,
 /// the question, less the answers it named, and the answers it picks from (see `DecisionAnswers`). About each
 /// word or line (see `DecisionScope`), the items go in the state too, and each gets a question of its own.
 nonisolated struct DecisionRequest: Equatable, Sendable {
@@ -62,9 +63,11 @@ nonisolated struct DecisionRequest: Equatable, Sendable {
     }
 }
 
-/// TypeSafe's one endpoint, `POST /v1/systemone`: a state and named questions in, and for each a typed answer with
+/// The System One endpoint, `POST /v1/systemone`, at TypeSafe or at OpenRouter, which serves Jev and other labs'
+/// decision models over the same contract: a state and named questions in, and for each a typed answer with
 /// probabilities out, in one JSON body a few hundred milliseconds later, never a stream. Meraline asks one question
-/// a request and reads its answer into a `Decision`, with what the reply says it took for the usage ledger.
+/// a request and reads its answer into a `Decision`, with what the reply says it took, and cost when it says, for
+/// the usage ledger.
 nonisolated enum DecisionClient {
     private static let session = URLSession(configuration: .ephemeral)
 
@@ -85,7 +88,7 @@ nonisolated enum DecisionClient {
                     let model = model(of: request.settings, provider: request.provider)
                     if decision.items.isEmpty {
                         let data = try await post(decision.body(model: model), for: decision, settings: request.settings, provider: request.provider)
-                        let reply = try decode(data, for: decision.answers)
+                        let reply = try decode(data, for: decision.answers, from: request.provider)
                         continuation.yield(.usage(reply.usage, adds: false))
                         continuation.yield(.decision(reply.decision))
                     } else {
@@ -94,7 +97,7 @@ nonisolated enum DecisionClient {
                             try Task.checkCancellation()
                             let body = decision.body(model: model, itemsFrom: offset, count: DecisionScope.batchSize)
                             let data = try await post(body, for: decision, settings: request.settings, provider: request.provider)
-                            let reply = try decodeBatch(data, for: decision, from: offset, count: DecisionScope.batchSize)
+                            let reply = try decodeBatch(data, for: decision, from: offset, count: DecisionScope.batchSize, provider: request.provider)
                             batch.items += reply.items
                             continuation.yield(.usage(reply.usage, adds: true))
                             continuation.yield(.decisions(batch))
@@ -167,32 +170,33 @@ nonisolated enum DecisionClient {
     }
 
     /// The reply's answer about the whole text as a `Decision` over `answers`.
-    static func decode(_ data: Data, for answers: DecisionAnswers) throws -> Reply {
+    static func decode(_ data: Data, for answers: DecisionAnswers, from provider: Provider = .typeSafe) throws -> Reply {
         let response = try JSONDecoder().decode(SystemOneResponse.self, from: data)
         guard let answer = response.answers[DecisionRequest.questionID] else { throw LLMError.emptyResponse }
-        return Reply(decision: try decision(from: answer, for: answers), usage: usage(of: response))
+        return Reply(decision: try decision(from: answer, for: answers, provider: provider), usage: usage(of: response))
     }
 
     /// The reply's answers about `count` items from `offset` on, each read as `decode` reads one, in their order.
     /// An item Jev didn't answer fails the batch.
-    static func decodeBatch(_ data: Data, for request: DecisionRequest, from offset: Int, count: Int) throws -> BatchReply {
+    static func decodeBatch(_ data: Data, for request: DecisionRequest, from offset: Int, count: Int, provider: Provider = .typeSafe) throws -> BatchReply {
         let response = try JSONDecoder().decode(SystemOneResponse.self, from: data)
         var items: [DecisionBatch.Item] = []
         for index in offset..<min(offset + count, request.items.count) {
             guard let answer = response.answers[DecisionRequest.itemID(index)] else { throw LLMError.emptyResponse }
-            items.append(DecisionBatch.Item(id: index, text: request.items[index], decision: try decision(from: answer, for: request.answers)))
+            items.append(DecisionBatch.Item(id: index, text: request.items[index], decision: try decision(from: answer, for: request.answers, provider: provider)))
         }
         return BatchReply(items: items, usage: usage(of: response))
     }
 
+    /// What the reply says it took: tokens, the cost when the server says (OpenRouter does), and the model.
     private static func usage(of response: SystemOneResponse) -> TokenUsage {
-        TokenUsage(input: response.usage?.inputTokens, output: response.usage?.outputTokens, model: response.model)
+        TokenUsage(input: response.usage?.inputTokens, output: response.usage?.outputTokens, cost: response.usage?.cost, model: response.model)
     }
 
     /// An answer as a `Decision` over `answers`. A yes/no answer is one probability of yes, so No gets the rest
     /// and the confidence is worked out; a set's answer carries a probability for each option and Jev's
     /// confidence; levels come by their place, with the score along them.
-    private static func decision(from answer: SystemOneResponse.Answer, for answers: DecisionAnswers) throws -> Decision {
+    private static func decision(from answer: SystemOneResponse.Answer, for answers: DecisionAnswers, provider: Provider) throws -> Decision {
         let decision: Decision
         switch answer.type {
         case "noul":
@@ -211,7 +215,7 @@ nonisolated enum DecisionClient {
             }
             decision = Decision(options: options, isOrdered: true, score: answer.score, confidence: answer.confidence ?? Decision.confidence(over: options.map(\.probability)))
         default:
-            throw LLMError.provider("TypeSafe answered with a “\(answer.type)” question, which Meraline doesn’t know.")
+            throw LLMError.provider("\(provider.name) answered with a “\(answer.type)” question, which Meraline doesn’t know.")
         }
         return decision
     }
@@ -233,10 +237,13 @@ nonisolated enum DecisionClient {
         struct Usage: Decodable {
             let inputTokens: Int?
             let outputTokens: Int?
+            /// In US dollars, which OpenRouter reports and TypeSafe doesn't.
+            let cost: Double?
 
             private enum CodingKeys: String, CodingKey {
                 case inputTokens = "input_tokens"
                 case outputTokens = "output_tokens"
+                case cost
             }
         }
     }

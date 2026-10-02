@@ -11,20 +11,36 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
     case codex
     case opencode
     case typeSafe
+    case openRouterDecision
     // Last: the on-device model is the fallback, so it sorts after the configured providers of its kind.
     case apple
 
     static let services: [Provider] = [.apple, .anthropic, .openAI, .gemini, .openRouter, .ollama, .custom]
     static let commandLineTools: [Provider] = [.claudeCode, .codex, .opencode]
     /// The models that decide rather than write: a yes or no, one of a set of answers, or a level, with how sure
-    /// they are (see `DecisionClient`).
-    static let decisionModels: [Provider] = [.typeSafe]
+    /// they are (see `DecisionClient`): TypeSafe's Jev directly, or any System One model OpenRouter serves.
+    static let decisionModels: [Provider] = [.typeSafe, .openRouterDecision]
+
+    /// The System One models OpenRouter serves (`output_modalities=decisions` in its list), each run with
+    /// Meraline's own requests on 2026-10-02: Jev, its always-newest alias, and the other labs' models that take a
+    /// state of texts. Respan's Span-01 models are left out, since they read only a conversation transcript.
+    static let openRouterDecisionModels = [
+        "typesafe/jev-1.13", "~typesafe/jev-latest", "liquid/d1", "upstage/solar-decide",
+        "jaredpalmer/kev-4b", "togethercomputer/tev1-4b-experimental", "inception/mercury-decide:free",
+    ]
 
     var isCommandLine: Bool { Self.commandLineTools.contains(self) }
     var isDecisionModel: Bool { Self.decisionModels.contains(self) }
 
     /// Which of the panel's modes the provider answers in.
     var kind: ProviderKind { isDecisionModel ? .decision : isCommandLine ? .agent : .llm }
+
+    /// The provider whose key this one uses, when the two are one account: OpenRouter's decision models take the
+    /// key of OpenRouter under LLMs, so it is pasted once. Nil for a key of its own.
+    var sharesKey: Provider? { self == .openRouterDecision ? .openRouter : nil }
+
+    /// The Keychain item the key is kept under (see `Preferences`).
+    var keyAccount: String { (sharesKey ?? self).rawValue }
 
     /// Runs on this Mac through Apple's Foundation Models framework: no key, no server, no command.
     var isOnDevice: Bool { self == .apple }
@@ -50,6 +66,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .opencode: "OpenCode"
         case .apple: "Apple Intelligence"
         case .typeSafe: "TypeSafe"
+        case .openRouterDecision: "OpenRouter"
         }
     }
 
@@ -66,6 +83,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .opencode: "Answers from the opencode command, using the providers and MCP servers configured in OpenCode."
         case .apple: "The on-device model built into macOS. Private, works offline, and needs no key. Best for short questions; it can’t browse the web."
         case .typeSafe: "Jev, TypeSafe’s decision model. It writes nothing: asked about the text you add, it answers yes or no, one of the answers you name, or a level, with how sure it is, in a fraction of a second."
+        case .openRouterDecision: "Decision models from several labs, with the key you use for OpenRouter’s LLMs: TypeSafe’s Jev, Liquid’s D1, Upstage’s Solar Decide, and more. They write nothing: asked about the text you add, they answer yes or no, one of the answers you name, or a level, with how sure they are."
         }
     }
 
@@ -82,6 +100,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .opencode: "curlybraces"
         case .apple: "apple.intelligence"
         case .typeSafe: "circle.lefthalf.filled"
+        case .openRouterDecision: "arrow.triangle.branch"
         }
     }
 
@@ -98,6 +117,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .opencode: Color(red: 0.30, green: 0.33, blue: 0.40)
         case .apple: Color(red: 0.44, green: 0.42, blue: 0.78)
         case .typeSafe: Color(red: 0.16, green: 0.53, blue: 0.6)
+        case .openRouterDecision: Color(red: 0.42, green: 0.36, blue: 0.91)
         }
     }
 
@@ -109,6 +129,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .openRouter: "anthropic/claude-sonnet-5"
         case .ollama: "llama3.2"
         case .typeSafe: "jev-latest"
+        case .openRouterDecision: "typesafe/jev-1.13"
         case .custom, .claudeCode, .codex, .opencode, .apple: ""
         }
     }
@@ -124,6 +145,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .claudeCode: ["sonnet", "opus", "haiku"]
         case .codex: ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"]
         case .typeSafe: ["jev-latest", "jev-preview", "jev-1.13.0"]
+        case .openRouterDecision: Self.openRouterDecisionModels
         }
     }
 
@@ -140,12 +162,13 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .opencode: "opencode"
         case .apple: ""
         case .typeSafe: "https://api.typesafe.ai/v1"
+        case .openRouterDecision: "https://openrouter.ai/api/v1"
         }
     }
 
     var keyPolicy: KeyPolicy {
         switch self {
-        case .anthropic, .openAI, .gemini, .openRouter, .typeSafe: .required
+        case .anthropic, .openAI, .gemini, .openRouter, .typeSafe, .openRouterDecision: .required
         case .custom: .optional
         case .ollama, .claudeCode, .codex, .opencode, .apple: .none
         }
@@ -164,6 +187,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .opencode: URL(string: "https://opencode.ai/docs")
         case .apple: nil
         case .typeSafe: URL(string: "https://console.typesafe.ai/keys")
+        case .openRouterDecision: URL(string: "https://openrouter.ai/settings/keys")
         }
     }
 

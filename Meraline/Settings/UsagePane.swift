@@ -240,7 +240,7 @@ struct UsagePane: View {
 
     private var decisions: some View {
         Section("Decisions") {
-            row("Decisions", UsageInsights.compact(insights.tally.decisions), "yes, no, or one of your answers, from TypeSafe’s Jev")
+            row("Decisions", UsageInsights.compact(insights.tally.decisions), "yes, no, or one of your answers, from a decision model")
             row("Not sure", UsageInsights.compact(insights.tally.unsureDecisions), "\(UsageInsights.percent(Double(insights.tally.unsureDecisions) / Double(max(1, insights.tally.decisions)))) of them, under the line set in Settings › Prompt")
         }
     }

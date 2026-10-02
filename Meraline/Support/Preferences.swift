@@ -236,7 +236,7 @@ final class Preferences {
             (provider, ProviderSettings(
                 model: defaults.string(forKey: "\(provider.rawValue).model") ?? provider.defaultModel,
                 baseURL: defaults.string(forKey: "\(provider.rawValue).baseURL") ?? provider.defaultBaseURL,
-                apiKey: provider.keyPolicy == .none ? "" : secrets.read(provider.rawValue),
+                apiKey: provider.keyPolicy == .none ? "" : secrets.read(provider.keyAccount),
                 isEnabled: defaults.object(forKey: "\(provider.rawValue).enabled") as? Bool
                     ?? (provider.isOnDevice && onDeviceModelAvailable),
                 allowsWebSearch: defaults.object(forKey: "\(provider.rawValue).webSearch") as? Bool ?? true,
@@ -267,7 +267,14 @@ final class Preferences {
             defaults.set(newValue.allowsMCP, forKey: "\(provider.rawValue).mcp")
             defaults.set(newValue.disabledMCPServers.sorted(), forKey: "\(provider.rawValue).mcpOff")
             defaults.set(newValue.knownMCPServers, forKey: "\(provider.rawValue).mcpServers")
-            if old.apiKey != newValue.apiKey { secrets.write(provider.rawValue, newValue.apiKey.trimmed) }
+            if old.apiKey != newValue.apiKey {
+                secrets.write(provider.keyAccount, newValue.apiKey.trimmed)
+                // One account's key, pasted under either provider, serves both (see `Provider.sharesKey`).
+                for twin in Provider.allCases where twin != provider && twin.keyAccount == provider.keyAccount {
+                    providerSettings[twin]!.apiKey = newValue.apiKey
+                    reconcile(twin.kind)
+                }
+            }
             reconcile(provider.kind)
         }
     }

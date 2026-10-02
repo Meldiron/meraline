@@ -107,7 +107,9 @@ enum Diagnostics {
         lines.append("| --- | --- | --- | --- |")
         for provider in Provider.allCases {
             let settings = preferences[provider]
-            lines.append("| \(provider.name) | \(state(of: settings, for: provider)) | \(settings.model.trimmed.isEmpty ? "default" : settings.model.trimmed) | \(endpoint(of: settings, for: provider)) |")
+            // OpenRouter is listed under LLMs and under Decision Models, so a shared name says which.
+            let name = Provider.allCases.contains { $0 != provider && $0.name == provider.name } ? "\(provider.name) (\(provider.kind.pluralTitle))" : provider.name
+            lines.append("| \(name) | \(state(of: settings, for: provider)) | \(settings.model.trimmed.isEmpty ? "default" : settings.model.trimmed) | \(endpoint(of: settings, for: provider)) |")
         }
         lines.append("")
         if let storage {

@@ -156,7 +156,7 @@ private struct ModeToggle: View {
         switch kind {
         case .llm: "Ask a model, through its API or on this Mac\(shortcut)"
         case .agent: "Ask an agent that can use tools: Claude Code, Codex, or OpenCode\(shortcut)"
-        case .decision: "Ask TypeSafe’s Jev for a decision, with how sure it is\(shortcut)"
+        case .decision: "Ask a decision model, such as TypeSafe’s Jev, with how sure it is\(shortcut)"
         }
     }
 }

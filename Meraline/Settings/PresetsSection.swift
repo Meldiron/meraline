@@ -48,7 +48,7 @@ struct PresetsSection: View {
         case .agent:
             "They wait above an empty chat in Agent mode, beside the gear, for work on the files you attach or on the web. A click puts a preset’s text in the input, ahead of anything you typed, and a Shift-click sends it at once. Once an answer is ready, Actions (⌘K) runs them on it, and ⌘1 to ⌘9 run the first nine."
         case .decision:
-            "They wait above an empty chat in Decision mode, beside the gear: questions for Jev about the text you add. A click puts one in the input, and a Shift-click asks it at once. A preset can name its answers after the question, with / between them, or < for levels in order, as Tone and Priority do."
+            "They wait above an empty chat in Decision mode, beside the gear: questions for the decision model about the text you add. A click puts one in the input, and a Shift-click asks it at once. A preset can name its answers after the question, with / between them, or < for levels in order, as Tone and Priority do."
         }
     }
 

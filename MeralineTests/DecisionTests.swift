@@ -3,8 +3,8 @@ import Foundation
 import Testing
 @testable import Meraline
 
-/// Decision mode: the answers a question names, the request TypeSafe's Jev gets and the reply it sends, and what
-/// the chat does with a decision. Context is optional (the row only suggests it), it keeps any context for
+/// Decision mode: the answers a question names, the request a decision model gets (TypeSafe's Jev directly, or any
+/// through OpenRouter) and the reply it sends, and what the chat does with a decision. Context is optional (the row only suggests it), it keeps any context for
 /// follow-ups, writes the answer in words, offers no rewrite, and plays no game against Jev.
 @MainActor
 struct DecisionTests {
@@ -37,7 +37,7 @@ struct DecisionTests {
 
     @Test func typeSafeIsADecisionModelOfItsOwnMode() {
         #expect(Provider.typeSafe.kind == .decision)
-        #expect(ProviderKind.decision.providers == [.typeSafe])
+        #expect(ProviderKind.decision.providers == [.typeSafe, .openRouterDecision])
         #expect(Provider.typeSafe.keyPolicy == .required)
         #expect(Provider.typeSafe.defaultModel == "jev-latest")
         #expect(!SystemPrompt.allCases.contains(.chat(.decision)), "Jev takes no prompt, so Settings › Prompt has none for it")
@@ -49,6 +49,102 @@ struct DecisionTests {
     }
 
     // MARK: Answers
+
+    @Test func openRouterServesDecisionModelsOnItsLLMsKey() throws {
+        let provider = Provider.openRouterDecision
+        #expect(provider.kind == .decision)
+        #expect(provider.name == "OpenRouter")
+        #expect(provider.keyPolicy == .required)
+        #expect(provider.sharesKey == .openRouter && provider.keyAccount == Provider.openRouter.rawValue)
+        #expect(Provider.typeSafe.sharesKey == nil && Provider.typeSafe.keyAccount == "typeSafe")
+        #expect(Provider.allCases.filter { $0.sharesKey != nil } == [provider], "only OpenRouter's two entries are one account")
+        #expect(provider.defaultModel == "typesafe/jev-1.13")
+        #expect(provider.suggestedModels == Provider.openRouterDecisionModels)
+        #expect(provider.suggestedModels.first == provider.defaultModel)
+        #expect(provider.suggestedModels.allSatisfy { $0.contains("/") }, "OpenRouter's ids, lab/model")
+        #expect(!provider.suggestedModels.contains { $0.hasPrefix("respan/") }, "Span-01 reads only a conversation transcript")
+        #expect(PromptPreset.exists(provider.symbol))
+
+        // The request goes to OpenRouter's System One endpoint, with the model id as OpenRouter lists it.
+        let settings = ProviderSettings(model: "liquid/d1", baseURL: provider.defaultBaseURL, apiKey: "sk-or-test", isEnabled: true)
+        #expect(settings.isReady(for: provider))
+        let request = DecisionRequest(state: [try #require(SelectedText("Production is down.", appName: "Mail"))], question: "Is this urgent?", answers: .yesNo)
+        let urlRequest = try DecisionClient.urlRequest(request, settings: settings, provider: provider)
+        #expect(urlRequest.url?.absoluteString == "https://openrouter.ai/api/v1/systemone")
+        #expect(urlRequest.value(forHTTPHeaderField: "Authorization") == "Bearer sk-or-test")
+        let sentBody = try #require(urlRequest.httpBody)
+        let body = try #require(JSONSerialization.jsonObject(with: sentBody) as? [String: Any])
+        #expect(body["model"] as? String == "liquid/d1")
+
+        // Its price: OpenRouter's when the list has the model, else Jev's. OpenRouter says what each answer cost anyway.
+        let d1 = ModelPrice(prompt: 0.04 / 1_000_000, completion: 0)
+        let table = PriceTable(prices: ["liquid/d1": d1], fetched: .now)
+        #expect(table.price(for: provider, model: "liquid/d1") == d1)
+        #expect(table.price(for: provider, model: "inception/mercury-decide:free") == .jev)
+        #expect(table.price(for: provider, model: "typesafe/jev-1.13") == .jev)
+    }
+
+    @Test func openRoutersKeyIsPastedOnceForLLMsAndDecisions() {
+        final class Vault: @unchecked Sendable { var items: [String: String] = [:] }
+        let vault = Vault()
+        let secrets = SecretStore(read: { vault.items[$0] ?? "" }, write: { vault.items[$0] = $1 })
+        let defaults = Self.throwaway()
+        let preferences = Preferences(defaults: defaults, secrets: secrets, onDeviceModelAvailable: false)
+        #expect(preferences.readyProviders(for: .decision).isEmpty)
+
+        var llm = preferences[.openRouter]
+        llm.apiKey = " sk-or-test "
+        preferences[.openRouter] = llm
+        #expect(vault.items == ["openRouter": "sk-or-test"], "one Keychain item, trimmed")
+        #expect(preferences[.openRouterDecision].apiKey == " sk-or-test ", "the key pasted under LLMs serves decisions")
+        #expect(preferences.readyProviders(for: .decision) == [.openRouterDecision], "ready at once, on its default model")
+        #expect(preferences.defaultProvider(for: .decision) == .openRouterDecision)
+
+        var decision = preferences[.openRouterDecision]
+        decision.apiKey = "sk-or-new"
+        preferences[.openRouterDecision] = decision
+        #expect(vault.items == ["openRouter": "sk-or-new"], "and the other way round")
+        #expect(preferences[.openRouter].apiKey == "sk-or-new")
+
+        let reloaded = Preferences(defaults: defaults, secrets: secrets, onDeviceModelAvailable: false)
+        #expect(reloaded[.openRouter].apiKey == "sk-or-new" && reloaded[.openRouterDecision].apiKey == "sk-or-new")
+        #expect(reloaded.defaultProvider(for: .decision) == .openRouterDecision)
+
+        decision.apiKey = ""
+        reloaded[.openRouterDecision] = decision
+        #expect(vault.items == ["openRouter": ""] && reloaded[.openRouter].apiKey.isEmpty, "taking it out takes it out of both")
+        #expect(reloaded.defaultProvider(for: .decision) == nil && reloaded.defaultProvider(for: .llm) == nil)
+    }
+
+    @Test func openRoutersReplyReadsWithWhatItCost() throws {
+        // As OpenRouter answered on 2026-10-02, with fields TypeSafe's reply doesn't have.
+        let reply = try DecisionClient.decode(Data("""
+        {"model":"typesafe/jev-1.13-20260917","answers":{"decision":{"type":"noul","noul":0.88}},"usage":{"input_tokens":289,"output_tokens":20,"cost":0.000012138},"id":"gen-dec-1790928720-YgHwYgOMvVoROVtWem15","provider":"TypeSafe"}
+        """.utf8), for: .yesNo, from: .openRouterDecision)
+        #expect(reply.decision.chosen.label == "Yes")
+        #expect(reply.usage.input == 289 && reply.usage.output == 20 && reply.usage.model == "typesafe/jev-1.13-20260917")
+        let cost = try #require(reply.usage.cost)
+        #expect(abs(cost - 0.000012138) < 1e-12, "what OpenRouter charged, for the ledger")
+
+        let level = try DecisionClient.decode(Data("""
+        {"model":"liquid/d1-20260930","answers":{"decision":{"type":"score","score":1.6255723345475035,"legend":{"0":"Low","1":"Medium","2":"High"},"probabilities":{"0":0.07370308720822435,"1":0.22702149103604768,"2":0.6992754217557279},"confidence":0.5489131326335919}},"usage":{"input_tokens":64,"output_tokens":0,"cost":0.00000256},"id":"gen-dec-1790928728-SQ4hu1BFscqNtjEzzaxY","provider":"Liquid"}
+        """.utf8), for: DecisionAnswers(options: ["Low", "Medium", "High"], isOrdered: true), from: .openRouterDecision)
+        #expect(level.decision.chosen.label == "High" && level.decision.isOrdered)
+        let score = try #require(level.decision.score)
+        #expect(abs(score - 1.6255723345475035) < 1e-12)
+
+        let request = DecisionRequest(state: [try #require(SelectedText.typed("Buy milk"))], question: "Is this a verb?", answers: .yesNo, scope: .words, items: ["Buy", "milk"])
+        let batch = try DecisionClient.decodeBatch(Data("""
+        {"model":"typesafe/jev-1.13-20260917","answers":{"item_0":{"type":"noul","noul":0.97},"item_1":{"type":"noul","noul":0.25}},"usage":{"input_tokens":411,"output_tokens":58,"cost":0.000017262},"id":"gen-dec-1790928721-GKTaYSdbaMQTCsM64Wcc","provider":"TypeSafe"}
+        """.utf8), for: request, from: 0, count: 100, provider: .openRouterDecision)
+        #expect(batch.items.map { $0.decision.chosen.label } == ["Yes", "No"])
+        let batchCost = try #require(batch.usage.cost)
+        #expect(abs(batchCost - 0.000017262) < 1e-12)
+
+        #expect(throws: LLMError.provider("OpenRouter answered with a “poem” question, which Meraline doesn’t know.")) {
+            try DecisionClient.decode(Data(#"{"answers": {"decision": {"type": "poem"}}}"#.utf8), for: .yesNo, from: .openRouterDecision)
+        }
+    }
 
     @Test func answersComeAfterTheQuestionOrFromSettings() {
         let plain = DecisionAnswers.split("Is this urgent?", fallback: .yesNo)

@@ -608,7 +608,7 @@ final class ChatSession {
         switch preferences.mode {
         case .llm: "Connect an AI provider in Settings to \(goal)."
         case .agent: "Turn on an agent in Settings to \(goal), or switch to LLM."
-        case .decision: "Add your TypeSafe API key in Settings to \(goal), or switch to LLM."
+        case .decision: "Add a TypeSafe or OpenRouter API key in Settings to \(goal), or switch to LLM."
         }
     }
 

@@ -190,14 +190,14 @@ struct PromptPane: View {
                     }
                 } label: {
                     Text("Not sure below")
-                    Text("How sure Jev must be for its answer to show. Under it, the answer says Not Sure, with the answer it leans to. For Yes and No, 50% is a winner under 75%.")
+                    Text("How sure the model must be for its answer to show. Under it, the answer says Not Sure, with the answer it leans to. For Yes and No, 50% is a winner under 75%.")
                 }
             } header: {
                 Text("Decisions")
             } footer: {
                 Text(DecisionAnswers.parse(preferences.decisionAnswers) == nil
                     ? "Write at least two answers with / between them, or < for levels in order. Until then a question picks Yes or No."
-                    : "Jev picks one of these when a question names no answers of its own after its question mark: “Which team should handle this? Billing / Technical / Sales”, or “How urgent is this? Low < Medium < High” for levels in order. Jev takes no instructions, so there is no prompt to edit: it reads the text you add and the question, nothing else.")
+                    : "The model picks one of these when a question names no answers of its own after its question mark: “Which team should handle this? Billing / Technical / Sales”, or “How urgent is this? Low < Medium < High” for levels in order. A decision model takes no instructions, so there is no prompt to edit: it reads the text you add and the question, nothing else.")
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -329,6 +329,9 @@ struct ProviderPane: View {
                 if provider.isOnDevice {
                     Text("Answers are generated on this Mac and never leave it. The model is small: good for quick facts, rewrites, and summaries, with room for only a few follow-ups.")
                 } else if let portal = provider.keyPortal {
+                    if let owner = provider.sharesKey {
+                        Text("The same key as \(owner.name) under \(owner.kind.pluralTitle): paste it once, and both use it.")
+                    }
                     Link(provider.keyPolicy == .none ? "Install \(provider.name)" : "Get an API key", destination: portal)
                 }
             }
