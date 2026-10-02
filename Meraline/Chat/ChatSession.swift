@@ -131,7 +131,13 @@ final class ChatSession {
     /// The most memory one chat may take, pictures mostly. A question that would take it past this doesn't go.
     static let chatByteLimit = 512 * 1_024 * 1_024
 
-    var draft = ""
+    var draft = "" {
+        didSet {
+            // A colon typed at the end of the question says the text comes next, so the card for writing it
+            // opens by itself (see `writeStateAfterColon()`).
+            if Self.endsInColon(draft), !Self.endsInColon(oldValue) { writeStateAfterColon() }
+        }
+    }
     private(set) var draftImages: [ImageAttachment] = []
     private(set) var draftFiles: [FileAttachment] = []
     /// Text selected in other apps, or copied, for the next question, in the order it came (see `bring(_:)`).
@@ -330,6 +336,24 @@ final class ChatSession {
 
     func removeTypedState() {
         typedState = nil
+    }
+
+    /// Whether a question ends in a colon ("Fix the grammar:"), which says the text comes next.
+    nonisolated static func endsInColon(_ draft: String) -> Bool {
+        draft.trimmed.hasSuffix(":")
+    }
+
+    /// Whether the draft holds nothing for a question to work on: no text, file, or picture. A preset put in
+    /// then, or a colon typed at the end of the question, opens the card for writing the text.
+    var hasNothingToWorkOn: Bool { draftSelections.isEmpty && draftFiles.isEmpty && draftImages.isEmpty }
+
+    /// Opens the card as the question comes to end in a colon, in LLM and Agent modes (a decision's colon names
+    /// its answers), with nothing in the draft to work on. The keyboard stays in the input, where the colon was
+    /// just typed; Tab moves to the card. Only the colon's arrival opens it, so a card closed by its cross stays
+    /// closed while the colon stays.
+    private func writeStateAfterColon() {
+        guard preferences.mode != .decision, !isStreaming, hasNothingToWorkOn else { return }
+        writeState()
     }
 
     /// The answers a question that names none picks from: Settings' answers, or Yes and No when they can't be

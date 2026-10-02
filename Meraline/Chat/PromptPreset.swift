@@ -167,7 +167,7 @@ extension ChatSession {
             send()
             return false
         }
-        guard !takesOut, draftSelections.isEmpty, draftFiles.isEmpty, draftImages.isEmpty else { return false }
+        guard !takesOut, hasNothingToWorkOn else { return false }
         writeState()
         return typedState != nil
     }

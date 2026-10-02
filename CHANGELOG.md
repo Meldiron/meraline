@@ -4,6 +4,12 @@ Notable changes in each Meraline release, newest first.
 
 When a version has an entry here, the Release workflow uses it as the release notes on GitHub and in the in-app update window. A version without an entry gets the list of commits since the previous tag instead. Headings are `## vX.Y.Z - YYYY-MM-DD`.
 
+## Unreleased
+
+### Ask
+
+- **A colon opens the Context card.** End a question in a colon, “Fix the grammar:” or “Find the bugs in this:”, in LLM or Agent mode, and the Context card opens under the input for the text, as a preset does when there is nothing to work on yet. The cursor stays in the input; Tab moves to the card.
+
 ## v1.10.0 - 2026-10-02
 
 ### Ask
