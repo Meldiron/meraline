@@ -64,7 +64,11 @@ final class PanelLayout {
     }
 
     var maximumConversationHeight: CGFloat = 480
+    /// Requests to give the keyboard to the input.
     var focusRequest = 0
+    /// Requests to give the keyboard to the card for context written by hand (`TypedStateCard`), once it is open:
+    /// from Tab, Decision's Write It, Add Text in the sparkle's panel, and a preset put in the input.
+    var stateFocusRequest = 0
     /// The group under the input that is open, if any. It stays as it is while the window is hidden,
     /// until Meraline quits.
     var expandedTray: ModeBar.Tray?
@@ -370,6 +374,17 @@ final class PanelController: NSObject {
         sources.windowOpened()
     }
 
+    /// Gives the keyboard back to the input, with the cursor after its text: a field that takes the keyboard
+    /// selects all of it, and the next key typed would replace it.
+    private func focusInput() {
+        layout.focusRequest += 1
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard let self else { return }
+            PromptPresets.moveCursorToEnd(in: self.panel)
+        }
+    }
+
     func close() {
         guard panel.isVisible else { return }
         shortcutSetup.dismiss()
@@ -527,10 +542,18 @@ final class PanelController: NSObject {
                 return event
             }
             // Tab opens the card for writing a note to send with the question (`ChatSession.writeState`), in any
-            // mode; Decision also offers it on its own row. It no longer sends — Return already does — and does
-            // nothing while an answer streams, a game is on, or the card is already open.
+            // mode, and gives it the keyboard; from the card it goes back to the input. Decision also offers the
+            // card on its own row. It no longer sends — Return already does — and does nothing while an answer
+            // streams or a game is on.
             if event.keyCode == UInt16(kVK_Tab), modifiers.isEmpty {
-                if !self.session.isStreaming { self.session.writeState() }
+                if !self.session.isStreaming {
+                    if let editor = self.panel.firstResponder as? NSTextView, !editor.isFieldEditor {
+                        self.focusInput()
+                    } else {
+                        self.session.writeState()
+                        if self.session.typedState != nil { self.layout.stateFocusRequest += 1 }
+                    }
+                }
                 return nil
             }
             // ⌫ in an empty input takes out the selection or the last attachment, like a token in Spotlight.

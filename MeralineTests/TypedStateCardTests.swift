@@ -13,7 +13,8 @@ struct TypedStateCardTests {
         for isDeciding in [false, true] {
             var text = ""
             let binding = Binding(get: { text }, set: { text = $0 })
-            let host = NSHostingView(rootView: TypedStateCard(text: binding, isDeciding: isDeciding, remove: {}).frame(width: 600))
+            let focus = FocusState<Bool>()
+            let host = NSHostingView(rootView: TypedStateCard(text: binding, isDeciding: isDeciding, isFocused: focus.projectedValue, remove: {}).frame(width: 600))
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 300), styleMask: [.borderless], backing: .buffered, defer: false)
             window.contentView = host
             host.layoutSubtreeIfNeeded()

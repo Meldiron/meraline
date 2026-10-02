@@ -323,13 +323,31 @@ struct ShowcaseTests {
             let stage = ShowcaseStage(appearance)
             let scene = try Self.panel(on: stage)
             scene.session.draft = "Draft a friendly reply saying Thursday at 3 works"
-            // Tab opens the note card; a piece of context written by hand, alongside the question.
+            await Showcase.settle(1.0)
+            // With the keyboard, as when Tab is pressed: it opens the note card and gives it the keyboard, for a
+            // piece of context written by hand, alongside the question.
+            await Showcase.waitForIdle()
+            scene.panel.makeKey()
+            await Showcase.settle(0.3)
             scene.session.writeState()
+            scene.controller.layout.stateFocusRequest += 1
             scene.session.typedState = "Hi — any chance you're free this week to go over the Q3 numbers? Tuesday or Thursday afternoon both work for me. — Sam"
             await Showcase.settle(1.5)
+            #expect(Self.moveCursorToEnd(ofCardIn: scene.panel), "the card has the keyboard")
             try await stage.capturePanel(scene.panel, as: "add-text")
             stage.close(scene.panel)
         }
+    }
+
+    /// Puts the cursor after the text of the card for context written by hand, when it has the keyboard, so the
+    /// picture shows the card as it is after typing; whether it had it. Otherwise the input has the keyboard, with
+    /// its text all selected, which the picture shows too.
+    @discardableResult
+    private static func moveCursorToEnd(ofCardIn window: NSWindow) -> Bool {
+        guard let editor = window.firstResponder as? NSTextView, !editor.isFieldEditor else { return false }
+        let end = NSRange(location: (editor.string as NSString).length, length: 0)
+        editor.setSelectedRange(end)
+        return true
     }
 
     @Test func noteStack() async throws {

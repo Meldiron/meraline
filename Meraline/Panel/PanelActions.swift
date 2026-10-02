@@ -583,6 +583,7 @@ struct PanelContext {
     var providersMenu: ActionMenu {
         let preferences = preferences
         let session = session
+        let layout = layout
         let kind = preferences.mode
         let ready = preferences.readyProviders(for: kind)
         let active = preferences.activeProvider
@@ -622,6 +623,7 @@ struct PanelContext {
         if !session.isPlaying, session.typedState == nil {
             context.append(PanelAction(id: "addText", title: "Add Text", subtitle: "Write context to send with your question (Tab)", icon: .symbol("square.and.pencil")) {
                 session.writeState()
+                layout.stateFocusRequest += 1
             })
         }
         var settings: [PanelAction] = []

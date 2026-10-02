@@ -37,6 +37,8 @@ struct ChatPanelView: View {
     var inserter: AnswerInserter?
 
     @FocusState private var isInputFocused: Bool
+    /// The card for context written by hand (`TypedStateCard`), which takes the keyboard as it opens.
+    @FocusState private var isStateFocused: Bool
     @State private var conversationHeight: CGFloat = 0
     @State private var isDropTargeted = false
     /// How tall the card is with its margins, where an open panel of actions reaches, and the room the window
@@ -103,13 +105,16 @@ struct ChatPanelView: View {
                 // A decision's context: the row that asks for it, which Write It swaps for the card to write it in,
                 // in the same place. Not while the mode has nothing ready, when the setup row below says what to do.
                 if session.needsDecisionState, preferences.activeProvider != nil {
-                    DecisionStateRow { session.writeState() }
+                    DecisionStateRow {
+                        session.writeState()
+                        focusState()
+                    }
                         .padding(.horizontal, 12)
                         .padding(.bottom, 10)
                         .transition(Self.cardRowTransition)
                 }
                 if session.typedState != nil, !session.isPlaying {
-                    TypedStateCard(text: typedState, isDeciding: session.isDeciding) {
+                    TypedStateCard(text: typedState, isDeciding: session.isDeciding, isFocused: $isStateFocused) {
                         session.removeTypedState()
                         isInputFocused = true
                     }
@@ -279,6 +284,7 @@ struct ChatPanelView: View {
             isInputFocused = true
             if !Calendar.current.isDate(today, inSameDayAs: .now) { today = .now }
         }
+        .onChange(of: layout.stateFocusRequest) { focusState() }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in today = .now }
         .onChange(of: session.isStreaming) {
             if !session.isStreaming && layout.actionPanel == nil { isInputFocused = true }
@@ -313,6 +319,16 @@ struct ChatPanelView: View {
     private func fitWindow() {
         let panelBottom = actionPanelSpan.map { $0.bottom + ActionPanelHost.insetBelow } ?? 0
         onHeightChange(max(roomAbove + cardHeight, panelBottom), roomAbove)
+    }
+
+    /// Gives the keyboard to the card for context written by hand, a moment later: asked for in the update that
+    /// inserts the card, the focus never took, since SwiftUI hadn't made the card's editor yet. A request for the
+    /// input made in the same turn, as closing a panel of actions makes one, is overtaken.
+    private func focusState() {
+        Task {
+            try? await Task.sleep(for: .milliseconds(50))
+            isStateFocused = true
+        }
     }
 
     /// A staged update restarts into it; a found one opens Sparkle's window, which the panel would cover.

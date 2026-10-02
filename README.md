@@ -239,7 +239,7 @@ That's it. Press <kbd>⌥</kbd> <kbd>Space</kbd> whenever you have a question.
 | --- | --- |
 | <kbd>⌥</kbd> <kbd>Space</kbd> | Open or close Meraline (change it in Settings) |
 | <kbd>↩</kbd> | Send |
-| <kbd>⇥</kbd> | Write a piece of context by hand to send with the question; <kbd>⌘</kbd> <kbd>↩</kbd> sends from it |
+| <kbd>⇥</kbd> | Write a piece of context by hand to send with the question, with the cursor in the card, and go back to the input from it; <kbd>⌘</kbd> <kbd>↩</kbd> sends from it |
 | <kbd>⌫</kbd> in an empty input | Take out the selected text, then the last attachment |
 | <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>E</kbd> | Add the text you had selected when you opened the window, or take it out again |
 | <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>V</kbd> | Add what's on the clipboard, or take it out again |

@@ -298,18 +298,20 @@ struct DecisionStateRow: View {
     }
 }
 
-/// Text written in the window itself, opened with Tab in any mode (or Decision's Write It row), between the
-/// input and the row under it: a note of context for an LLM or agent, or the text a decision is about. Like a
-/// selected text's card: a header that counts its words, a field of a few lines that grows with the text, and a
-/// cross. It goes with the question as a text of its own, quoted in the conversation as Context, like a
-/// selection, and ⌘Return sends from it (see `PanelController`).
+/// Text written in the window itself, opened with Tab in any mode (or Decision's Write It row, Add Text in the
+/// sparkle's panel, or a preset put in an empty draft), between the input and the row under it: a note of
+/// context for an LLM or agent, or the text a decision is about. Like a selected text's card: a header that
+/// counts its words, a field of a few lines that grows with the text, and a cross. It goes with the question as a
+/// text of its own, quoted in the conversation as Context, like a selection, and ⌘Return sends from it (see
+/// `PanelController`). Whoever opens it gives it the keyboard (see `PanelLayout.stateFocusRequest`).
 struct TypedStateCard: View {
     @Binding var text: String
     /// Decision mode, where the text is what Jev decides about; in the other modes it goes with the question.
     var isDeciding = false
+    /// Whether the card's editor has the keyboard, which the window hands it as the card opens.
+    var isFocused: FocusState<Bool>.Binding
     let remove: () -> Void
 
-    @FocusState private var isFocused: Bool
     @State private var textHeight: CGFloat = 0
 
     private static let font = Font.system(size: 13)
@@ -363,7 +365,7 @@ struct TypedStateCard: View {
                     .scrollContentBackground(.hidden)
                     .scrollDisabled(textHeight + 8 <= Self.tallest)
                     .tint(.meralinePink)
-                    .focused($isFocused)
+                    .focused(isFocused)
                     .frame(height: min(max(textHeight + 8, 40), Self.tallest) - Self.inset * 2)
                     .padding(.vertical, Self.inset)
             }
@@ -375,7 +377,6 @@ struct TypedStateCard: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
-        .onAppear { isFocused = true }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(isDeciding ? "Context written for the decision" : "Context written for the question")
     }
