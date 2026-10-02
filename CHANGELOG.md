@@ -9,6 +9,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 ### Ask
 
 - **The Context card takes the keyboard.** Tab, Decision's Write It, and Add Text in the sparkle's panel open the card under the input with the cursor in it, so you can paste or type at once; the cursor used to stay in the input. Tab in the card goes back to the input.
+- **What changed stands out.** In Show What Changed, the text that stayed as it was is now gray, and the words that went and came sit on deeper red and green, so three edits in a long page are found at a glance instead of hunted for among white text. The strike through what went stays.
 - **Presets open the Context card.** Click Fix Grammar, Anti-Slop, Find Bugs, or any other preset with nothing to work on yet, and the Context card opens under the input with the cursor in it, ready for the text. With text selected or copied, or a file or picture attached, the preset fills the input as before. The default presets now end as sentences rather than a colon, since the text comes on the card, not after them.
 
 ### Decision

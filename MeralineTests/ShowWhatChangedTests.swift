@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import Meraline
 
@@ -110,6 +111,22 @@ struct ShowWhatChangedTests {
         #expect(back.title == "Show Answer")
         context.run(back, in: .chat)
         #expect(layout.answersShowingChanges.isEmpty)
+    }
+
+    @Test func theTextThatStayedIsGrayAndWhatChangedSitsOnATint() throws {
+        let changes = try #require(TextChanges.diff(from: "i has a apple", to: "i have a apple"))
+        let text = ChangesView.text(of: changes, fontSize: 15)
+        let runs = text.runs.map { (String(text[$0.range].characters), $0) }
+        let stayed = try #require(runs.first { $0.0 == " a apple" }?.1)
+        #expect(stayed.foregroundColor == .secondary, "what stayed is context for checking the changes")
+        #expect(stayed.backgroundColor == nil)
+        let went = try #require(runs.first { $0.0 == "has" }?.1)
+        #expect(went.strikethroughStyle != nil)
+        #expect(went.backgroundColor == Color(nsColor: .removedTint))
+        let came = try #require(runs.first { $0.0 == "have" }?.1)
+        #expect(came.strikethroughStyle == nil)
+        #expect(came.backgroundColor == Color(nsColor: .addedTint))
+        #expect(came.foregroundColor == Color(nsColor: .addedText))
     }
 
     @Test func noChangesNoAction() async throws {

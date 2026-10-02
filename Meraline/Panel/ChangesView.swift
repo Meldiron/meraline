@@ -2,8 +2,10 @@ import AppKit
 import SwiftUI
 
 /// An answer drawn as what it changed in the text its question was about (see `TextChanges`), in the answer's
-/// place: what stayed as it was, what went struck through in red, and what came in green, each on a faint tint
-/// of its color so a changed comma or space shows too. The line through removed words tells the two apart
+/// place: what stayed as it was in the secondary color, since here it is context for checking the changes, what
+/// went struck through in red, and what came in green, each on a tint of its color so a changed comma or space
+/// shows too. The gray around them is what makes three edits in a page stand out at a glance, and tells an added
+/// word from its neighbors by brightness, not only hue; the line through removed words tells the two apart
 /// without their colors. Plain text rather than Markdown, since the changes are to the text's own characters,
 /// and code from a code block in monospace. It grows with the answers' zoom, as `MarkdownView` does.
 struct ChangesView: View {
@@ -37,15 +39,16 @@ struct ChangesView: View {
             switch segment {
             case .same(let same):
                 run = AttributedString(same)
+                run.foregroundColor = .secondary
             case .removed(let removed):
                 run = AttributedString(removed)
                 run.foregroundColor = Color(nsColor: .removedText)
-                run.backgroundColor = Color(nsColor: .systemRed).opacity(0.13)
+                run.backgroundColor = Color(nsColor: .removedTint)
                 run.strikethroughStyle = .single
             case .added(let added):
                 run = AttributedString(added)
                 run.foregroundColor = Color(nsColor: .addedText)
-                run.backgroundColor = Color(nsColor: .systemGreen).opacity(0.16)
+                run.backgroundColor = Color(nsColor: .addedTint)
             }
             run.font = font
             text += run
@@ -59,6 +62,11 @@ struct ChangesView: View {
 extension NSColor {
     static let removedText = NSColor(name: nil) { $0.isDark ? .systemRed : NSColor(srgbRed: 0.78, green: 0.13, blue: 0.11, alpha: 1) }
     static let addedText = NSColor(name: nil) { $0.isDark ? .systemGreen : NSColor(srgbRed: 0.1, green: 0.5, blue: 0.2, alpha: 1) }
+
+    /// The tints behind what went and what came in `ChangesView`: stronger on dark glass, where a faint one sinks
+    /// into whatever is behind the window, and a pastel on light glass, where the same tint would shout.
+    static let removedTint = NSColor(name: nil) { NSColor.systemRed.withAlphaComponent($0.isDark ? 0.26 : 0.16) }
+    static let addedTint = NSColor(name: nil) { NSColor.systemGreen.withAlphaComponent($0.isDark ? 0.28 : 0.2) }
 }
 
 private nonisolated extension NSAppearance {
