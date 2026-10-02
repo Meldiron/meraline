@@ -130,6 +130,22 @@ struct ShowcaseTests {
         }
     }
 
+    @Test func decisionModels() async throws {
+        guard Showcase.wants("decision-models") else { return }
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            // Settings › Decision Models on Ollama's pane, turned on with Nimble, as after "ollama pull nimble".
+            let defaults: [String: Any] = ["ollamaDecision.enabled": true, "ollamaDecision.model": "nimble"]
+            try await Self.settings(on: stage, pane: .provider(.ollamaDecision), defaults: defaults) { window in
+                // The sidebar down to its Decision Models group, so TypeSafe and OpenRouter show beside the chosen Ollama.
+                Self.scroll(window, to: 1_000, sidebar: true)
+                await Showcase.settle(0.5)
+                try await stage.captureWindow(window, as: "decision-models")
+            }
+            stage.close()
+        }
+    }
+
     @Test func presets() async throws {
         guard Showcase.wants("presets") else { return }
         let presets = PromptPreset.defaults(in: .english)
@@ -508,10 +524,14 @@ struct ShowcaseTests {
 
     // MARK: Moving around a pane
 
-    /// Scrolls the pane, the widest scroll view in the window, so `y` points of its content are above its top.
-    private static func scroll(_ window: NSWindow, to y: CGFloat) {
+    /// Scrolls the pane, the widest scroll view in the window, or with `sidebar` the list of panes, the one around a
+    /// table, so `y` points of its content are above its top.
+    private static func scroll(_ window: NSWindow, to y: CGFloat, sidebar: Bool = false) {
         let scrollViews = window.contentView?.showcaseDescendants(of: NSScrollView.self) ?? []
-        guard let scrollView = scrollViews.max(by: { $0.frame.width < $1.frame.width }), let document = scrollView.documentView else { return }
+        let chosen = sidebar
+            ? scrollViews.first { $0.documentView is NSTableView }
+            : scrollViews.max(by: { $0.frame.width < $1.frame.width })
+        guard let scrollView = chosen, let document = scrollView.documentView else { return }
         let clip = scrollView.contentView
         let top = -scrollView.contentInsets.top
         let bottom = document.frame.height - clip.bounds.height + scrollView.contentInsets.bottom
