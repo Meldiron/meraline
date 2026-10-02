@@ -316,7 +316,7 @@ private struct SelectionIcon: View {
 }
 
 /// A text cursor: a stem with a short bar across each end.
-private struct IBeam: Shape {
+private nonisolated struct IBeam: Shape {
     func path(in rect: CGRect) -> Path {
         let stroke = rect.width * 0.27
         let bar = CGSize(width: rect.width, height: stroke)
