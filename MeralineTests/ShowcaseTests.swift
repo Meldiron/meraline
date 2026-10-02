@@ -25,7 +25,7 @@ import WebKit
 ///   decision-levels  Decision mode: a priority placed along Low, Medium, and High, and the answers under the input
 ///   decision-lines  Decision mode about each line: six tasks from Notes grouped under Yes, No, and Not sure
 ///   decision-scope  Decision mode: the switch under the input set to each line, and the note that says what it decides about
-///   decision-live  Decision mode: the Context card deciding as you type, the question in the input, one kept from it, and three presets answered on glass capsules
+///   decision-live  Decision mode: the Context card deciding as you type, a question kept from the input, the input's, and three presets answered on glass capsules
 @MainActor
 @Suite(.serialized, .enabled(if: Showcase.output != nil, "scripts/showcase.sh takes these pictures"))
 struct ShowcaseTests {
@@ -529,15 +529,15 @@ struct ShowcaseTests {
         preferences.setDefaultProvider(.typeSafe, for: .decision)
         preferences.mode = .decision
         preferences.decisionScope = scope
-        if live != nil {
-            preferences.liveDecisions = true
-            preferences.livePresets = presets
-        }
         let model = ScriptedModel(decisions: decisions, batches: batches)
         let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil), stream: { model.stream($0) }) { questions, _, _, _ in
             var decisions: [String: Decision] = [:]
             for question in questions { decisions[question.id] = live?[question.question] }
             return DecisionClient.LiveReply(decisions: decisions, usage: .zero)
+        }
+        if live != nil {
+            session.liveDecisions.isOn = true
+            session.liveDecisions.enabledPresets = presets
         }
         return try place(session, preferences: preferences, defaults: defaults, model: model, on: stage)
     }

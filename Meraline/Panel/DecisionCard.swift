@@ -460,23 +460,25 @@ private struct LiveSwitch: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .help(isOn ? "Stop deciding as you type" : "Decide as you type: the answers show here, without sending")
+        .help(isOn ? "Stop deciding as you type" : "Decide as you type: the answers show here, without sending. Off in every new chat.")
         .accessibilityLabel("Live decisions")
         .accessibilityValue(isOn ? "On" : "Off")
         .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 }
 
-/// Under the Context card's text while Live is on (see `LiveDecisions`): a glass capsule for each question, the
-/// input's first, then those kept from it, then Decision's presets, each with its answer once it comes: a check on
-/// green glass for Yes, a cross on red for No, a question mark on plain glass for Not Sure, or a check on glass
-/// tinted by how sure the model is of one of your own answers, as `DecisionCard`'s disc has them, then the answer
-/// and how sure. A capsule that is on and waiting wears the pink of a chosen segment; one that is off is plain
-/// glass with secondary text. A click on a preset's or a kept question's capsule turns it on or off; the plus on
-/// the input's keeps its question (`keep`), which frees the input for the next, and the cross on a kept question's
-/// removes it. Each capsule is a glass container of its own, so its fade reaches its glass, as the follow-ups' are,
-/// and none rotates, so the glass never swells into a disc. The check, the cross, and the words carry the meaning;
-/// the tints are only a help.
+/// Under the Context card's text while Live is on (see `LiveDecisions`): a glass capsule for each question, those
+/// kept from the input first, then the input's, then Decision's presets, each with its answer once it comes: a
+/// check on green glass for Yes, a cross on red for No, a question mark on plain glass for Not Sure, or a check on
+/// glass tinted by how sure the model is of one of your own answers, as `DecisionCard`'s disc has them, then the
+/// answer and how sure. While a newer answer is on its way the last one stays, dimmed, with its tint faded, and a
+/// capsule that has none yet shows dots that run, never a spinner in place of the words. A capsule that is on wears
+/// the pink of a chosen segment until its first answer; one that is off is plain glass with secondary text. A
+/// click on a preset's or a kept question's capsule turns it on or off; the plus on the input's keeps its question
+/// (`keep`), which takes the input's place in the row and frees the input for the next, and the cross on a kept
+/// question's removes it. Each capsule is a glass container of its own, so its fade reaches its glass, as the
+/// follow-ups' are, and none rotates, so the glass never swells into a disc. The check, the cross, and the words
+/// carry the meaning; the tints are only a help.
 struct LiveDecisionStrip: View {
     let live: LiveDecisions
     /// Under this confidence a decision says Not Sure (see `Preferences.unsureBelow`).
@@ -528,6 +530,7 @@ struct LiveDecisionStrip: View {
     private func capsule(_ question: LiveQuestion) -> some View {
         let answer = live.answer(for: question)
         let verdict = answer?.verdict(unsureBelow: unsureBelow)
+        let isStale = live.isStale(question)
         let isHovered = hovered == question.id
         return GlassEffectContainer {
             HStack(spacing: 0) {
@@ -571,17 +574,18 @@ struct LiveDecisionStrip: View {
                     .accessibilityAddTraits(question.isOn ? .isSelected : [])
                 }
             }
-            .glassEffect(glass(for: question, verdict: verdict, answer: answer), in: .capsule)
+            .glassEffect(glass(for: question, verdict: verdict, answer: answer, isStale: isStale), in: .capsule)
         }
         .onHover { isOver in
             if isOver { hovered = question.id } else if hovered == question.id { hovered = nil }
         }
     }
 
-    /// The question's icon and title, and while it is on, its answer, a spinner while the answer is on its way, or
-    /// an ellipsis while there is no text to decide about.
+    /// The question's icon and title, and while it is on, its answer, dimmed while a newer one is on its way, dots
+    /// that run while the first is, or still dots while there is no text to decide about.
     private func label(_ question: LiveQuestion, answer: Decision?, verdict: Decision.Verdict?, trailsButton: Bool) -> some View {
-        HStack(spacing: 5) {
+        let isStale = live.isStale(question)
+        return HStack(spacing: 5) {
             Image(systemName: question.symbol)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(question.isOn ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
@@ -592,28 +596,32 @@ struct LiveDecisionStrip: View {
                 .lineLimit(1)
             if question.isOn {
                 if let answer, let verdict {
-                    Image(systemName: symbol(of: verdict))
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(tint(of: verdict, answer).map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
-                        .contentTransition(.symbolEffect(.replace))
-                        .symbolEffect(.bounce, value: answer)
-                        .padding(.leading, 2)
-                    Text(verdict == .unsure ? "Not sure" : answer.chosen.label)
-                        .font(.system(size: 12, weight: .semibold))
-                        .lineLimit(1)
-                    Text(Decision.percent(answer.confidence))
-                        .font(.system(size: 11))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .contentTransition(.numericText())
-                } else if live.isPending(question) {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .padding(.leading, 2)
+                    HStack(spacing: 5) {
+                        Image(systemName: symbol(of: verdict))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(tint(of: verdict, answer).map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
+                            .contentTransition(.symbolEffect(.replace))
+                            .symbolEffect(.bounce, value: answer)
+                        Text(verdict == .unsure ? "Not sure" : answer.chosen.label)
+                            .font(.system(size: 12, weight: .semibold))
+                            .lineLimit(1)
+                        Text(Decision.percent(answer.confidence))
+                            .font(.system(size: 11))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .contentTransition(.numericText())
+                    }
+                    .padding(.leading, 2)
+                    // The last answer, about the text as it was, until the one about the text as it is comes.
+                    .opacity(isStale ? 0.45 : 1)
+                    .help(isStale ? "About the text as it was; a new answer is on its way" : "")
                 } else {
-                    Text("…")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.tertiary)
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating, isActive: live.isPending(question))
+                        .padding(.leading, 2)
+                        .accessibilityHidden(true)
                 }
             }
         }
@@ -632,17 +640,19 @@ struct LiveDecisionStrip: View {
             .contentShape(.rect)
     }
 
-    /// The capsule's glass: plain while the question is off, the chosen segment's pink while it is on and waiting,
-    /// then green for Yes, red for No, the colour of how sure the model is for one of your own answers, and plain
-    /// again for Not Sure. Every capsule answers the pointer, since each takes a click.
-    private func glass(for question: LiveQuestion, verdict: Decision.Verdict?, answer: Decision?) -> Glass {
+    /// The capsule's glass: plain while the question is off, the chosen segment's pink while it is on and has no
+    /// answer yet, then green for Yes, red for No, the colour of how sure the model is for one of your own
+    /// answers, and plain again for Not Sure; half as strong while the answer is about an earlier text. Every
+    /// capsule answers the pointer, since each takes a click.
+    private func glass(for question: LiveQuestion, verdict: Decision.Verdict?, answer: Decision?, isStale: Bool) -> Glass {
         guard question.isOn else { return .regular.interactive() }
+        let strength = isStale ? 0.15 : 0.3
         switch verdict {
-        case .yes?: return .regular.tint(Color(nsColor: .addedText).opacity(0.3)).interactive()
-        case .no?: return .regular.tint(Color(nsColor: .removedText).opacity(0.3)).interactive()
+        case .yes?: return .regular.tint(Color(nsColor: .addedText).opacity(strength)).interactive()
+        case .no?: return .regular.tint(Color(nsColor: .removedText).opacity(strength)).interactive()
         case .chosen?:
             guard let answer else { return .regular.interactive() }
-            return .regular.tint(confidenceColor(answer.confidence).opacity(0.3)).interactive()
+            return .regular.tint(confidenceColor(answer.confidence).opacity(strength)).interactive()
         case .unsure?: return .regular.interactive()
         case nil: return .regular.tint(.meralinePink.opacity(0.22)).interactive()
         }
@@ -669,7 +679,8 @@ struct LiveDecisionStrip: View {
     private func value(of question: LiveQuestion) -> String {
         guard question.isOn else { return "Off" }
         guard let answer = live.answer(for: question) else { return live.isPending(question) ? "Deciding" : "Nothing to decide about yet" }
-        return answer.summary(unsureBelow: unsureBelow)
+        let summary = answer.summary(unsureBelow: unsureBelow)
+        return live.isStale(question) ? "\(summary), about the text as it was; deciding again" : summary
     }
 }
 

@@ -393,20 +393,20 @@ final class ChatSession {
     /// which shows nothing, while the Live switch is off, outside Decision mode, while the card is closed, and
     /// while an answer comes.
     var liveAsk: LiveDecisions.Ask? {
-        guard preferences.liveDecisions, isDeciding, typedState != nil, !isStreaming,
+        guard liveDecisions.isOn, isDeciding, typedState != nil, !isStreaming,
               let provider = preferences.activeProvider, provider.kind == .decision else { return nil }
         return LiveDecisions.Ask(state: decisionState, questions: liveQuestions, provider: provider, settings: preferences[provider])
     }
 
-    /// The questions the Context card decides live: the input's, when there is one, then those kept from it
-    /// (`LiveDecisions.keptQuestions`), then Decision's presets in their order, each on or off
-    /// (`Preferences.livePresets`).
+    /// The questions the Context card decides live: those kept from the input (`LiveDecisions.keptQuestions`),
+    /// then the input's, when there is one, so keeping it leaves its capsule where it is and moves no other, then
+    /// Decision's presets in their order, each on or off (`LiveDecisions.enabledPresets`).
     var liveQuestions: [LiveQuestion] {
         let fallback = defaultAnswers
-        let on = preferences.livePresets
-        let input = LiveQuestion.input(draft, fallback: fallback).map { [$0] } ?? []
+        let on = liveDecisions.enabledPresets
         let kept = liveDecisions.keptQuestions.compactMap { LiveQuestion.kept($0, fallback: fallback) }
-        return input + kept + preferences[presets: .decision].compactMap { LiveQuestion.preset($0, isOn: on.contains($0.id), fallback: fallback) }
+        let input = LiveQuestion.input(draft, fallback: fallback).map { [$0] } ?? []
+        return kept + input + preferences[presets: .decision].compactMap { LiveQuestion.preset($0, isOn: on.contains($0.id), fallback: fallback) }
     }
 
     /// Tells the live decisions what to ask, after a change of the text, the question, the mode, or the provider;
@@ -415,17 +415,18 @@ final class ChatSession {
         liveDecisions.update(liveAsk, atOnce: atOnce)
     }
 
-    /// The Live switch on the Context card: the card starts deciding as you type, or stops.
+    /// The Live switch on the Context card: the card starts deciding as you type, or stops, with no preset on and
+    /// no kept question either way; the input's question is asked as it is.
     func toggleLiveDecisions() {
-        preferences.liveDecisions.toggle()
-        Log.chat.info("Live decisions turned \(preferences.liveDecisions ? "on" : "off")")
+        liveDecisions.toggle()
+        Log.chat.info("Live decisions turned \(liveDecisions.isOn ? "on" : "off")")
         refreshLiveDecisions(atOnce: true)
     }
 
     /// A click on a preset's capsule under the Context card's text: the preset is asked with the others from now
     /// on, or no longer.
     func toggleLivePreset(_ id: PromptPreset.ID) {
-        if preferences.livePresets.remove(id) == nil { preferences.livePresets.insert(id) }
+        liveDecisions.togglePreset(id)
         refreshLiveDecisions(atOnce: true)
     }
 
@@ -956,6 +957,8 @@ final class ChatSession {
     /// anonymous.
     func reset(keepingChat: Bool = true) {
         archiveCurrentChat(keeping: keepingChat)
+        // The next chat's Context card starts with Live off and nothing on.
+        liveDecisions.reset()
         streamTask?.cancel()
         streamTask = nil
         responders = [:]
@@ -1180,9 +1183,6 @@ final class ChatSession {
         let open = turns.isEmpty ? 0 : 1
         reset(keepingChat: false)
         offeredSelection = nil
-        // Questions kept for the live decisions are typed text too.
-        liveDecisions.forgetKeptQuestions()
-        refreshLiveDecisions()
         return open + forgetHistory()
     }
 

@@ -5,8 +5,9 @@ import Testing
 @testable import Meraline
 
 /// The decisions the Context card makes as you type in Decision mode (`LiveDecisions`): the Live switch, the
-/// pause after typing, the question in the input and the presets asked at once in one request, which answers
-/// are kept and which dropped, the chips on the card, and the count in the ledger.
+/// pause after typing and the ask that comes anyway while typing goes on, the question in the input, the ones kept
+/// from it, and the presets asked at once in one request, the answers kept and shown dimmed while newer ones are
+/// on their way, what a new chat starts over, the capsules on the card, and the count in the ledger.
 @MainActor
 struct LiveDecisionTests {
     private typealias Support = GameTestSupport
@@ -41,15 +42,16 @@ struct LiveDecisionTests {
     static let no = Decision(options: [.init(label: "Yes", probability: 0.2), .init(label: "No", probability: 0.8)], isYesNo: true, confidence: 0.6)
     static let neutral = Decision(options: [.init(label: "Friendly", probability: 0.2), .init(label: "Neutral", probability: 0.7), .init(label: "Angry", probability: 0.1)], confidence: 0.7)
 
-    /// A session in Decision mode with TypeSafe ready and a short pause, deciding live through `decider`.
+    /// A session in Decision mode with TypeSafe ready and short waits, deciding live through `decider`.
     private static func session(_ decider: ScriptedDecider, live: Bool = true) -> (session: ChatSession, preferences: Preferences) {
         let preferences = Support.preferences()
         preferences[.typeSafe] = ProviderSettings(model: "jev-latest", baseURL: Provider.typeSafe.defaultBaseURL, apiKey: "sk-test", isEnabled: true)
         preferences.mode = .decision
-        preferences.liveDecisions = live
         let model = ScriptedModel()
         let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil), stream: { model.stream($0) }, decideLive: decider.decide)
-        session.liveDecisions.debounce = .milliseconds(40)
+        session.liveDecisions.isOn = live
+        session.liveDecisions.debounce = 0.04
+        session.liveDecisions.maxWait = 0.12
         return (session, preferences)
     }
 
@@ -68,7 +70,7 @@ struct LiveDecisionTests {
         session.writeState()
         session.draft = "Is this urgent?"
         let live = session.liveDecisions
-        #expect(live.questions.map(\.id) == ["input", "preset.urgent", "preset.scam", "preset.tone", "preset.priority"], "the input's question first, then every preset")
+        #expect(live.questions.map(\.id) == ["input", "preset.urgent", "preset.scam", "preset.tone", "preset.priority"], "the input's question, then every preset")
         #expect(live.questions.map(\.isOn) == [true, false, false, false, false])
         #expect(live.pending.isEmpty, "nothing to decide about yet")
         #expect(!live.asksNothing)
@@ -84,7 +86,7 @@ struct LiveDecisionTests {
         #expect(decider.asks.last?.provider == .typeSafe)
         let input = try #require(live.questions.first)
         #expect(live.answer(for: input) == Self.yes)
-        #expect(live.pending.isEmpty && live.failure == nil)
+        #expect(live.pending.isEmpty && live.failure == nil && !live.isStale(input))
         #expect(session.turns.isEmpty, "no turn in the chat")
         #expect(session.draft == "Is this urgent?" && session.typedState == "Production is down", "nothing of the draft goes")
 
@@ -96,24 +98,25 @@ struct LiveDecisionTests {
         let data = try JSONEncoder().encode(tally)
         #expect(try JSONDecoder().decode(UsageTally.self, from: data).liveDecisions == 1, "and kept in the ledger's file")
 
-        // More typing asks again, and the old answer goes meanwhile, so the chip never shows another text's answer.
+        // More typing asks again; the last answer stays, dimmed, until the new one comes, so the capsule never goes blank.
         session.typedState = "Production is down!"
-        #expect(live.answer(for: input) == nil)
-        #expect(live.isPending(input))
+        #expect(live.answer(for: input) == Self.yes)
+        #expect(live.isPending(input) && live.isStale(input))
         await Self.settle(session)
         #expect(decider.asks.count == 2)
         #expect(decider.asks.last?.texts == ["Production is down!"])
-        #expect(live.answer(for: input) == Self.yes)
+        #expect(live.answer(for: input) == Self.yes && !live.isStale(input))
 
         // A changed question too, about the same text.
         session.draft = "Is this spam?"
-        #expect(live.answer(for: live.questions[0]) == nil)
+        #expect(live.isStale(live.questions[0]))
         await Self.settle(session)
         #expect(decider.asks.last?.questions.map(\.question) == ["Is this spam?"])
 
-        // A text that is only spacing is nothing to decide about.
+        // A text that is only spacing is nothing to decide about, and no earlier answer lingers over it.
         session.typedState = "  \n"
         #expect(live.pending.isEmpty)
+        #expect(live.answer(for: live.questions[0]) == nil)
         await Self.settle(session)
         #expect(decider.asks.count == 3)
 
@@ -127,11 +130,34 @@ struct LiveDecisionTests {
         #expect(decider.asks.count == 3, "nothing more asked live")
     }
 
+    @Test func typingWithoutAPauseStillAsksOnceInAWhile() async throws {
+        let decider = ScriptedDecider()
+        let (session, _) = Self.session(decider)
+        let live = session.liveDecisions
+        session.writeState()
+        session.draft = "Urgent?"
+        // Typed faster than the pause, for longer than the longest wait: the asks come anyway.
+        var text = ""
+        for letter in "The server room is on fire and" {
+            text.append(letter)
+            session.typedState = text
+            try await Task.sleep(for: .milliseconds(12))
+        }
+        #expect(decider.asks.count >= 2, "asked while the typing went on: \(decider.asks.count) ask(s)")
+        #expect(decider.asks.allSatisfy { !$0.texts[0].isEmpty && text.hasPrefix($0.texts[0]) })
+        let input = try #require(live.questions.first)
+        #expect(live.answer(for: input) != nil, "an answer about an earlier text shows meanwhile")
+        #expect(live.isStale(input) || !live.isPending(input))
+        await Self.settle(session)
+        #expect(decider.asks.last?.texts == [text], "and the text as it ended is asked last")
+        #expect(!live.isStale(input) && !live.isPending(input))
+    }
+
     @Test func presetsAreAskedTogetherAndOnlyWhatChangedIsAskedAgain() async throws {
         let decider = ScriptedDecider()
         decider.answers["What is the tone of this text?"] = Self.neutral
         decider.answers["Is this a scam, spam, or phishing?"] = Self.no
-        let (session, preferences) = Self.session(decider)
+        let (session, _) = Self.session(decider)
         let live = session.liveDecisions
         session.writeState()
         session.typedState = "Hi team, the checkout is down."
@@ -142,7 +168,7 @@ struct LiveDecisionTests {
 
         // A preset turned on is asked at once, alone: the input's answer stays.
         session.toggleLivePreset("urgent")
-        #expect(preferences.livePresets == ["urgent"])
+        #expect(live.enabledPresets == ["urgent"])
         #expect(live.pending == ["preset.urgent"])
         #expect(live.answer(for: live.questions[0]) == Self.yes, "the input's answer stays")
         await Self.settle(session)
@@ -172,7 +198,7 @@ struct LiveDecisionTests {
         await Self.settle(session)
         #expect(decider.asks.count == 4)
 
-        // A preset's question in the input is asked once, and both chips get the answer.
+        // A preset's question in the input is asked once, and both capsules get the answer.
         session.draft = "Is this a scam, spam, or phishing?"
         session.toggleLivePreset("scam")
         session.typedState = "Everything is fine."
@@ -183,7 +209,7 @@ struct LiveDecisionTests {
         #expect(live.pending.isEmpty)
     }
 
-    @Test func questionsKeptFromTheInputAreAskedBesideThePresets() async throws {
+    @Test func questionsKeptFromTheInputStayInTheirPlaceBesideThePresets() async throws {
         let decider = ScriptedDecider()
         decider.answers["Is it polite?"] = Self.no
         let (session, _) = Self.session(decider)
@@ -208,16 +234,17 @@ struct LiveDecisionTests {
         await Self.settle(session)
         #expect(decider.asks.count == 1, "nothing asked again")
 
-        // A second one is asked at once, with a preset turned on; the text changing asks every one that is on.
+        // The input's capsule comes after the kept ones, so keeping it leaves it where it is and moves no other.
         session.draft = "Does it say thank you?"
+        #expect(live.questions.map(\.id).prefix(2) == [kept.id, "input"])
         session.keepLiveQuestion()
+        #expect(live.questions.map(\.id).prefix(2) == [kept.id, "kept.\(live.keptQuestions[1].id.uuidString)"], "the new one takes the input's place")
         session.toggleLivePreset("urgent")
         await Self.settle(session)
         #expect(decider.asks.last?.questions.map(\.question) == ["Does it say thank you?", "Is this urgent?"])
         session.typedState = "Send me the file now, please."
         await Self.settle(session)
         #expect(decider.asks.last?.questions.map(\.question) == ["Is it polite?", "Does it say thank you?", "Is this urgent?"])
-        #expect(live.questions.map(\.id).prefix(2).allSatisfy { $0.hasPrefix("kept.") }, "kept questions come before the presets")
         #expect(session.usage.summary(.day).liveDecisions == 6)
 
         // Off and on keeps the answer; the cross removes.
@@ -239,18 +266,9 @@ struct LiveDecisionTests {
         #expect(live.keptQuestions.count == 1 && live.keptQuestions[0].isOn)
         session.keepLiveQuestion()
         #expect(live.keptQuestions.count == 1)
-
-        // A new chat keeps them; forgetting every chat forgets them too.
-        session.reset()
-        #expect(live.keptQuestions.count == 1)
-        session.writeState()
-        #expect(live.questions.first?.keptID != nil)
-        _ = session.forgetAll()
-        #expect(live.keptQuestions.isEmpty)
-        #expect(live.questions.isEmpty)
     }
 
-    @Test func anAskOvertakenByTypingIsDropped() async throws {
+    @Test func anAskOvertakenByTypingStillShowsUntilTheNextComes() async throws {
         let decider = ScriptedDecider()
         decider.delay = .milliseconds(150)
         let (session, _) = Self.session(decider)
@@ -261,11 +279,14 @@ struct LiveDecisionTests {
         try await Task.sleep(for: .milliseconds(80))
         #expect(decider.asks.count == 1, "on its way")
         session.typedState = "First draft"
+        try await Task.sleep(for: .milliseconds(140))
+        let input = try #require(live.questions.first)
+        #expect(decider.asks.count == 2, "the next waits behind the one in flight, then goes")
+        #expect(live.answer(for: input) == Self.yes && live.isStale(input), "the answer about “First” shows, dimmed, meanwhile")
         await Self.settle(session)
-        #expect(decider.asks.count == 2)
-        #expect(decider.asks.last?.texts == ["First draft"])
-        #expect(live.answer(for: live.questions[0]) == Self.yes)
-        #expect(session.usage.summary(.day).liveDecisions == 1, "the overtaken ask brought nothing")
+        #expect(decider.asks.map(\.texts) == [["First"], ["First draft"]])
+        #expect(live.answer(for: input) == Self.yes && !live.isStale(input))
+        #expect(session.usage.summary(.day).liveDecisions == 2, "both replies came, and cost")
     }
 
     @Test func theSwitchIsOffUntilTurnedOnAndClearsTheCardWhenOff() async throws {
@@ -277,24 +298,24 @@ struct LiveDecisionTests {
         session.draft = "Urgent?"
         session.typedState = "Down"
         await Self.settle(session)
-        #expect(decider.asks.isEmpty && live.questions.isEmpty, "off, the card shows no chips and asks nothing")
+        #expect(decider.asks.isEmpty && live.questions.isEmpty, "off, the card shows no capsules and asks nothing")
 
         session.toggleLiveDecisions()
-        #expect(preferences.liveDecisions && live.isOn)
+        #expect(live.isOn)
         #expect(live.pending == ["input"])
         await Self.settle(session)
         #expect(decider.asks.count == 1)
         session.toggleLiveDecisions()
-        #expect(live.questions.isEmpty && live.answers.isEmpty && live.pending.isEmpty, "off again, the chips go")
+        #expect(live.questions.isEmpty && live.answers.isEmpty && live.pending.isEmpty, "off again, the capsules go")
 
-        // Only Decision mode decides live; the switch stays as it was for next time.
+        // Only Decision mode decides live; the switch stays as it was for the chat.
         session.toggleLiveDecisions()
         await Self.settle(session)
         #expect(decider.asks.count == 2)
         preferences.mode = .llm
         session.refreshLiveDecisions()
         #expect(live.questions.isEmpty)
-        #expect(preferences.liveDecisions)
+        #expect(live.isOn)
         preferences.mode = .decision
         session.refreshLiveDecisions()
         #expect(live.pending == ["input"])
@@ -310,6 +331,53 @@ struct LiveDecisionTests {
         #expect(!live.asksNothing)
         session.draft = ""
         #expect(live.asksNothing, "no question in the input and no preset on")
+    }
+
+    @Test func aNewChatAndTheSwitchStartOverWithNothingOn() async throws {
+        let decider = ScriptedDecider()
+        let (session, _) = Self.session(decider)
+        let live = session.liveDecisions
+        session.writeState()
+        session.typedState = "Send me the file now."
+        session.draft = "Is it polite?"
+        session.keepLiveQuestion()
+        session.draft = "Is it short?"
+        session.toggleLivePreset("urgent")
+        session.toggleLivePreset("tone")
+        await Self.settle(session)
+        #expect(live.keptQuestions.count == 1 && live.enabledPresets == ["urgent", "tone"])
+
+        // The switch turned, either way: no preset on and no kept question, the question in the input aside.
+        session.toggleLiveDecisions()
+        #expect(!live.isOn && live.enabledPresets.isEmpty && live.keptQuestions.isEmpty)
+        #expect(session.draft == "Is it short?" && session.typedState == "Send me the file now.", "the draft is untouched")
+        session.toggleLiveDecisions()
+        #expect(live.isOn && live.enabledPresets.isEmpty && live.keptQuestions.isEmpty)
+        #expect(live.questions.map(\.isOn) == [true, false, false, false, false])
+        session.toggleLivePreset("scam")
+        session.draft = "Is it polite?"
+        session.keepLiveQuestion()
+        await Self.settle(session)
+
+        // A new chat, as Esc or ⌘N starts one: the switch off, nothing on, nothing kept, and the card closed.
+        session.reset()
+        #expect(!live.isOn && live.enabledPresets.isEmpty && live.keptQuestions.isEmpty)
+        #expect(live.questions.isEmpty && live.answers.isEmpty && live.pending.isEmpty)
+        #expect(session.typedState == nil && session.draft.isEmpty)
+        session.writeState()
+        session.draft = "Urgent?"
+        session.typedState = "Down"
+        await Self.settle(session)
+        #expect(live.questions.isEmpty, "off until turned on again")
+        let asked = decider.asks.count
+        session.toggleLiveDecisions()
+        await Self.settle(session)
+        #expect(decider.asks.count == asked + 1 && live.questions.map(\.isOn) == [true, false, false, false, false])
+
+        // Forgetting every chat starts over the same way.
+        session.toggleLivePreset("urgent")
+        _ = session.forgetAll()
+        #expect(!live.isOn && live.enabledPresets.isEmpty && live.questions.isEmpty)
     }
 
     @Test func aSelectionOrTheClipboardIsDecidedAboutToo() async throws {
@@ -403,7 +471,7 @@ struct LiveDecisionTests {
     @Test func aLiveQuestionReadsItsAnswersAndWearsThePresetsIcon() throws {
         #expect(LiveQuestion.input("  ", fallback: .yesNo) == nil)
         let input = try #require(LiveQuestion.input("Which team? Billing / Sales", fallback: .yesNo))
-        #expect(input.id == "input" && input.source == .input && input.presetID == nil)
+        #expect(input.id == "input" && input.source == .input && input.presetID == nil && input.keptID == nil)
         #expect(input.question == "Which team?" && input.title == "Which team?" && input.answers.options == ["Billing", "Sales"])
         #expect(input.isOn && input.symbol == "text.cursor")
         #expect(input.decisionQuestion == DecisionQuestion(id: "input", question: "Which team?", answers: DecisionAnswers(options: ["Billing", "Sales"], isOrdered: false)))
@@ -419,25 +487,14 @@ struct LiveDecisionTests {
         var untitled = priority
         untitled.title = " "
         #expect(LiveQuestion.preset(untitled, isOn: true, fallback: .yesNo)?.title == "How high a priority is this?", "the question stands in for a missing title")
+
+        let kept = KeptQuestion(id: UUID(), text: "Is it polite? Yes / No / Rude", isOn: false)
+        let keptQuestion = try #require(LiveQuestion.kept(kept, fallback: .yesNo))
+        #expect(keptQuestion.keptID == kept.id && keptQuestion.question == "Is it polite?" && keptQuestion.answers.options == ["Yes", "No", "Rude"] && !keptQuestion.isOn)
     }
 
-    @Test func preferencesKeepTheSwitchAndThePresets() {
-        let suite = "MeralineTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        let secrets = SecretStore(read: { _ in "" }, write: { _, _ in })
-        let preferences = Preferences(defaults: defaults, secrets: secrets, onDeviceModelAvailable: false)
-        #expect(!preferences.liveDecisions && preferences.livePresets.isEmpty, "off until turned on")
-        preferences.liveDecisions = true
-        preferences.livePresets = ["urgent", "tone"]
-        let again = Preferences(defaults: defaults, secrets: secrets, onDeviceModelAvailable: false)
-        #expect(again.liveDecisions && again.livePresets == ["urgent", "tone"])
-        #expect(defaults.stringArray(forKey: "decisions.livePresets") == ["tone", "urgent"], "preset ids only, never text")
-    }
-
-    /// The strip lays out on the card: with Live on and answers in, the card is taller than without, and the
-    /// chips read as the decisions in words.
-    @Test func theCardShowsTheChipsWhileLiveIsOn() async throws {
+    /// The strip lays out on the card: with Live on and answers in, the card is taller than without.
+    @Test func theCardShowsTheCapsulesWhileLiveIsOn() async throws {
         let decider = ScriptedDecider()
         decider.answers["What is the tone of this text?"] = Self.neutral
         let (session, preferences) = Self.session(decider)
@@ -465,7 +522,7 @@ struct LiveDecisionTests {
         let with = try await height(live: live)
         let without = try await height(live: nil)
         #expect(with > without + 20, "the strip takes a row: \(with) against \(without)")
-        preferences.liveDecisions = false
+        live.isOn = false
         session.refreshLiveDecisions()
         let off = try await height(live: live)
         #expect(abs(off - without) < 1, "off, only the switch stays in the header: \(off) against \(without)")

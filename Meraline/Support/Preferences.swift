@@ -154,24 +154,6 @@ final class Preferences {
             Log.settings.info("Decisions about \(decisionScope.title.lowercased())")
         }
     }
-    /// Whether the Context card decides as you type in Decision mode (see `LiveDecisions`): its Live switch, off
-    /// until turned on, since every pause in typing then asks the decision model.
-    var liveDecisions: Bool {
-        didSet {
-            guard liveDecisions != oldValue else { return }
-            defaults.set(liveDecisions, forKey: "decisions.live")
-            Log.settings.info("Live decisions \(liveDecisions ? "on" : "off")")
-        }
-    }
-    /// The presets the live decisions ask beside the question in the input, by id (see `LiveQuestion`): none
-    /// until a chip on the card turns one on.
-    var livePresets: Set<String> {
-        didSet {
-            guard livePresets != oldValue else { return }
-            defaults.set(livePresets.sorted(), forKey: "decisions.livePresets")
-            Log.settings.info("Live decisions ask \(livePresets.count) preset(s)")
-        }
-    }
     /// The language answers, agents, and games are in (see `AnswerLanguage`).
     var language: AnswerLanguage {
         didSet {
@@ -247,8 +229,6 @@ final class Preferences {
         unsureBelow = defaults.object(forKey: "decisions.unsureBelow") as? Double ?? Decision.defaultUnsureBelow
         decisionAnswers = defaults.string(forKey: "decisions.answers") ?? DecisionAnswers.defaultText
         decisionScope = defaults.string(forKey: "decisions.scope").flatMap(DecisionScope.init(rawValue:)) ?? .whole
-        liveDecisions = defaults.bool(forKey: "decisions.live")
-        livePresets = Set(defaults.stringArray(forKey: "decisions.livePresets") ?? [])
         language = defaults.string(forKey: "language").flatMap(AnswerLanguage.init(rawValue:)) ?? .english
         updateChannel = defaults.string(forKey: "updateChannel").flatMap(UpdateChannel.init(rawValue:)) ?? .stable
         hidesFromScreenSharing = defaults.bool(forKey: "hidesFromScreenSharing")
