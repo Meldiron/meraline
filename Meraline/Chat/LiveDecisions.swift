@@ -12,7 +12,7 @@ nonisolated struct KeptQuestion: Equatable, Identifiable, Sendable {
 
 /// A question the Context card decides live (see `LiveDecisions`): one kept from the input, the one in the input,
 /// or one of Decision's presets, which a click on its capsule turns on or off. Each is a question less the answers
-/// it names, and those answers (see `DecisionAnswers.split`), with the title and icon its capsule wears.
+/// it names, and those answers (see `DecisionAnswers.split`), with the title its capsule wears.
 nonisolated struct LiveQuestion: Equatable, Hashable, Sendable, Identifiable {
     enum Source: Equatable, Hashable, Sendable {
         /// The question typed in the input, asked whenever there is one.
@@ -25,7 +25,6 @@ nonisolated struct LiveQuestion: Equatable, Hashable, Sendable, Identifiable {
 
     let source: Source
     let title: String
-    let symbol: String
     let question: String
     let answers: DecisionAnswers
     /// Whether the question is asked: the input's always, a kept question's or a preset's while it is on.
@@ -56,25 +55,22 @@ nonisolated struct LiveQuestion: Equatable, Hashable, Sendable, Identifiable {
     static func input(_ draft: String, fallback: DecisionAnswers) -> LiveQuestion? {
         let split = DecisionAnswers.split(draft, fallback: fallback)
         guard !split.question.isEmpty else { return nil }
-        return LiveQuestion(source: .input, title: split.question, symbol: "text.cursor", question: split.question, answers: split.answers, isOn: true)
+        return LiveQuestion(source: .input, title: split.question, question: split.question, answers: split.answers, isOn: true)
     }
 
     /// A kept question, or nil for one that names only answers.
     static func kept(_ kept: KeptQuestion, fallback: DecisionAnswers) -> LiveQuestion? {
         let split = DecisionAnswers.split(kept.text, fallback: fallback)
         guard !split.question.isEmpty else { return nil }
-        return LiveQuestion(source: .kept(kept.id), title: split.question, symbol: "text.bubble", question: split.question, answers: split.answers, isOn: kept.isOn)
+        return LiveQuestion(source: .kept(kept.id), title: split.question, question: split.question, answers: split.answers, isOn: kept.isOn)
     }
 
-    /// A preset's question, or nil for one with no text; its capsule wears the preset's title and icon.
+    /// A preset's question, or nil for one with no text; its capsule wears the preset's title.
     static func preset(_ preset: PromptPreset, isOn: Bool, fallback: DecisionAnswers) -> LiveQuestion? {
         let split = DecisionAnswers.split(preset.text, fallback: fallback)
         guard !split.question.isEmpty else { return nil }
         let title = preset.title.trimmed
-        return LiveQuestion(
-            source: .preset(preset.id), title: title.isEmpty ? split.question : title, symbol: preset.shownSymbol,
-            question: split.question, answers: split.answers, isOn: isOn
-        )
+        return LiveQuestion(source: .preset(preset.id), title: title.isEmpty ? split.question : title, question: split.question, answers: split.answers, isOn: isOn)
     }
 }
 
@@ -85,8 +81,8 @@ nonisolated struct LiveQuestion: Equatable, Hashable, Sendable, Identifiable {
 /// without a turn in the chat; Return still asks for a decision there. They go after each pause in typing
 /// (`debounce`), and at the latest `maxWait` after typing began, so a sentence typed without a pause is still
 /// decided about as it grows. One request is in flight at a time and the latest change waits behind it: a reply
-/// that comes back about an earlier text still shows, dimmed, until the next one lands, so a capsule never goes
-/// blank while you type. An answer is kept while its text and question stay the same, whichever capsule asks it,
+/// that comes back about an earlier text still shows until the next one lands, so a capsule never goes blank
+/// while you type; the Live switch shows that one is on its way (`isWorking`). An answer is kept while its text and question stay the same, whichever capsule asks it,
 /// so turning a preset on asks only that preset, turning it off and on again asks nothing, and a question kept
 /// from the input takes the input's answer with it. The switch, the presets turned on, and the kept questions are
 /// the chat's: a new chat starts with the switch off and nothing on (`reset()`), and so does the switch itself
@@ -179,6 +175,10 @@ final class LiveDecisions {
     func isStale(_ question: LiveQuestion) -> Bool {
         isPending(question) && answers[question.id] != nil
     }
+
+    /// Whether any answer is on its way, for the loader in the Live switch: the capsules all change at once, so
+    /// one loader stands for them.
+    var isWorking: Bool { !pending.isEmpty }
 
     /// Whether nothing is asked: no question in the input, none kept, and no preset on.
     var asksNothing: Bool { !questions.contains(where: \.isOn) }

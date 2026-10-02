@@ -98,14 +98,15 @@ struct LiveDecisionTests {
         let data = try JSONEncoder().encode(tally)
         #expect(try JSONDecoder().decode(UsageTally.self, from: data).liveDecisions == 1, "and kept in the ledger's file")
 
-        // More typing asks again; the last answer stays, dimmed, until the new one comes, so the capsule never goes blank.
+        // More typing asks again; the last answer stays until the new one comes, so the capsule never goes blank,
+        // and the Live switch shows the loader meanwhile.
         session.typedState = "Production is down!"
         #expect(live.answer(for: input) == Self.yes)
-        #expect(live.isPending(input) && live.isStale(input))
+        #expect(live.isPending(input) && live.isStale(input) && live.isWorking)
         await Self.settle(session)
         #expect(decider.asks.count == 2)
         #expect(decider.asks.last?.texts == ["Production is down!"])
-        #expect(live.answer(for: input) == Self.yes && !live.isStale(input))
+        #expect(live.answer(for: input) == Self.yes && !live.isStale(input) && !live.isWorking)
 
         // A changed question too, about the same text.
         session.draft = "Is this spam?"
@@ -227,7 +228,7 @@ struct LiveDecisionTests {
         #expect(live.keptQuestions.map(\.text) == ["Is it polite?"])
         let kept = try #require(live.questions.first)
         #expect(kept.keptID == live.keptQuestions[0].id && kept.id == "kept.\(live.keptQuestions[0].id.uuidString)")
-        #expect(kept.title == "Is it polite?" && kept.isOn && kept.symbol == "text.bubble" && kept.presetID == nil)
+        #expect(kept.title == "Is it polite?" && kept.isOn && kept.presetID == nil)
         #expect(!live.questions.contains { $0.source == .input }, "the input is empty, so it has no capsule")
         #expect(live.answer(for: kept) == Self.no, "the input's answer carries over")
         #expect(live.pending.isEmpty)
@@ -468,12 +469,12 @@ struct LiveDecisionTests {
         }
     }
 
-    @Test func aLiveQuestionReadsItsAnswersAndWearsThePresetsIcon() throws {
+    @Test func aLiveQuestionReadsItsAnswersAndWearsThePresetsTitle() throws {
         #expect(LiveQuestion.input("  ", fallback: .yesNo) == nil)
         let input = try #require(LiveQuestion.input("Which team? Billing / Sales", fallback: .yesNo))
         #expect(input.id == "input" && input.source == .input && input.presetID == nil && input.keptID == nil)
         #expect(input.question == "Which team?" && input.title == "Which team?" && input.answers.options == ["Billing", "Sales"])
-        #expect(input.isOn && input.symbol == "text.cursor")
+        #expect(input.isOn)
         #expect(input.decisionQuestion == DecisionQuestion(id: "input", question: "Which team?", answers: DecisionAnswers(options: ["Billing", "Sales"], isOrdered: false)))
         let levels = DecisionAnswers(options: ["Low", "High"], isOrdered: true)
         #expect(LiveQuestion.input("Urgent?", fallback: levels)?.answers == levels, "Settings' answers for a question that names none")
@@ -481,7 +482,7 @@ struct LiveDecisionTests {
         let priority = try #require(PromptPreset.decisionDefaults.first { $0.id == "priority" })
         let question = try #require(LiveQuestion.preset(priority, isOn: false, fallback: .yesNo))
         #expect(question.id == "preset.priority" && question.presetID == "priority")
-        #expect(question.title == "Priority" && question.symbol == "flag" && !question.isOn)
+        #expect(question.title == "Priority" && !question.isOn)
         #expect(question.question == "How high a priority is this?" && question.answers.isOrdered && question.answers.options == ["Low", "Medium", "High"])
         #expect(LiveQuestion.preset(PromptPreset.blank(), isOn: true, fallback: .yesNo) == nil, "a preset with no text asks nothing")
         var untitled = priority
