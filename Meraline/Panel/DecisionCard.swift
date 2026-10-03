@@ -482,10 +482,10 @@ private struct LiveSwitch: View {
 
 /// Under the Context card's text while Live is on (see `LiveDecisions`): a glass capsule for each question, those
 /// kept from the input first, then the input's, then Decision's presets, each its title and, once it comes, its
-/// answer: a check on green glass for Yes, a cross on red for No, a question mark on plain glass for Not Sure, or
-/// a check on glass tinted by how sure the model is of one of your own answers, as `DecisionCard`'s disc has
-/// them, then the answer and how sure. No icon before the title: the title says more, and a pink icon beside a
-/// red No read wrong. While a newer answer is on its way the last one stays as it is, since the capsules all
+/// answer: a check on green glass for Yes, a cross on red for No, and on plain glass a question mark for Not Sure
+/// or a check for one of your own answers, then the answer and how sure. Three looks and no more: never a shade
+/// by how sure the model is, which read as an odd green on a Friendly at 93%. No icon before the title: the title
+/// says more, and a pink icon beside a red No read wrong. While a newer answer is on its way the last one stays as it is, since the capsules all
 /// change at once and the Live switch shows the loader for them; a capsule that has none yet shows dots. A
 /// capsule that is on wears the pink of a chosen segment until its first answer; one that is off is plain glass
 /// with secondary text. A click on a preset's or a kept question's capsule turns it on or off; the plus on the
@@ -587,7 +587,7 @@ struct LiveDecisionStrip: View {
                     .accessibilityAddTraits(question.isOn ? .isSelected : [])
                 }
             }
-            .glassEffect(glass(for: question, verdict: verdict, answer: answer), in: .capsule)
+            .glassEffect(glass(for: question, verdict: verdict), in: .capsule)
         }
         .onHover { isOver in
             if isOver { hovered = question.id } else if hovered == question.id { hovered = nil }
@@ -607,7 +607,7 @@ struct LiveDecisionStrip: View {
                     HStack(spacing: 5) {
                         Image(systemName: symbol(of: verdict))
                             .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(tint(of: verdict, answer).map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
+                            .foregroundStyle(tint(of: verdict).map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
                             .contentTransition(.symbolEffect(.replace))
                             .symbolEffect(.bounce, value: answer)
                         Text(verdict == .unsure ? "Not sure" : answer.chosen.label)
@@ -645,17 +645,14 @@ struct LiveDecisionStrip: View {
     }
 
     /// The capsule's glass: plain while the question is off, the chosen segment's pink while it is on and has no
-    /// answer yet, then green for Yes, red for No, the colour of how sure the model is for one of your own
-    /// answers, and plain again for Not Sure. Every capsule answers the pointer, since each takes a click.
-    private func glass(for question: LiveQuestion, verdict: Decision.Verdict?, answer: Decision?) -> Glass {
+    /// answer yet, then green for Yes, red for No, and plain for Not Sure and for one of your own answers. Every
+    /// capsule answers the pointer, since each takes a click.
+    private func glass(for question: LiveQuestion, verdict: Decision.Verdict?) -> Glass {
         guard question.isOn else { return .regular.interactive() }
         switch verdict {
         case .yes?: return .regular.tint(Color(nsColor: .addedText).opacity(0.3)).interactive()
         case .no?: return .regular.tint(Color(nsColor: .removedText).opacity(0.3)).interactive()
-        case .chosen?:
-            guard let answer else { return .regular.interactive() }
-            return .regular.tint(confidenceColor(answer.confidence).opacity(0.3)).interactive()
-        case .unsure?: return .regular.interactive()
+        case .chosen?, .unsure?: return .regular.interactive()
         case nil: return .regular.tint(.meralinePink.opacity(0.22)).interactive()
         }
     }
@@ -668,13 +665,12 @@ struct LiveDecisionStrip: View {
         }
     }
 
-    /// Green for Yes and red for No, how sure the model is for one of your own answers, nothing for Not Sure.
-    private func tint(of verdict: Decision.Verdict, _ decision: Decision) -> Color? {
+    /// Green for Yes and red for No; nothing, the secondary colour, for Not Sure and for one of your own answers.
+    private func tint(of verdict: Decision.Verdict) -> Color? {
         switch verdict {
         case .yes: Color(nsColor: .addedText)
         case .no: Color(nsColor: .removedText)
-        case .chosen: confidenceColor(decision.confidence)
-        case .unsure: nil
+        case .chosen, .unsure: nil
         }
     }
 
