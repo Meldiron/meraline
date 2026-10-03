@@ -4,20 +4,31 @@ Notable changes in each Meraline release, newest first.
 
 When a version has an entry here, the Release workflow uses it as the release notes on GitHub and in the in-app update window. A version without an entry gets the list of commits since the previous tag instead. Headings are `## vX.Y.Z - YYYY-MM-DD`.
 
-## Unreleased
+## v1.11.0 - 2026-10-03
+
+### Decision
+
+- **Decisions as you type.** The Context card has a Live switch in Decision mode. Turn it on, and the card asks the decision model about its text as you type, after each pause and at least once a second while you keep typing, without sending anything to the chat. Each answer shows on a glass capsule under the text: a check on green glass for Yes, a cross on red for No, plain glass for Not sure or an answer of your own, with how sure the model is. While a newer answer is on its way the last one stays as it is, and the Live switch spins. Return still asks for a decision in the chat.
+
+![Decision mode with Live on: a draft on the Context card, and under it glass capsules for a question kept from the input, answered No on red, the question in the input and Urgent?, answered Yes on green, Tone and Priority on plain glass, and Scam? turned off](https://raw.githubusercontent.com/Meldiron/meraline/v1.11.0/docs/screenshots/decision-live-light.png)
+- **Several judges at once.** The question in the input is asked, and so is any preset you turn on: click Urgent?, Tone, or Priority on the card and a draft is decided three ways in one request. Click the plus on your question's capsule to keep it, in its place, and the input is free for the next one, so as many questions of your own as you like are asked beside the presets; a kept question turns off with a click and goes with its cross. Turning a preset on asks only that preset, and typing again asks everything that is on.
+- **Live belongs to the chat.** The switch, the presets turned on, and the kept questions are the chat's: a new chat (Esc, ⌘N) starts with Live off and nothing on, since every pause asks the model, and turning the switch starts over too, your question in the input aside. Settings › Usage counts the live decisions among the rest.
+- **The scope switch explains itself.** Click Each Word, Each Line, or back to Whole Text under the input, and a note under the cards says what the choice decides about, up to the thousand words or lines a question takes. It goes with the question or the chat, and never shows on its own.
+
+![Decision mode: six tasks from Notes, the switch under the input set to each line, and a note under the cards that says every line gets a decision of its own](https://raw.githubusercontent.com/Meldiron/meraline/v1.11.0/docs/screenshots/decision-scope-light.png)
 
 ### Ask
 
 - **A colon opens the Context card.** End a question in a colon, “Fix the grammar:” or “Find the bugs in this:”, in LLM or Agent mode, and the Context card opens under the input for the text, as a preset does when there is nothing to work on yet. The cursor stays in the input; Tab moves to the card.
+
+![“Fix the grammar:” typed in the input, and the Context card it opened under it, holding the text to fix](https://raw.githubusercontent.com/Meldiron/meraline/v1.11.0/docs/screenshots/colon-card-light.png)
 - **Tab closes an empty Context card.** Tab in the card with nothing written in it goes back to the input and takes the card away, so Tab opens and closes it. A card with text stays, as before.
 - **The window fades in and out.** ⌥ Space fades the window in as the card rises into place, and fades it out as it closes, instead of showing and hiding it in a cut. Pressing the shortcut during the fade turns it around. With Reduce Motion only the fade remains.
 - **Fewer cuts in the chat.** A chat's first question brings the conversation in smoothly, the thinking line fades into the answer's first words, and Show What Changed and Show Answer fade one into the other. An agent's ask, its tools, and the files it hands over fade in too.
 
-### Decision
+### Fixes
 
-- The row that asks for a decision's context now says "write it here. It's optional." as two sentences, not with a dash.
-- **The scope switch explains itself.** Click Each Word, Each Line, or back to Whole Text under the input, and a note under the cards says what the choice decides about, up to the thousand words or lines a question takes. It goes with the question or the chat, and never shows on its own.
-- **Decisions as you type.** The Context card has a Live switch in Decision mode. Turn it on, and the card asks the decision model about its text as you type, after each pause and at least once a second while you keep typing, without sending anything to the chat, and shows the answer on a glass capsule under the text: a check on green glass for Yes, a cross on red for No, plain glass for Not sure or an answer of your own, how sure it is beside it. While a newer answer is on its way the last one stays as it is, so the capsules never go blank, and the Live switch spins meanwhile. The question in the input is asked, and so is any preset you turn on: click Urgent?, Tone, or Priority on the card and watch a draft message decided three ways at once, in one request. Click the plus on your question's capsule to keep it, in its place, and the input is free for the next one, so as many questions of your own as you like are asked beside the presets; a kept question turns off with a click and goes with its cross. An answer stays while its text and question stay, so turning a preset on asks only that preset; typing again asks everything that is on. Return still asks for a decision in the chat. The switch, the presets turned on, and the kept questions are the chat's: a new chat (Esc, ⌘N) starts with Live off and nothing on, since every pause asks the model, and turning the switch starts over too, your question in the input aside. Settings › Usage counts the live decisions among the rest.
+- The row that asks for a decision's context reads “write it here. It's optional.” as two sentences, not with a dash.
 
 ## v1.10.0 - 2026-10-02
 
