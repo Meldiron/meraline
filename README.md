@@ -44,7 +44,7 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
 
 ✂️ **Knows what you selected.** Select text in any app and press <kbd>⌥</kbd> <kbd>Space</kbd>, then click the text cursor above the window: the text comes along as context, so "summarize this" or "what does this mean?" is all you type. It never joins a question until you add it, and texts from several apps can go together. Select files or folders in Finder instead and they're attached: photos for any model, anything for an agent. It needs Accessibility access, which Meraline asks for. **Services › Ask Meraline** works without it, and takes a picture selected in Preview or Photos too. So does dragging: drop a selection from any app onto the window, and it waits above your question the same way.
 
-⚡ **Keeps your everyday asks a click away.** The presets above the window's right put a prompt in the input: Fix Grammar, Anti-Slop, Anonymize, and Translate, or your own from **Settings › Prompt**, each with an icon. Click one and paste the text into the Context card that opens under the input, with the cursor already in it, or select the text first and just ask; Shift-click sends at once. They're for starting a chat, so they step aside once it starts, and once an answer is ready, ⌘1 to ⌘9 run them on it. Each mode has presets of its own: agents start with Find Bugs, Explain Code, Write Tests, and Research, and decisions with questions.
+⚡ **Keeps your everyday asks a click away.** The presets above the window's right put a prompt in the input: Fix Grammar, Anti-Slop, Anonymize, and Translate, or your own from **Settings › Prompt**, each with an icon. Click one and paste the text into the Context card that opens under the input, with the cursor already in it, or select the text first and just ask; Shift-click sends at once. A question of your own that ends in a colon, "Fix the grammar:", opens the same card for its text. They're for starting a chat, so they step aside once it starts, and once an answer is ready, ⌘1 to ⌘9 run them on it. Each mode has presets of its own: agents start with Find Bugs, Explain Code, Write Tests, and Research, and decisions with questions.
 
 ⚖️ **Decides.** Switch to Decision (<kbd>⌘</kbd> <kbd>3</kbd>), add the text you selected or copied, or write it in the window, and ask: "Is this urgent?", "Is this a scam?", "Which team should handle this? Billing / Technical / Sales", or "How high a priority is this? Low < Medium < High" for levels in order. The text is optional: a question that stands on its own, like "Is 17 prime?", is decided as it is. TypeSafe's Jev, a model that decides rather than writes, answers in a fraction of a second with a check on green glass or a cross on red, ringed by how sure it is, "82% confident" beside it, and every answer's probability under it. Answers you named get a check tinted by how sure Jev is, amber to green, and levels in order show on a scale with a marker where Jev placed the text. When it isn't sure enough, it says so, and which way it leans; you set the line in **Settings › Prompt**. Follow-ups ask about the same text. A switch under the input decides about the whole text, each word, or each line, and groups the words or lines by answer, surest first, each answer folded to its count until you click it: paste a list of tasks and ask "Is this urgent?". Turn on **Live** on the Context card, and the card decides as you type, after each pause and once a second while you keep going, without sending: the question in the input and any presets you turn on (Urgent?, Tone, Priority, at once in one request) each show their answer on a glass capsule under the text, a check on green or a cross on red with how sure the model is, the last answer staying until the next lands while Live spins, so a draft reads as ready to send before you press Return. Click the plus on your question to keep it and ask the next, as many as you like; a new chat starts with Live off.
 
@@ -157,15 +157,22 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
     <td align="center"><sub>Name your own answers after the question, or levels in order</sub></td>
   </tr>
   <tr>
-    <td align="center" colspan="2">
+    <td align="center">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/decision-lines.png">
         <img src="docs/screenshots/decision-lines-light.png" width="440" alt="Decision mode about each line: six tasks from Notes under Yes, No, and Not sure, Yes open with its three tasks and how sure Jev is of each, the others folded to their counts, and the switch under the input set to each line">
       </picture>
     </td>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/decision-live.png">
+        <img src="docs/screenshots/decision-live-light.png" width="440" alt="Decision mode with Live on: a draft on the Context card, and under it glass capsules for a question kept from the input, answered No on red, the question in the input and Urgent?, answered Yes on green, Tone and Priority on plain glass, and Scam? turned off">
+      </picture>
+    </td>
   </tr>
   <tr>
-    <td align="center" colspan="2"><sub>Or decide about each word or line, and read them grouped by answer</sub></td>
+    <td align="center"><sub>Or decide about each word or line, and read them grouped by answer</sub></td>
+    <td align="center"><sub>Turn on Live, and the judges answer under your text while you type</sub></td>
   </tr>
   <tr>
     <td align="center" colspan="2">
@@ -241,7 +248,7 @@ The window's glass is the system's: on macOS 27, the Liquid Glass slider in **Sy
 | --- | --- |
 | <kbd>⌥</kbd> <kbd>Space</kbd> | Open or close Meraline (change it in Settings) |
 | <kbd>↩</kbd> | Send |
-| <kbd>⇥</kbd> | Write a piece of context by hand to send with the question, with the cursor in the card, and go back to the input from it; <kbd>⌘</kbd> <kbd>↩</kbd> sends from it |
+| <kbd>⇥</kbd> | Write a piece of context by hand to send with the question, with the cursor in the card, and go back to the input from it, which takes an empty card away; <kbd>⌘</kbd> <kbd>↩</kbd> sends from it |
 | <kbd>⌫</kbd> in an empty input | Take out the selected text, then the last attachment |
 | <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>E</kbd> | Add the text you had selected when you opened the window, or take it out again |
 | <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>V</kbd> | Add what's on the clipboard, or take it out again |
