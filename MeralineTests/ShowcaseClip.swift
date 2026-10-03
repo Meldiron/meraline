@@ -14,6 +14,25 @@ nonisolated extension Showcase {
     }
 }
 
+/// Moments of a recording, marked by the scene as it drives the panel, on the clock the frames are stamped with,
+/// so the promo's cut can refer to them by name (`card`, `enter`, `shown`, …) rather than by a stopwatch; and
+/// counts the scene wants written beside them, such as how many times it asked a model. They go into `name`.json
+/// next to the clip as the promo's `src/clips.json` has them: the clip's length, where the panel's window was, and
+/// the markers in seconds from the first frame.
+@MainActor
+final class ClipMarks {
+    private(set) var times: [String: CMTime] = [:]
+    private(set) var counts: [String: Int] = [:]
+
+    func mark(_ name: String) {
+        times[name] = CMClockGetTime(CMClockGetHostTimeClock())
+    }
+
+    func count(_ name: String, _ value: Int) {
+        counts[name] = value
+    }
+}
+
 extension ShowcaseStage {
     /// Records the panel over the gradient for `seconds` while `action` drives it, at up to 60 frames a second, into
     /// `name`.mp4 (`name-light.mp4` in light) in `Showcase.clips`. The picture is the window's frame as the recording
@@ -24,6 +43,16 @@ extension ShowcaseStage {
         _ panel: NSWindow, as name: String, seconds: Double, room: CGSize = .zero,
         action: @escaping @MainActor @Sendable () async -> Void
     ) async throws {
+        try await recordPanel(panel, as: name, seconds: seconds, room: room, region: nil) { _ in await action() }
+    }
+
+    /// The same, with the scene marking moments (`ClipMarks`), and, for a clip meant for the promo's films, `region`
+    /// of the screen recorded (in points from its top left, see `filmRegion`) instead of the window's frame; the
+    /// markers and where the panel was go into `name`.json beside the clip.
+    func recordPanel(
+        _ panel: NSWindow, as name: String, seconds: Double, room: CGSize = .zero, region filmRegion: CGRect?,
+        action: @escaping @MainActor @Sendable (ClipMarks) async -> Void
+    ) async throws {
         guard let output = Showcase.clips else { return }
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         let file = output.appending(path: "\(name)\(appearance.suffix).mp4")
@@ -32,11 +61,20 @@ extension ShowcaseStage {
         if panel.isVisible { panel.makeKey() }
         await Showcase.settle(0.4)
 
-        var region = panel.frame
-        region.origin.y -= room.height
-        region.size.height += room.height
-        region.size.width += room.width
-        region = region.intersection(backdrop.frame)
+        var region: NSRect
+        if let filmRegion {
+            region = NSRect(
+                x: screen.frame.minX + filmRegion.minX, y: screen.frame.maxY - filmRegion.maxY,
+                width: filmRegion.width, height: filmRegion.height
+            )
+        } else {
+            region = panel.frame
+            region.origin.y -= room.height
+            region.size.height += room.height
+            region.size.width += room.width
+            region = region.intersection(backdrop.frame)
+        }
+        let panelTopLeft = CGPoint(x: panel.frame.minX - screen.frame.minX, y: screen.frame.maxY - panel.frame.maxY)
         let scale = screen.backingScaleFactor
         // H.264 wants even sizes.
         let size = CGSize(width: CGFloat(Int(region.width * scale) & ~1), height: CGFloat(Int(region.height * scale) & ~1))
@@ -65,13 +103,29 @@ extension ShowcaseStage {
         try stream.addStreamOutput(sink, type: .screen, sampleHandlerQueue: sink.queue)
         try await stream.startCapture()
         await Showcase.settle(0.3)
-        let driving = Task { await action() }
+        let marks = ClipMarks()
+        let driving = Task { await action(marks) }
         try? await Task.sleep(for: .seconds(seconds))
         try await stream.stopCapture()
         await sink.finish(holdingUntil: seconds)
         await driving.value
         if panel.isVisible { panel.resignKey() }
         FileHandle.standardError.write(Data("Clip: \(file.lastPathComponent) (\(sink.frames) frames)\n".utf8))
+
+        // The markers in the clip's own time: the frames are stamped with the host clock, as the marks are.
+        guard filmRegion != nil || !marks.times.isEmpty, let first = sink.firstFrameTime else { return }
+        var markers: [String: Double] = [:]
+        for (name, time) in marks.times {
+            markers[name] = (CMTimeSubtract(time, first).seconds * 1_000).rounded() / 1_000
+        }
+        var info: [String: Any] = [
+            "duration": (seconds * 1_000).rounded() / 1_000,
+            "panel": ["x": panelTopLeft.x, "y": panelTopLeft.y],
+            "markers": markers,
+        ]
+        if !marks.counts.isEmpty { info["counts"] = marks.counts }
+        let data = try JSONSerialization.data(withJSONObject: info, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: output.appending(path: "\(name)\(appearance.suffix).json"))
     }
 }
 
@@ -83,6 +137,9 @@ private nonisolated final class ClipSink: NSObject, SCStreamOutput, @unchecked S
     private var firstTime: CMTime?
     private var last: CMSampleBuffer?
     private(set) var frames = 0
+
+    /// When the first frame was, on the host clock; read once the movie is finished.
+    var firstFrameTime: CMTime? { firstTime }
 
     init(file: URL, size: CGSize) throws {
         writer = try AVAssetWriter(outputURL: file, fileType: .mp4)

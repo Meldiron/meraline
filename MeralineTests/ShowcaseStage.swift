@@ -22,6 +22,10 @@ nonisolated enum Showcase {
         Appearance(rawValue: environment["MERALINE_SHOWCASE_APPEARANCE"] ?? "").map { [$0] } ?? [.dark, .light]
     }
 
+    /// A picture to show across the whole screen behind a clip instead of the gradient, from MERALINE_CLIP_BACKDROP
+    /// (`scripts/clips.sh --backdrop`): the promo's night sky, so a clip recorded here drops into its films.
+    static let clipBackdrop: URL? = environment["MERALINE_CLIP_BACKDROP"].flatMap { $0.trimmed.isEmpty ? nil : URL(filePath: $0) }
+
     /// Whether to take the picture `name`: MERALINE_SHOWCASE_ONLY names the ones to take, or all when unset.
     static func wants(_ name: String) -> Bool {
         guard let only = environment["MERALINE_SHOWCASE_ONLY"], !only.trimmed.isEmpty else { return true }
@@ -63,7 +67,9 @@ nonisolated enum Showcase {
     }
 }
 
-/// A gradient window at the desktop's level, which the windows placed over it show their glass against.
+/// A gradient window at the desktop's level, which the windows placed over it show their glass against; or, for
+/// a clip meant for the promo's films, their night sky across the whole screen (`backdropImage`), with the panel
+/// at the films' spot (`filmTopLeft(top:)`) and the films' region recorded (`ShowcaseStage.recordPanel`).
 @MainActor
 final class ShowcaseStage {
     static let desktop = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)))
@@ -71,33 +77,54 @@ final class ShowcaseStage {
     let appearance: Showcase.Appearance
     let backdrop: NSWindow
     let screen: NSScreen
+    /// Whether the backdrop is a film's sky across the screen rather than the gradient.
+    let isFilmSet: Bool
 
-    init(_ appearance: Showcase.Appearance) {
+    init(_ appearance: Showcase.Appearance, backdropImage: URL? = nil) {
         self.appearance = appearance
         screen = NSScreen.main ?? NSScreen.screens[0]
+        let image = backdropImage.flatMap { NSImage(contentsOf: $0) }
+        isFilmSet = image != nil
         let visible = screen.visibleFrame
-        let frame = NSRect(x: visible.minX + 20, y: visible.minY + 20, width: min(1_000, visible.width - 40), height: min(1_000, visible.height - 40))
+        let frame = image == nil
+            ? NSRect(x: visible.minX + 20, y: visible.minY + 20, width: min(1_000, visible.width - 40), height: min(1_000, visible.height - 40))
+            : screen.frame
         backdrop = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
         backdrop.level = Self.desktop
         backdrop.isOpaque = true
         backdrop.hasShadow = false
         backdrop.ignoresMouseEvents = true
         backdrop.isReleasedWhenClosed = false
-        let gradient = CAGradientLayer()
-        gradient.frame = CGRect(origin: .zero, size: frame.size)
-        gradient.startPoint = CGPoint(x: 0, y: 1)
-        gradient.endPoint = CGPoint(x: 1, y: 0)
-        gradient.colors = appearance.gradient
-        let view = NSView(frame: NSRect(origin: .zero, size: frame.size))
-        view.wantsLayer = true
-        view.layer = gradient
-        backdrop.contentView = view
+        if let image {
+            let view = NSImageView(frame: NSRect(origin: .zero, size: frame.size))
+            view.image = image
+            view.imageScaling = .scaleAxesIndependently
+            backdrop.contentView = view
+        } else {
+            let gradient = CAGradientLayer()
+            gradient.frame = CGRect(origin: .zero, size: frame.size)
+            gradient.startPoint = CGPoint(x: 0, y: 1)
+            gradient.endPoint = CGPoint(x: 1, y: 0)
+            gradient.colors = appearance.gradient
+            let view = NSView(frame: NSRect(origin: .zero, size: frame.size))
+            view.wantsLayer = true
+            view.layer = gradient
+            backdrop.contentView = view
+        }
         backdrop.orderFrontRegardless()
         if let output = Showcase.output { try? FileManager.default.createDirectory(at: output, withIntermediateDirectories: true) }
     }
 
     /// Where a window's top left goes: a little inside the backdrop's.
     var topLeft: NSPoint { NSPoint(x: backdrop.frame.minX + 60, y: backdrop.frame.maxY - 40) }
+
+    /// Where the promo's films have the panel: its left at 404 points, its top `top` points down the screen (250
+    /// for a short chat, 110 for one that grows tall), in the films' own measure (see the promo's record scripts).
+    func filmTopLeft(top: CGFloat) -> NSPoint { NSPoint(x: screen.frame.minX + 404, y: screen.frame.maxY - top) }
+
+    /// The part of the screen the promo's films record, in points from the screen's top left: the 16:9 band the
+    /// films show, 1512 by 850.5 points, 66 down.
+    static let filmRegion = CGRect(x: 0, y: 66, width: 1_512, height: 850.5)
 
     /// Puts `window` over the backdrop, behind every other window, in the stage's appearance.
     func place(_ window: NSWindow) {
