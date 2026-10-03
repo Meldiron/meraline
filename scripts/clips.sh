@@ -10,8 +10,9 @@
 #   open-close    the window opening on an empty chat and closing again, as ⌥ Space does
 #   ask           a question sent: the conversation appears, the answer streams in, the follow-ups come, and Esc starts a new chat
 #   what-changed  Show What Changed on a grammar fix, and Show Answer back
-#   live          the Live decisions demo for the promo's film: a reply to Nora typed badly, the capsules turning red,
-#                 typed again and turning green as it grows, a question kept, and Return
+#   live          the Live decisions demo for the promo's film: the window opened, Decision mode, Write It, Live, Urgent?;
+#                 a request read red, then green as its ending changes; Flirt? red, Not sure, then green and surer with
+#                 every word; four questions at once over an invitation as it is typed
 #
 # With --backdrop, the picture (the promo's public/backdrop-night.png) covers the whole screen behind the panel, which
 # sits where the promo's films have it, and the films' 16:9 region is recorded, with the scene's markers written to

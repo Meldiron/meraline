@@ -284,7 +284,7 @@ struct DecisionStateRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("What’s the context for this decision?")
                     .font(.system(size: 13, weight: .semibold))
-                Text("Add the text you selected or copied, or write it here — it’s optional.")
+                Text("Add the text you selected or copied, or write it here. It’s optional.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

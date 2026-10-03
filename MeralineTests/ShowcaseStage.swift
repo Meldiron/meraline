@@ -193,7 +193,8 @@ final class ShowcaseStage {
         return configuration
     }
 
-    private func shareable(_ windows: [NSWindow]) async throws -> [SCWindow] {
+    /// The stage's windows as ScreenCaptureKit lists them, hidden ones included, for a capture of just those.
+    func shareable(_ windows: [NSWindow]) async throws -> [SCWindow] {
         let numbers = Set(windows.map { CGWindowID($0.windowNumber) })
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         let found = content.windows.filter { numbers.contains($0.windowID) }

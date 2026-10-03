@@ -9,9 +9,10 @@ import Testing
 ///   open-close    the window opening on an empty chat and closing again, as ⌥ Space does
 ///   ask           a question sent: the conversation appears, the answer streams in, the follow-ups come, and Esc starts a new chat
 ///   what-changed  Show What Changed on a grammar fix, and Show Answer back
-///   live          the Live decisions demo for the promo: a reply to Nora typed badly, the capsules turning red, typed
-///                 again and turning green as it grows, a question kept with the plus, and Return; over the promo's
-///                 night sky at the films' spot with MERALINE_CLIP_BACKDROP (scripts/clips.sh --backdrop)
+///   live          the Live decisions demo for the promo: the window opened, Decision mode, Write It, Live, Urgent?;
+///                 a request read red, then green as its ending changes; Flirt? red, Not sure, then green and surer
+///                 with every word; four questions at once over an invitation as it is typed; over the promo's night
+///                 sky at the films' spot with MERALINE_CLIP_BACKDROP (scripts/clips.sh --backdrop)
 @MainActor
 @Suite(.serialized, .enabled(if: Showcase.clips != nil, "scripts/clips.sh records these"))
 struct ClipTests {
@@ -80,32 +81,36 @@ struct ClipTests {
         }
     }
 
-    /// Nora's message, the text every live question is about together with the reply, and the two replies: the
-    /// tired one, which the capsules turn red on, and the one typed in its place, which they turn green on as it
-    /// grows. Nothing in them is an em dash; people don't type those.
-    static let norasMessage = "The deck still has the old pricing. We present at 9. Can this be fixed tonight?"
-    static let tiredReply = "It's midnight. The pricing was correct when you approved it. I'll see what I can do."
-    static let betterReply = "Thanks for catching it, Nora. I'll swap in the new pricing tonight and send the deck by 7."
+    /// What the demo types: a request that isn't urgent, then its ending cut and a deadline typed in; an ending to
+    /// the boss, a wink, and a line that is plainly flirting; and an invitation to a meeting, for four questions at
+    /// once. Nothing in them is an em dash; people don't type those.
+    static let notUrgent = "Hi Dana, could you take a look at the Q3 deck? No rush, next week is fine."
+    static let urgentEnding = " We present at 9 tomorrow, so I need it tonight."
+    static let bossEnding = " See you tomorrow, boss."
+    static let winkEnding = " wink wink."
+    static let flirtEnding = " sexyyy, can't wait to hold you tight."
+    static let invitation = "Team, please join the Q3 planning review on Thursday at 10 in the big room."
 
+    /// The Live film's one clip (see the promo project's src/films/live/scenes.ts): the window opens in LLM mode,
+    /// switches to Decision, Write It opens the Context card, Live goes on, Urgent? joins; a request that isn't
+    /// urgent reads red, its ending is cut and a deadline typed in, and it reads green; Urgent? gives way to Flirt?,
+    /// red through "See you tomorrow, boss.", Not sure at a wink, green and surer with every word of a line that
+    /// is plainly flirting; then Urgent?, Tone, and Priority join Flirt?, the text is cleared, and an invitation to
+    /// a meeting is typed while all four decide as it grows. The decider is written to the words, so a capsule
+    /// turns on a particular word, and the whole scene marks its moments for the film's cut.
     @Test func live() async throws {
         guard Showcase.wantsClip("live") else { return }
-        let yes = Decision(options: [.init(label: "Yes", probability: 0.95), .init(label: "No", probability: 0.05)], isYesNo: true, confidence: 0.9)
         let film = Showcase.clipBackdrop != nil
         let stage = ShowcaseStage(.dark, backdropImage: Showcase.clipBackdrop)
         let (preferences, defaults) = ShowcaseTests.preferences()
         preferences[.typeSafe] = ProviderSettings(model: "jev-latest", baseURL: Provider.typeSafe.defaultBaseURL, apiKey: "demo", isEnabled: true)
         preferences.setDefaultProvider(.typeSafe, for: .decision)
-        preferences.mode = .decision
+        // Flirt? beside the default presets, as the user's own Settings have it.
+        preferences[presets: .decision] = PromptPreset.decisionDefaults + [PromptPreset(id: "flirt", title: "Flirt?", symbol: "heart", text: "Is this flirting?")]
+        preferences.mode = .llm
         let checks = Checks()
-        // Return's decision comes as Jev's does, a third of a second later; the live ones from the text so far.
         let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil), stream: { _ in
-            AsyncThrowingStream { continuation in
-                Task {
-                    try? await Task.sleep(for: .milliseconds(360))
-                    continuation.yield(.decision(yes))
-                    continuation.finish()
-                }
-            }
+            AsyncThrowingStream { $0.finish() }
         }, decideLive: { questions, state, _, _ in
             checks.asked += 1
             try await Task.sleep(for: .milliseconds(320))
@@ -115,70 +120,91 @@ struct ClipTests {
             return DecisionClient.LiveReply(decisions: decisions, usage: .zero)
         })
         let scene = try ShowcaseTests.place(session, preferences: preferences, defaults: defaults, model: ScriptedModel(), on: stage)
-        // Nora's message, as the film's selection scene hands it over; the panel high, since it grows tall.
-        session.bring(try #require(SelectedText(Self.norasMessage, appName: "Messages", appURL: URL(fileURLWithPath: "/System/Applications/Messages.app"))))
-        scene.panel.setFrameTopLeftPoint(film ? stage.filmTopLeft(top: 110) : stage.topLeft)
-        await Showcase.settle(1)
-        try await stage.recordPanel(scene.panel, as: "live", seconds: 36, room: CGSize(width: 0, height: 420), region: film ? ShowcaseStage.filmRegion : nil) { marks in
+        let topLeft = film ? stage.filmTopLeft(top: 110) : stage.topLeft
+        scene.panel.setFrameTopLeftPoint(topLeft)
+        await Showcase.settle(0.6)
+        // Hidden to begin with, so the clip opens with the window coming up, as ⌥ Space brings it.
+        scene.controller.close()
+        await Showcase.settle(0.5)
+        try await stage.recordPanel(scene.panel, as: "live", seconds: 48, room: CGSize(width: 0, height: 420), region: film ? ShowcaseStage.filmRegion : nil) { marks in
             let layout = scene.controller.layout
             await Showcase.settle(0.8)
-            marks.mark("card")
+            marks.mark("open")
+            scene.controller.show()
+            scene.panel.setFrameTopLeftPoint(topLeft)
+            await Showcase.settle(1.3)
+            marks.mark("mode") // ⌘3
+            preferences.mode = .decision
+            await Showcase.settle(1.2)
+            marks.mark("writeIt")
             session.writeState()
             layout.stateFocusRequest += 1
-            await Showcase.settle(0.9)
+            await Showcase.settle(1.0)
             marks.mark("live")
             session.toggleLiveDecisions()
-            await Showcase.settle(0.7)
-            marks.mark("presets")
-            session.toggleLivePreset("tone")
-            await Showcase.settle(0.35)
+            await Showcase.settle(0.8)
+            marks.mark("urgent")
             session.toggleLivePreset("urgent")
-            await Showcase.settle(0.6)
-            marks.mark("question")
-            layout.focusRequest += 1
-            await Showcase.settle(0.25)
-            await Self.type("Ready to send?") { session.draft = $0 }
-            await Showcase.settle(0.5)
+            await Showcase.settle(0.8)
             marks.mark("draft1")
-            layout.stateFocusRequest += 1
-            await Showcase.settle(0.25)
-            await Self.type(Self.tiredReply) { session.typedState = $0 }
+            await Self.type(Self.notUrgent, into: session)
             marks.mark("typed1")
             await Self.settleLive(session)
-            marks.mark("red")
-            await Showcase.settle(1.6)
-            // ⌘A, ⌫.
-            marks.mark("clear")
-            session.typedState = ""
+            marks.mark("red1")
+            await Showcase.settle(1.5)
+            marks.mark("cut1") // ⌥⌫ six times: "No rush, next week is fine." goes.
+            await Self.erase(words: 6, from: session)
+            await Self.settleLive(session)
+            await Showcase.settle(0.7)
+            marks.mark("draft1b")
+            await Self.type(Self.urgentEnding, into: session)
+            marks.mark("typed1b")
+            await Self.settleLive(session)
+            marks.mark("green1")
+            await Showcase.settle(1.7)
+            marks.mark("swap")
+            session.toggleLivePreset("urgent")
             await Showcase.settle(0.45)
+            marks.mark("flirt")
+            session.toggleLivePreset("flirt")
+            await Self.settleLive(session)
+            marks.mark("red2")
+            await Showcase.settle(1.4)
             marks.mark("draft2")
-            await Self.type(Self.betterReply) { session.typedState = $0 }
+            await Self.type(Self.bossEnding, into: session)
             marks.mark("typed2")
             await Self.settleLive(session)
-            marks.mark("green")
+            marks.mark("red3")
             await Showcase.settle(1.4)
-            marks.mark("question2")
-            layout.focusRequest += 1
-            await Showcase.settle(0.25)
-            await Self.type("Does it promise a time?") { session.draft = $0 }
-            await Showcase.settle(0.5)
-            marks.mark("keep")
-            session.keepLiveQuestion()
+            marks.mark("cut2") // "boss." goes, "wink wink." comes.
+            await Self.erase(words: 1, from: session)
+            await Self.type(Self.winkEnding, into: session)
+            marks.mark("typed3")
             await Self.settleLive(session)
-            marks.mark("kept")
-            await Showcase.settle(1.1)
-            // The question that matters, typed once more for the record, and Return.
-            marks.mark("question3")
-            await Self.type("Ready to send?") { session.draft = $0 }
-            await Showcase.settle(0.5)
-            marks.mark("enter")
-            session.send()
-            for _ in 0..<200 {
-                guard session.isStreaming else { break }
-                try? await Task.sleep(for: .milliseconds(20))
-            }
-            await Showcase.settle(0.15)
-            marks.mark("shown")
+            marks.mark("unsure")
+            await Showcase.settle(1.5)
+            marks.mark("cut3") // "wink wink." goes, and the line that leaves no doubt comes.
+            await Self.erase(words: 2, from: session)
+            await Self.type(Self.flirtEnding, into: session)
+            marks.mark("typed4")
+            await Self.settleLive(session)
+            marks.mark("green2")
+            await Showcase.settle(2.2)
+            marks.mark("presets")
+            session.toggleLivePreset("urgent")
+            await Showcase.settle(0.3)
+            session.toggleLivePreset("tone")
+            await Showcase.settle(0.3)
+            session.toggleLivePreset("priority")
+            await Showcase.settle(0.7)
+            marks.mark("clear") // ⌘A ⌫
+            session.typedState = ""
+            await Showcase.settle(0.6)
+            marks.mark("draft3")
+            await Self.type(Self.invitation, into: session)
+            marks.mark("typed5")
+            await Self.settleLive(session)
+            marks.mark("done")
             marks.count("checks", checks.asked)
             await Showcase.settle(2.5)
         }
@@ -191,18 +217,28 @@ struct ClipTests {
         var asked = 0
     }
 
-    /// Types `text` a character at a time into `set`, at about a quick typist's pace with a little unevenness, a
-    /// breath at spaces and a longer one at the end of a sentence.
-    private static func type(_ text: String, into set: @MainActor (String) -> Void) async {
-        var typed = ""
+    /// Types `text` a character at a time after what the card has, at about a quick typist's pace with a little
+    /// unevenness, a breath at spaces and a longer one at the end of a sentence.
+    private static func type(_ text: String, into session: ChatSession) async {
+        var typed = session.typedState ?? ""
         var seed: UInt64 = 7
         for character in text {
             typed.append(character)
-            set(typed)
+            session.typedState = typed
             seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
             let jitter = Double((seed >> 33) % 40) / 1_000
             let pause = character == " " ? 0.085 : ".,!?".contains(character) ? 0.17 : 0.046
             try? await Task.sleep(for: .seconds(pause + jitter))
+        }
+    }
+
+    /// Takes the last `words` words off the card, one at a time, as ⌥⌫ does.
+    private static func erase(words: Int, from session: ChatSession) async {
+        for _ in 0..<words {
+            var text = (session.typedState ?? "").trimmingCharacters(in: .whitespaces)
+            while let last = text.last, !last.isWhitespace { text.removeLast() }
+            session.typedState = text.trimmingCharacters(in: .whitespaces)
+            try? await Task.sleep(for: .milliseconds(70))
         }
     }
 
@@ -214,36 +250,52 @@ struct ClipTests {
         }
     }
 
-    /// What the demo's model decides about the reply so far: the tired reply reads angry and not ready to send, the
-    /// better one turns friendly and ready as it grows, both are urgent, and only the better one promises a time.
-    /// Written to the words, so each capsule turns on a particular word, not a particular second.
+    /// What the demo's model decides about the text so far, written to the words so each capsule turns on a
+    /// particular one: "no rush" isn't urgent and "tonight" is; "boss" isn't flirting, a wink might be, and the
+    /// last line leaves no doubt, surer with every word; and the invitation reads as not urgent, neutral in tone,
+    /// and a high priority once the room is named.
     nonisolated static func liveAnswer(to question: String, about text: String) -> Decision {
         func yesNo(_ yes: Double) -> Decision {
             Decision(options: [.init(label: "Yes", probability: yes), .init(label: "No", probability: 1 - yes)], isYesNo: true, confidence: abs(2 * yes - 1))
         }
-        func tone(friendly: Double, neutral: Double, angry: Double, confidence: Double) -> Decision {
+        func tone(_ friendly: Double, _ neutral: Double, _ angry: Double, confidence: Double) -> Decision {
             Decision(options: [.init(label: "Friendly", probability: friendly), .init(label: "Neutral", probability: neutral), .init(label: "Angry", probability: angry)], confidence: confidence)
         }
-        let has = { (word: String) in text.contains(word) }
-        let tired = text.hasPrefix("It") || has("midnight") || has("approved")
-        let better = text.hasPrefix("Th") || has("Nora")
-        let early = text.count < 10
+        func priority(_ low: Double, _ medium: Double, _ high: Double, score: Double, confidence: Double) -> Decision {
+            Decision(options: [.init(label: "Low", probability: low), .init(label: "Medium", probability: medium), .init(label: "High", probability: high)], isOrdered: true, score: score, confidence: confidence)
+        }
+        let has = { (words: String) in text.range(of: words, options: .caseInsensitive) != nil }
+        let early = text.count < 12
         switch question {
-        case "What is the tone of this text?":
-            if early { return tone(friendly: 0.3, neutral: 0.42, angry: 0.28, confidence: 0.14) }
-            if tired { return has("approved") ? tone(friendly: 0.04, neutral: 0.1, angry: 0.86, confidence: 0.82) : has("midnight") ? tone(friendly: 0.08, neutral: 0.2, angry: 0.72, confidence: 0.64) : tone(friendly: 0.2, neutral: 0.5, angry: 0.3, confidence: 0.3) }
-            if better { return has("tonight") ? tone(friendly: 0.84, neutral: 0.13, angry: 0.03, confidence: 0.79) : has("Nora") ? tone(friendly: 0.7, neutral: 0.26, angry: 0.04, confidence: 0.63) : tone(friendly: 0.36, neutral: 0.58, angry: 0.06, confidence: 0.52) }
-            return tone(friendly: 0.33, neutral: 0.44, angry: 0.23, confidence: 0.2)
-        case "Ready to send?":
-            if early { return yesNo(0.5) }
-            if tired { return has("approved") ? yesNo(0.06) : has("midnight") ? yesNo(0.13) : yesNo(0.3) }
-            if better { return has("by 7") ? yesNo(0.95) : has("tonight") ? yesNo(0.89) : has("Nora") ? yesNo(0.68) : yesNo(0.56) }
-            return yesNo(0.5)
         case "Is this urgent?":
-            if early { return yesNo(0.52) }
-            return has("tonight") || has("midnight") ? yesNo(0.97) : has("pricing") ? yesNo(0.86) : yesNo(0.72)
-        case "Does it promise a time?":
-            return has("by 7") ? yesNo(0.96) : yesNo(0.2)
+            if early { return yesNo(0.5) }
+            if has("tonight") { return yesNo(0.96) }
+            if has("tomorrow") { return yesNo(0.9) }
+            if has("no rush") || has("next week") { return yesNo(0.08) }
+            if has("big room") { return yesNo(0.11) }
+            if has("Thursday") { return yesNo(0.19) }
+            if has("planning") { return yesNo(0.31) }
+            return yesNo(0.45)
+        case "Is this flirting?":
+            if has("hold you tight") { return yesNo(0.999) }
+            if has("wait") { return yesNo(0.94) }
+            if has("sexy") { return yesNo(0.86) }
+            if has("wink") { return yesNo(0.6) }
+            if has("boss") { return yesNo(0.1) }
+            if early { return yesNo(0.5) }
+            return yesNo(0.07)
+        case "What is the tone of this text?":
+            if early { return tone(0.3, 0.42, 0.28, confidence: 0.14) }
+            if has("big room") { return tone(0.22, 0.7, 0.08, confidence: 0.66) }
+            if has("Thursday") { return tone(0.4, 0.52, 0.08, confidence: 0.5) }
+            if has("join") { return tone(0.56, 0.38, 0.06, confidence: 0.52) }
+            return tone(0.3, 0.55, 0.15, confidence: 0.4)
+        case "How high a priority is this?":
+            if early { return priority(0.3, 0.4, 0.3, score: 1, confidence: 0.1) }
+            if has("big room") { return priority(0.06, 0.18, 0.76, score: 1.7, confidence: 0.76) }
+            if has("Q3") { return priority(0.1, 0.35, 0.55, score: 1.45, confidence: 0.55) }
+            if has("planning") { return priority(0.15, 0.6, 0.25, score: 1.1, confidence: 0.6) }
+            return priority(0.3, 0.45, 0.25, score: 0.95, confidence: 0.3)
         default:
             return yesNo(0.5)
         }

@@ -37,8 +37,10 @@ extension ShowcaseStage {
     /// Records the panel over the gradient for `seconds` while `action` drives it, at up to 60 frames a second, into
     /// `name`.mp4 (`name-light.mp4` in light) in `Showcase.clips`. The picture is the window's frame as the recording
     /// starts, with `room` more below and to the right for a window that grows while it runs, and never past the
-    /// gradient. Only the test host's own windows are in it, so the window may be hidden when it starts and open
-    /// while it runs. Nothing is clicked or typed; the window keeps the keyboard throughout when it has it.
+    /// gradient. Only the stage's two windows are in it, the backdrop and the panel, so the panel may be hidden when
+    /// it starts and open while it runs, and the Meraline you run, which shares the test host's bundle identifier,
+    /// never is: a filter by application once recorded its Settings window over the panel. Nothing is clicked or
+    /// typed; the window keeps the keyboard throughout when it has it.
     func recordPanel(
         _ panel: NSWindow, as name: String, seconds: Double, room: CGSize = .zero,
         action: @escaping @MainActor @Sendable () async -> Void
@@ -79,11 +81,7 @@ extension ShowcaseStage {
         // H.264 wants even sizes.
         let size = CGSize(width: CGFloat(Int(region.width * scale) & ~1), height: CGFloat(Int(region.height * scale) & ~1))
 
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-        guard let app = content.applications.first(where: { $0.processID == ProcessInfo.processInfo.processIdentifier }) else {
-            throw ShowcaseError.windowNotFound
-        }
-        let filter = SCContentFilter(display: try await display(), including: [app], exceptingWindows: [])
+        let filter = SCContentFilter(display: try await display(), including: try await shareable([backdrop, panel]))
         let configuration = SCStreamConfiguration()
         configuration.width = Int(size.width)
         configuration.height = Int(size.height)
