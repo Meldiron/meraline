@@ -21,6 +21,7 @@ import WebKit
 ///   cost-nudge    the empty panel with what LLMs and agents have cost today
 ///   preview       Agent mode: a page and a Markdown file an agent handed over, each with its preview strip
 ///   note-stack    three answers torn off into one note: the last in front, the edges of the other two under it
+///   colon-card    "Fix the grammar:" typed in the input, and the Context card it opened, holding the text
 ///   decision      Decision mode: Jev's Yes about a text selected in Mail, with how sure it is
 ///   decision-levels  Decision mode: a priority placed along Low, Medium, and High, and the answers under the input
 ///   decision-lines  Decision mode about each line: six tasks from Notes grouped under Yes, No, and Not sure
@@ -438,6 +439,25 @@ struct ShowcaseTests {
         let end = NSRange(location: (editor.string as NSString).length, length: 0)
         editor.setSelectedRange(end)
         return true
+    }
+
+    @Test func colonCard() async throws {
+        guard Showcase.wants("colon-card") else { return }
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage)
+            // With the keyboard, as while it is typed: the colon at the end of the question opens the Context card
+            // by itself, the cursor stays in the input, and the text to work on goes on the card.
+            await Showcase.waitForIdle()
+            scene.panel.makeKey()
+            await Showcase.settle(0.3)
+            scene.session.draft = "Fix the grammar:"
+            #expect(scene.session.typedState == "", "the colon opened the card")
+            scene.session.typedState = "Me and him was going to the store tomorow, but their not open on sundays."
+            await Showcase.settle(1.5)
+            try await stage.capturePanel(scene.panel, as: "colon-card")
+            stage.close(scene.panel)
+        }
     }
 
     @Test func noteStack() async throws {
