@@ -100,6 +100,9 @@ struct ActionPanel: View {
                 rows
             }
         }
+        // As wide as the panel with rows or without: with none, the stack was only as wide as its words, and
+        // the title jumped from the left edge to the middle when a search found nothing.
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// The rows, scrolling only when there are too many to show at once.

@@ -19,6 +19,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - The Hour chart in Settings › Usage no longer counts every five minutes twice, and the Day chart's bars are clock hours, so the bar for now sits over the hour it is. Both ran backwards from the current minute, which cut the counted five minutes in two.
 - A round's result shows once when a game ends. It stood in the transcript and again in the Play Again tray right under it; the tray now leads with the game's name.
 - No follow-ups are suggested under an answer that is your own text changed, such as after Fix Grammar or Translate. They took the text for a subject: under a corrected note about a parcel, “Who is receiving the package?”.
+- The title of a panel of actions stays at the left when a search finds nothing, instead of jumping to the middle.
 
 ## v1.12.0 - 2026-10-05
 
