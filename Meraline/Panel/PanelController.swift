@@ -489,7 +489,8 @@ final class PanelController: NSObject {
         } else if session.isStreaming {
             session.stop()
         } else if !session.turns.isEmpty || !session.draft.isEmpty || !session.draftImages.isEmpty || !session.draftFiles.isEmpty || !session.draftSelections.isEmpty || session.failure != nil || session.isPlaying {
-            session.reset()
+            // While Live decisions are on, the draft goes to Recent Chats rather than away.
+            if session.reset() { layout.stashNotice += 1 }
         } else {
             close()
         }

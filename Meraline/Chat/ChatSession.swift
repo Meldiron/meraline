@@ -81,9 +81,12 @@ final class ChatSession {
         var selections: [SelectedText] = []
         /// Text written in the window for a decision (see `TypedStateCard`), or nil while its card is closed.
         var typedState: String?
+        /// The Live switch's questions and answers, when it was on (see `LiveDecisions.Snapshot`).
+        var live: LiveDecisions.Snapshot?
 
         var isEmpty: Bool {
             text.trimmed.isEmpty && images.isEmpty && files.isEmpty && selections.isEmpty && (typedState ?? "").trimmed.isEmpty
+                && (live?.keptQuestions.isEmpty ?? true)
         }
 
         /// The draft as the question it would ask, the written text among its texts.
@@ -99,17 +102,23 @@ final class ChatSession {
         var mode = Mode.chat
         /// The folder an agent worked in, kept with the chat so reopening it brings the files back.
         var workspace: ChatWorkspace?
-        /// What Stash Draft parked here in place of a conversation, which reopening puts back in the input.
+        /// What reopening puts back in the input: a draft Stash Draft parked here in place of a conversation, or
+        /// one the chat had while Live decisions were on (see `reset(keepingChat:)`).
         var draft: Draft?
         /// When the chat goes, workspace and all: its time kept running from when it was open.
         var expiresAt = Date.now.addingTimeInterval(ChatSession.chatLifetime)
+
+        /// A draft parked on its own, with no conversation.
+        var isStash: Bool { turns.isEmpty && draft != nil }
 
         var title: String {
             let first = turns.first ?? draft?.turn
             let question = first?.question ?? ""
             switch mode {
             case .chat:
-                return question.isEmpty ? first?.selections.first?.excerpt ?? first?.files.first?.name ?? "Image question" : question
+                return question.isEmpty
+                    ? first?.selections.first?.excerpt ?? first?.files.first?.name ?? draft?.live?.keptQuestions.first?.text ?? "Image question"
+                    : question
             case .game(let game):
                 return game.rules.headline(of: turns).map { "\(game.title): \($0)" } ?? game.title
             }
@@ -954,9 +963,17 @@ final class ChatSession {
     }
 
     /// Starts a new chat. The open one moves to Recent Chats, unless `keepingChat` is false or the chat is
-    /// anonymous.
-    func reset(keepingChat: Bool = true) {
-        archiveCurrentChat(keeping: keepingChat)
+    /// anonymous. While Live decisions are on, the draft goes too (see `liveDraft`): with its chat, or in an empty
+    /// one as a stash of its own, so Esc or ⌘N pressed by habit loses none of it. Says whether it was stashed.
+    @discardableResult
+    func reset(keepingChat: Bool = true) -> Bool {
+        reset(keepingChat: keepingChat, draft: keepingChat ? liveDraft : nil)
+    }
+
+    /// Starts a new chat, `unsent` going to Recent Chats with the open one, or on its own when it has no answer to
+    /// keep. Says whether it went on its own.
+    private func reset(keepingChat: Bool, draft unsent: Draft?) -> Bool {
+        let stashed = archiveCurrentChat(keeping: keepingChat, draft: unsent)
         // The next chat's Context card starts with Live off and nothing on.
         liveDecisions.reset()
         streamTask?.cancel()
@@ -979,6 +996,16 @@ final class ChatSession {
         insistedInput = nil
         deadline = .distantFuture
         clearFollowUps()
+        return stashed
+    }
+
+    /// What a new chat keeps of the open one's draft while Live decisions are on: what is typed and added, the
+    /// Context card's text, and the switch's questions and answers, which come back when it is reopened. Nil while
+    /// Live is off, in a game, in anonymous mode, and while there is nothing in it.
+    private var liveDraft: Draft? {
+        guard liveDecisions.isOn, !isPlaying, !isAnonymous else { return nil }
+        let draft = currentDraft
+        return draft.isEmpty ? nil : draft
     }
 
     /// Deletes the open chat or game: it skips Recent Chats, and its workspace goes with it. A game's score
@@ -1066,7 +1093,8 @@ final class ChatSession {
     /// Makes a past chat the open one, in the mode it was in, with the time it has left. Whatever was open moves
     /// to Recent Chats, a draft in an empty chat as a stash of its own. The chat leaves Recent Chats, so its
     /// workspace belongs to one chat only. A chat whose time is already up goes instead, workspace and all, and
-    /// the open one stays. A stashed draft comes back into the input, with no time of its own, like anything typed.
+    /// the open one stays. A draft kept with the chat comes back into the input; a stashed one has no time of its
+    /// own, like anything typed.
     func reopen(_ chat: PastChat) {
         history.removeAll { $0.id == chat.id }
         guard chat.expiresAt > .now else {
@@ -1075,16 +1103,15 @@ final class ChatSession {
             return
         }
         let typed = canStashDraft ? currentDraft : nil
-        reset()
+        reset(keepingChat: true, draft: typed == nil ? liveDraft : nil)
         turns = chat.turns
         mode = chat.mode
         workspace = chat.workspace
         suggestFollowUps(after: turns.last)
+        if !chat.isStash { deadline = chat.expiresAt }
         if let parked = chat.draft {
-            (draft, draftImages, draftFiles, draftSelections, typedState) = (parked.text, parked.images, parked.files, parked.selections, parked.typedState)
-            Log.chat.info("A stashed draft is back in the input")
-        } else {
-            deadline = chat.expiresAt
+            restore(parked)
+            Log.chat.info("A \(chat.isStash ? "stashed" : "chat's") draft is back in the input")
         }
         if case .game(let game) = mode { lastGame = game }
         if case .over(let outcome, _)? = gameState?.phase { nudge = outcome.text }
@@ -1106,12 +1133,25 @@ final class ChatSession {
         // can't take it out again.
         broughtAttachments = []
         clearDraft()
+        // Live's questions and answers left with the draft; the empty chat starts with Live off.
+        liveDecisions.reset()
         park(parked)
         Log.chat.info("Draft stashed with \(parked.images.count) image(s), \(parked.files.count) file(s), \(parked.selections.count) text(s)")
     }
 
     private var currentDraft: Draft {
-        Draft(text: draft, images: draftImages, files: draftFiles, selections: draftSelections, typedState: typedState)
+        Draft(text: draft, images: draftImages, files: draftFiles, selections: draftSelections, typedState: typedState, live: liveDecisions.snapshot)
+    }
+
+    /// Puts a draft back in the input: what was typed and added, the Context card's text, and, when Live was on,
+    /// the switch with its questions and answers, in Decision mode, where they show.
+    private func restore(_ parked: Draft) {
+        if parked.live != nil { preferences.mode = .decision }
+        (draft, draftImages, draftFiles, draftSelections, typedState) = (parked.text, parked.images, parked.files, parked.selections, parked.typedState)
+        if let live = parked.live {
+            liveDecisions.restore(live)
+            refreshLiveDecisions(atOnce: true)
+        }
     }
 
     /// Puts a draft on top of Recent Chats, letting go of the oldest chats past the limit.
@@ -1121,18 +1161,26 @@ final class ChatSession {
         removeWorkspaces(leftFrom: previous)
     }
 
-    /// Moves the chat to Recent Chats with its workspace and the time it has left, unless the chat is anonymous
-    /// or not `keeping`. A workspace whose chat is not kept is removed, as are those of the chats that drop off
-    /// the end. Recent Chats keeps a chat until its time runs out, it is cleared or shaken away, or Meraline quits.
-    private func archiveCurrentChat(keeping: Bool = true) {
+    /// Moves the chat to Recent Chats with its workspace, the time it has left, and `draft`, unless the chat is
+    /// anonymous or not `keeping`; a chat with no answer to keep leaves `draft` there as a stash of its own, which
+    /// it says. A workspace whose chat is not kept is removed, as are those of the chats that drop off the end.
+    /// Recent Chats keeps a chat until its time runs out, it is cleared or shaken away, or Meraline quits.
+    private func archiveCurrentChat(keeping: Bool = true, draft: Draft? = nil) -> Bool {
         let previous = history
+        var stashed = false
         if keeping && !isAnonymous {
-            let expiresAt = deadline == .distantFuture ? Date.now.addingTimeInterval(Self.chatLifetime) : deadline
-            history = Self.archiving(turns, into: history, mode: mode, workspace: workspace, expiresAt: expiresAt)
+            if turns.contains(where: Self.isKept) {
+                let expiresAt = deadline == .distantFuture ? Date.now.addingTimeInterval(Self.chatLifetime) : deadline
+                history = Self.archiving(turns, into: history, mode: mode, workspace: workspace, expiresAt: expiresAt, draft: draft)
+            } else if let draft, !draft.isEmpty {
+                history = Self.stashing(draft, into: history)
+                stashed = true
+            }
         }
         removeWorkspaces(leftFrom: previous)
         if let workspace, !history.contains(where: { $0.workspace == workspace }) { workspace.remove() }
         workspace = nil
+        return stashed
     }
 
     /// Removes the workspaces of the chats in `previous` that are no longer in Recent Chats.
@@ -1142,9 +1190,9 @@ final class ChatSession {
     }
 
     /// Recent Chats with the chat on top, holding at most `chatLimit` chats with the open one.
-    static func archiving(_ turns: [Turn], into history: [PastChat], mode: Mode = .chat, at date: Date = .now, workspace: ChatWorkspace? = nil, expiresAt: Date? = nil) -> [PastChat] {
+    static func archiving(_ turns: [Turn], into history: [PastChat], mode: Mode = .chat, at date: Date = .now, workspace: ChatWorkspace? = nil, expiresAt: Date? = nil, draft: Draft? = nil) -> [PastChat] {
         let answered = turns
-            .filter { !$0.answer.isEmpty || $0.isComplete }
+            .filter(isKept)
             .map { turn in
                 var turn = turn
                 turn.activity = nil
@@ -1153,8 +1201,13 @@ final class ChatSession {
                 return turn
             }
         guard !answered.isEmpty else { return history }
-        let chat = PastChat(turns: answered, date: date, mode: mode, workspace: workspace, expiresAt: expiresAt ?? date.addingTimeInterval(chatLifetime))
+        let chat = PastChat(turns: answered, date: date, mode: mode, workspace: workspace, draft: draft, expiresAt: expiresAt ?? date.addingTimeInterval(chatLifetime))
         return Array(([chat] + history).prefix(chatLimit - 1))
+    }
+
+    /// Whether Recent Chats keeps a turn: it has an answer, or ended without one.
+    private static func isKept(_ turn: Turn) -> Bool {
+        !turn.answer.isEmpty || turn.isComplete
     }
 
     /// Recent Chats with a stashed draft on top, with 30 minutes of its own, holding at most `chatLimit` chats with
@@ -1210,12 +1263,13 @@ final class ChatSession {
     }
 
     /// The open chat ran out of time: it goes, workspace and all, without passing through Recent Chats. What is
-    /// typed in the input stays, for a new chat. A game ends; its score against the model stays.
+    /// typed in the input and on the Context card stays, for a new chat, Live's questions and answers with it. A
+    /// game ends; its score against the model stays.
     private func expireOpenChat() {
         let kind = isPlaying ? "Game" : "Chat"
-        let typed = (draft, draftImages, draftFiles, draftSelections)
+        let typed = currentDraft
         reset(keepingChat: false)
-        (draft, draftImages, draftFiles, draftSelections) = typed
+        restore(typed)
         Log.chat.info("\(kind) ran out of time")
     }
 

@@ -8,6 +8,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ### Fixes
 
+- **Esc no longer throws away a live decision.** With Live on, pressing Esc (or ⌘N, or starting a game) used to clear the question and the Context card's text for good. Now the draft waits in Recent Chats: on its own, as Stash Draft keeps it, or with its chat. Reopen it and it's all back, in Decision mode with Live on, your kept questions, the presets you turned on, and their answers, with nothing asked twice. A chat that runs out of time now leaves the Context card's text in place too, not only the input's.
 - A long text pasted into the Context card no longer makes the window tall and mostly empty. The card stops at a few lines and the text scrolls inside it.
 
 ## v1.11.0 - 2026-10-03

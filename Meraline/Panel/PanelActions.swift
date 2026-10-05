@@ -320,7 +320,7 @@ struct PanelContext {
         }
         let zoom = zoomActions
         var chat = [PanelAction(id: "newChat", title: "New Chat", icon: .symbol("square.and.pencil"), shortcut: .command("n")) {
-            session.reset()
+            if session.reset() { layout.stashNotice += 1 }
             focusInput()
         }]
         if let workspace = session.workspace {
@@ -701,7 +701,7 @@ struct PanelContext {
             PanelAction(
                 id: "chat.\(chat.id.uuidString)",
                 title: chat.title.onOneLine,
-                subtitle: chat.draft == nil ? nil : "Stashed draft",
+                subtitle: chat.isStash ? "Stashed draft" : chat.draft == nil ? nil : "With a draft",
                 icon: icon(for: chat),
                 detail: chat.date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))
             ) {
@@ -743,7 +743,7 @@ struct PanelContext {
 
     private func icon(for chat: ChatSession.PastChat) -> PanelAction.Icon {
         if case .game(let game) = chat.mode { return .symbol(game.symbol) }
-        if chat.draft != nil { return .symbol("tray.full") }
+        if chat.isStash { return .symbol("tray.full") }
         return chat.workspace == nil ? .symbol("bubble.left") : .image(ProviderKind.agent.image)
     }
 }

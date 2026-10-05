@@ -360,11 +360,13 @@ struct LiveDecisionTests {
         session.keepLiveQuestion()
         await Self.settle(session)
 
-        // A new chat, as Esc or ⌘N starts one: the switch off, nothing on, nothing kept, and the card closed.
-        session.reset()
+        // A new chat, as Esc or ⌘N starts one: the switch off, nothing on, nothing kept, and the card closed, the
+        // draft waiting in Recent Chats.
+        #expect(session.reset())
         #expect(!live.isOn && live.enabledPresets.isEmpty && live.keptQuestions.isEmpty)
         #expect(live.questions.isEmpty && live.answers.isEmpty && live.pending.isEmpty)
         #expect(session.typedState == nil && session.draft.isEmpty)
+        #expect(session.history.first?.isStash == true)
         session.writeState()
         session.draft = "Urgent?"
         session.typedState = "Down"
@@ -379,6 +381,148 @@ struct LiveDecisionTests {
         session.toggleLivePreset("urgent")
         _ = session.forgetAll()
         #expect(!live.isOn && live.enabledPresets.isEmpty && live.questions.isEmpty)
+    }
+
+    @Test func escapingAnEmptyChatStashesTheLiveDraftAndReopeningBringsItAllBack() async throws {
+        let decider = ScriptedDecider()
+        let (session, preferences) = Self.session(decider)
+        let live = session.liveDecisions
+        session.writeState()
+        session.typedState = "Send me the file now."
+        session.draft = "Is it polite?"
+        session.keepLiveQuestion()
+        session.draft = "Is it short?"
+        session.toggleLivePreset("tone")
+        await Self.settle(session)
+        let asked = decider.asks.count
+        let answers = live.answers
+        #expect(answers.count == 3)
+
+        // Esc pressed by habit starts a new chat, and the draft waits in Recent Chats with all of it.
+        #expect(session.reset(), "stashed on its own")
+        #expect(!live.isOn && live.keptQuestions.isEmpty && session.typedState == nil && session.draft.isEmpty)
+        let stash = try #require(session.history.first)
+        #expect(session.history.count == 1 && stash.isStash)
+        #expect(stash.title == "Is it short?")
+        #expect(stash.draft?.typedState == "Send me the file now.")
+        #expect(stash.draft?.live?.keptQuestions.map(\.text) == ["Is it polite?"])
+        #expect(stash.draft?.live?.enabledPresets == ["tone"])
+        let context = PanelContext(session: session, preferences: preferences, layout: PanelLayout(), openSettings: { _ in })
+        #expect(context.historyMenu.actions.first?.subtitle == "Stashed draft")
+
+        // Reopened from another mode, it comes back in Decision mode with Live on, its questions, and their
+        // answers, which aren't asked again.
+        preferences.mode = .llm
+        session.reopen(stash.id)
+        #expect(preferences.mode == .decision)
+        #expect(session.draft == "Is it short?" && session.typedState == "Send me the file now.")
+        #expect(live.isOn && live.enabledPresets == ["tone"] && live.keptQuestions.map(\.text) == ["Is it polite?"])
+        #expect(live.questions.filter(\.isOn).map(\.title) == ["Is it polite?", "Is it short?", "Tone"])
+        #expect(live.answers == answers && live.pending.isEmpty)
+        await Self.settle(session)
+        #expect(decider.asks.count == asked, "the answers came back with the draft")
+        #expect(session.expiresAt == nil, "what is typed has no time of its own")
+        #expect(session.history.isEmpty)
+
+        // Typing on asks again as ever.
+        session.typedState = "Send me the file now, please."
+        await Self.settle(session)
+        #expect(decider.asks.count == asked + 1)
+        #expect(decider.asks.last?.questions.map(\.question) == ["Is it polite?", "Is it short?", "What is the tone of this text?"])
+    }
+
+    @Test func aChatTakesItsLiveDraftToRecentChats() async throws {
+        let decider = ScriptedDecider()
+        let (session, preferences) = Self.session(decider)
+        let live = session.liveDecisions
+        session.reopen(ChatSession.PastChat(turns: [Support.turn("Urgent?", reply: "Yes (82% confident)")], date: .now))
+        let expiresAt = try #require(session.expiresAt)
+        session.toggleLiveDecisions()
+        session.writeState()
+        session.typedState = "The build is red."
+        session.draft = "Blocking?"
+        await Self.settle(session)
+        let asked = decider.asks.count
+
+        // ⌘N or Esc: the chat goes to Recent Chats as ever, its draft with it rather than on its own.
+        #expect(!session.reset(), "not on its own")
+        let chat = try #require(session.history.first)
+        #expect(session.history.count == 1 && !chat.isStash)
+        #expect(chat.title == "Urgent?")
+        #expect(chat.expiresAt == expiresAt)
+        #expect(chat.draft?.text == "Blocking?" && chat.draft?.typedState == "The build is red." && chat.draft?.live != nil)
+        let context = PanelContext(session: session, preferences: preferences, layout: PanelLayout(), openSettings: { _ in })
+        #expect(context.historyMenu.actions.first?.subtitle == "With a draft")
+
+        session.reopen(chat.id)
+        #expect(session.turns.map(\.question) == ["Urgent?"])
+        #expect(session.expiresAt == expiresAt, "the chat keeps the time it had left")
+        #expect(session.draft == "Blocking?" && session.typedState == "The build is red." && live.isOn)
+        await Self.settle(session)
+        #expect(decider.asks.count == asked)
+
+        // When the chat runs out of time, what is typed stays for a new chat, the card and Live included.
+        session.expireChats(now: expiresAt.addingTimeInterval(1))
+        #expect(session.turns.isEmpty && session.history.isEmpty)
+        #expect(session.draft == "Blocking?" && session.typedState == "The build is red." && live.isOn)
+        await Self.settle(session)
+        #expect(decider.asks.count == asked, "and its answers")
+    }
+
+    @Test func onlyLiveWorkIsKeptAndNeverAnonymouslyOrWhenDeleted() async throws {
+        let decider = ScriptedDecider()
+        let (session, _) = Self.session(decider, live: false)
+        session.writeState()
+        session.typedState = "Send me the file now."
+        session.draft = "Is it polite?"
+
+        // With Live off, a new chat clears the draft as it always has.
+        #expect(!session.reset())
+        #expect(session.history.isEmpty)
+
+        // Nor with nothing typed: the switch alone and a preset on are nothing to lose.
+        session.toggleLiveDecisions()
+        session.toggleLivePreset("urgent")
+        #expect(!session.reset())
+        #expect(session.history.isEmpty)
+
+        // Anonymous mode keeps it out of Recent Chats.
+        session.isAnonymous = true
+        session.toggleLiveDecisions()
+        session.writeState()
+        session.typedState = "Send me the file now."
+        #expect(!session.reset())
+        #expect(session.history.isEmpty)
+        session.isAnonymous = false
+
+        // Delete Chat and forgetting every chat mean it.
+        session.toggleLiveDecisions()
+        session.writeState()
+        session.typedState = "Send me the file now."
+        session.deleteChat()
+        #expect(session.history.isEmpty && session.typedState == nil)
+        session.toggleLiveDecisions()
+        session.writeState()
+        session.typedState = "Send me the file now."
+        session.forgetAll()
+        #expect(session.history.isEmpty && session.typedState == nil)
+    }
+
+    @Test func stashingTheDraftTakesLiveWithIt() async throws {
+        let decider = ScriptedDecider()
+        let (session, _) = Self.session(decider)
+        let live = session.liveDecisions
+        session.writeState()
+        session.draft = "Is it polite?"
+        session.keepLiveQuestion()
+        #expect(session.canStashDraft, "a kept question is something to stash")
+
+        session.stashDraft()
+        #expect(!live.isOn && live.keptQuestions.isEmpty, "the empty chat starts with Live off")
+        let stash = try #require(session.history.first)
+        #expect(stash.title == "Is it polite?", "named by its kept question")
+        session.reopen(stash.id)
+        #expect(live.isOn && live.keptQuestions.map(\.text) == ["Is it polite?"] && session.typedState == "")
     }
 
     @Test func aSelectionOrTheClipboardIsDecidedAboutToo() async throws {

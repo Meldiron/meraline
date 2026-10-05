@@ -118,7 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case .newChat:
             Log.app.info("URL route: new chat")
-            session.reset()
+            if session.reset() { panel.layout.stashNotice += 1 }
             panel.show()
         case .play(let game):
             Log.app.info("URL route: play\(game.map { " \($0.title)" } ?? ", showing the games")")

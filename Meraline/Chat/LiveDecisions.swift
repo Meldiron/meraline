@@ -86,8 +86,9 @@ nonisolated struct LiveQuestion: Equatable, Hashable, Sendable, Identifiable {
 /// so turning a preset on asks only that preset, turning it off and on again asks nothing, and a question kept
 /// from the input takes the input's answer with it. The switch, the presets turned on, and the kept questions are
 /// the chat's: a new chat starts with the switch off and nothing on (`reset()`), and so does the switch itself
-/// when it is turned, the input's question aside, which is asked as it is. All of it lives in memory; the ledger
-/// counts the decisions and what they took.
+/// when it is turned, the input's question aside, which is asked as it is. The draft the open chat leaves behind
+/// takes them to Recent Chats (`snapshot`, `restore(_:)`). All of it lives in memory; the ledger counts the
+/// decisions and what they took.
 @MainActor
 @Observable
 final class LiveDecisions {
@@ -216,6 +217,29 @@ final class LiveDecisions {
 
     func removeKept(_ id: UUID) {
         keptQuestions.removeAll { $0.id == id }
+    }
+
+    /// What the switch holds while it is on, for a draft that goes to Recent Chats to bring back (see
+    /// `ChatSession.Draft.live`): the presets on, the kept questions, and the answers so far, so reopening the draft
+    /// shows them at once and asks only what changed since.
+    struct Snapshot: Equatable {
+        let enabledPresets: Set<PromptPreset.ID>
+        let keptQuestions: [KeptQuestion]
+        let answers: [LiveQuestion.ID: Answer]
+    }
+
+    /// The switch's state while it is on, or nil while it is off.
+    var snapshot: Snapshot? {
+        isOn ? Snapshot(enabledPresets: enabledPresets, keptQuestions: keptQuestions, answers: answers) : nil
+    }
+
+    /// Turns the switch on as `snapshot` left it. `ChatSession` then tells it what to ask, and an answer about the
+    /// same texts and question is asked again only if a newer one was on its way.
+    func restore(_ snapshot: Snapshot) {
+        isOn = true
+        enabledPresets = snapshot.enabledPresets
+        keptQuestions = snapshot.keptQuestions
+        answers = snapshot.answers
     }
 
     /// A new chat: the switch off, no preset on, no kept question, and nothing shown or on its way.
