@@ -79,13 +79,14 @@ struct SymbolCatalogTests {
         #expect(top("ok", 1) == ["checkmark"])
     }
 
-    /// Every symbol `related` names is one macOS has, under its current name.
+    /// Every symbol `related` names is one macOS has, under its own name or the one this macOS gave it. CI runs
+    /// macOS 26, which lacks the names macOS 27 brought (building.classical.columns).
     @Test func theRelatedSymbolsExist() throws {
         let catalog = try #require(SymbolCatalog.system())
         let names = Set(catalog.symbols.map(\.name))
         for (word, symbols) in SymbolCatalog.related {
             for symbol in symbols {
-                #expect(names.contains(symbol), "\(word): \(symbol)")
+                #expect(names.contains(catalog.current(symbol)), "\(word): \(symbol)")
             }
         }
     }

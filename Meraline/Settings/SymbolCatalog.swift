@@ -212,7 +212,8 @@ extension SymbolCatalog {
 
     /// Everyday words and the symbols they mean, best first, for the words Apple's keywords miss: what a preset is
     /// for (summary, grammar, urgent, scam), what someone would call a symbol (email, chat, idea, money), and words
-    /// a symbol's name hides (bug for ant, AI for sparkles). Each group's words share its symbols.
+    /// a symbol's name hides (bug for ant, AI for sparkles). Each group's words share its symbols. A symbol macOS 27
+    /// renamed goes by its old name, which macOS 26 knows and macOS 27 reads as the new one (`current`).
     static let related: [String: [String]] = {
         let groups: [(words: String, symbols: String)] = [
             ("email e-mail mail letter inbox newsletter", "envelope envelope.open tray paperplane"),
@@ -261,7 +262,7 @@ extension SymbolCatalog {
             ("deadline time late soon later wait waiting duration", "clock timer hourglass alarm calendar.badge.clock"),
             ("sort order reorder organize organise", "arrow.up.arrow.down list.number folder tray.full"),
             ("compare comparison diff difference versus vs", "arrow.left.arrow.right square.split.2x1 equal"),
-            ("legal law lawyer contract contracts terms policy agreement", "building.classical.columns text.document signature scalemass"),
+            ("legal law lawyer contract contracts terms policy agreement", "building.columns text.document signature scalemass"),
             ("health medical medicine doctor symptom symptoms", "cross stethoscope heart.text.square pills"),
             ("food recipe recipes cook cooking meal meals dinner lunch breakfast", "fork.knife cup.and.saucer carrot birthday.cake"),
             ("shop shopping buy purchase store order orders product products", "cart bag storefront creditcard tag"),
