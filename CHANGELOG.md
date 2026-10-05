@@ -20,6 +20,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - A round's result shows once when a game ends. It stood in the transcript and again in the Play Again tray right under it; the tray now leads with the game's name.
 - No follow-ups are suggested under an answer that is your own text changed, such as after Fix Grammar or Translate. They took the text for a subject: under a corrected note about a parcel, “Who is receiving the package?”.
 - The title of a panel of actions stays at the left when a search finds nothing, instead of jumping to the middle.
+- **Tables fit the window.** A table's columns give way to the room the card has, the widest first, so a table of three or four columns wraps its cells instead of scrolling sideways with its last column cut off. A table too wide even for that still scrolls.
 
 ## v1.12.0 - 2026-10-05
 

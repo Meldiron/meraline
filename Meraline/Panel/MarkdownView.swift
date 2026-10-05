@@ -519,28 +519,39 @@ private struct CodeBlockView: View {
     }
 }
 
-/// A table in a grid, the header in bold, with hairlines between rows. Wide tables scroll sideways, and a long
-/// cell wraps.
+/// A table in a grid, the header in bold, with hairlines between rows. Its columns are as wide as their widest
+/// cell, up to `cellWidth`, and when that is wider than the room the table has, the widest columns give way
+/// first, down to `narrowest` (see `TableColumns.widths`), so a table of three or four columns wraps its cells
+/// to fit the card; only a table whose columns can't fit even at their narrowest scrolls sideways.
 private struct MarkdownTableView: View {
     let table: MarkdownBlock.Table
     let fontSize: CGFloat
 
+    /// The widest a cell gets when there is room.
+    static let cellWidth: CGFloat = 260
+    /// The narrowest a column is made to fit the room.
+    static let narrowest: CGFloat = 120
+    private static let cellPadding: CGFloat = 10
+
     @Environment(\.answerZoom) private var zoom
     @Environment(\.answerWorkspace) private var workspace
+    /// The room the table has, once laid out; until then the columns keep their own widths.
+    @State private var room: CGFloat = 0
 
     var body: some View {
+        let widths = widths
         ScrollView(.horizontal) {
             Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
                 GridRow {
                     ForEach(Array(table.header.enumerated()), id: \.offset) { column, text in
-                        cell(text, column: column, weight: .semibold)
+                        cell(text, column: column, width: widths[column], weight: .semibold)
                     }
                 }
                 ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
                     Divider()
                     GridRow {
                         ForEach(Array(row.enumerated()), id: \.offset) { column, text in
-                            cell(text, column: column, weight: .regular)
+                            cell(text, column: column, width: widths[column], weight: .regular)
                         }
                     }
                 }
@@ -550,21 +561,70 @@ private struct MarkdownTableView: View {
             .padding(1)
         }
         .scrollIndicators(.automatic)
+        .onGeometryChange(for: CGFloat.self, of: \.size.width) { room = $0 }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Table")
     }
 
-    private func cell(_ text: String, column: Int, weight: Font.Weight) -> some View {
+    /// Each column's width: its widest cell's text with the cell's padding, up to `cellWidth`, made to fit `room`
+    /// when there is one (less the border's padding around the grid).
+    private var widths: [CGFloat] {
+        let columns = max(table.header.count, table.rows.map(\.count).max() ?? 0)
+        let padding = 2 * Self.cellPadding * zoom
+        let natural = (0..<columns).map { column -> CGFloat in
+            let texts = [table.header] + table.rows
+            let widest = texts.compactMap { row in column < row.count ? Self.textWidth(of: row[column], size: fontSize - 1, zoom: zoom) : nil }.max() ?? 0
+            return min(widest + padding, Self.cellWidth * zoom)
+        }
+        guard room > 0 else { return natural }
+        return TableColumns.widths(natural: natural, room: room - 2, narrowest: Self.narrowest * zoom)
+    }
+
+    /// The width of a cell's text on one line, in the font the cell uses. Bold is a little wider than regular and
+    /// a code span a little narrower, which the room to wrap in forgives.
+    private static func textWidth(of text: String, size: CGFloat, zoom: CGFloat) -> CGFloat {
+        let plain = String(MarkdownText.render(text).characters)
+        return NSAttributedString(string: plain, attributes: [.font: NSFont.systemFont(ofSize: size * zoom)]).size().width.rounded(.up)
+    }
+
+    private func cell(_ text: String, column: Int, width: CGFloat, weight: Font.Weight) -> some View {
         let alignment = table.alignments.indices.contains(column) ? table.alignments[column] : .leading
         return Text(InlineText.render(text, workspace: workspace))
             .font(.system(size: (fontSize - 1) * zoom, weight: weight))
             .multilineTextAlignment(alignment.text)
             .textSelection(.enabled)
-            .frame(maxWidth: 260 * zoom, alignment: alignment.frame)
+            .frame(width: max(0, width - 2 * Self.cellPadding * zoom), alignment: alignment.frame)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 10 * zoom)
+            .padding(.horizontal, Self.cellPadding * zoom)
             .padding(.vertical, 6 * zoom)
             .gridColumnAlignment(alignment.horizontal)
+    }
+}
+
+/// How a table's columns share the room a card gives it.
+nonisolated enum TableColumns {
+    /// Each column's width, from `natural`, the width each would take on its own: all of them when they fit in
+    /// `room`, else the widest narrowed first, all the widest to one width, until they fit, and never below
+    /// `narrowest`. When even that is too wide, the columns keep what the floor leaves them and the table
+    /// scrolls.
+    static func widths(natural: [CGFloat], room: CGFloat, narrowest: CGFloat) -> [CGFloat] {
+        guard natural.reduce(0, +) > room else { return natural }
+        // The widest columns are cut to one width, found by giving each column, narrowest first, its own width
+        // while that leaves the rest at least as much each.
+        var cap = narrowest
+        var left = room
+        let ascending = natural.sorted()
+        for (index, width) in ascending.enumerated() {
+            let each = left / CGFloat(ascending.count - index)
+            if width <= each {
+                left -= width
+            } else {
+                cap = each
+                break
+            }
+        }
+        cap = max(cap, narrowest)
+        return natural.map { min($0, cap) }
     }
 }
 
