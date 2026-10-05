@@ -187,45 +187,11 @@ struct UsagePane: View {
     }
 
     private var chart: some View {
-        let points = points
-        let peak = max(1, points.map(\.tokens).max() ?? 1)
-        return Section {
-            Chart(points) { bar in
-                BarMark(x: .value("When", bar.label), y: .value("Tokens", bar.tokens), width: .ratio(0.62))
-                    .foregroundStyle(bar.isCurrent ? AnyShapeStyle(Color.meralinePink.opacity(0.75)) : AnyShapeStyle(Color.secondary.opacity(0.55)))
-                    .cornerRadius(4)
-                if let selectedBar, selectedBar == bar.label {
-                    RectangleMark(x: .value("When", bar.label))
-                        .foregroundStyle(.primary.opacity(0.05))
-                        .annotation(position: .top, spacing: 6, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
-                            BarTooltip(bar: bar)
-                        }
-                }
-            }
-            .chartXSelection(value: $selectedBar)
-            .chartYScale(domain: 0...Double(peak) * 1.1)
-            .chartXAxis {
-                AxisMarks(values: points.filter(\.isTick).map(\.label)) { value in
-                    AxisValueLabel {
-                        if let label = value.as(String.self), let bar = points.first(where: { $0.label == label }) {
-                            Text(bar.tick).font(.caption2).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-            .chartYAxis {
-                AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
-                    AxisGridLine().foregroundStyle(.quaternary)
-                    AxisValueLabel {
-                        if let tokens = value.as(Int.self) {
-                            Text(UsageInsights.compact(tokens)).font(.caption2).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-            .frame(height: 150)
-            .padding(.vertical, 4)
-            .accessibilityLabel("Tokens over \(window.phrase)")
+        Section {
+            UsageChart(points: points, selectedBar: $selectedBar)
+                .frame(height: 150)
+                .padding(.vertical, 4)
+                .accessibilityLabel("Tokens over \(window.phrase)")
         } header: {
             Text("Tokens over \(window.phrase)")
         } footer: {
@@ -567,6 +533,54 @@ private extension ProviderKind {
     /// The kinds of `kinds` in a sentence, in the toggle's order: “LLMs and agents”, “LLMs or agents”.
     static func phrase(for kinds: Set<ProviderKind>, or: Bool = false) -> String {
         allCases.filter(kinds.contains).map(\.usagePhrase).formatted(.list(type: or ? .or : .and))
+    }
+}
+
+/// The chart of a span's tokens: a bar for each of `points`, the current one pink, and the numbers of the bar under
+/// the pointer over it (`BarTooltip`).
+struct UsageChart: View {
+    let points: [UsageBar]
+    /// The bar under the pointer, by its label.
+    @Binding var selectedBar: String?
+
+    var body: some View {
+        let peak = max(1, points.map(\.tokens).max() ?? 1)
+        Chart(points) { bar in
+            BarMark(x: .value("When", bar.label), y: .value("Tokens", bar.tokens), width: .ratio(0.62))
+                .foregroundStyle(bar.isCurrent ? AnyShapeStyle(Color.meralinePink.opacity(0.75)) : AnyShapeStyle(Color.secondary.opacity(0.55)))
+                .cornerRadius(4)
+            if let selectedBar, selectedBar == bar.label {
+                // The mark is as tall as the plot, so numbers above it would sit above the chart, where the card
+                // around it cuts them off. They are moved back inside the chart, at its top, and in from its
+                // sides at the first and last bars.
+                RectangleMark(x: .value("When", bar.label))
+                    .foregroundStyle(.primary.opacity(0.05))
+                    .annotation(position: .top, spacing: 6, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
+                        BarTooltip(bar: bar)
+                    }
+            }
+        }
+        .chartXSelection(value: $selectedBar)
+        .chartYScale(domain: 0...Double(peak) * 1.1)
+        .chartXAxis {
+            AxisMarks(values: points.filter(\.isTick).map(\.label)) { value in
+                AxisValueLabel {
+                    if let label = value.as(String.self), let bar = points.first(where: { $0.label == label }) {
+                        Text(bar.tick).font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
+                AxisGridLine().foregroundStyle(.quaternary)
+                AxisValueLabel {
+                    if let tokens = value.as(Int.self) {
+                        Text(UsageInsights.compact(tokens)).font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -14,6 +14,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - **You can scroll up while an answer is still coming.** The conversation follows a growing answer only while you are at its end. Scroll up to read from the start and it stays where you put it; before, every new word pulled you back down, and so did the follow-ups when they arrived. Scroll back to the end, or ask something, and it follows again.
 - **Fast answers no longer fall behind the model.** Words that arrive within a twentieth of a second go on screen together, instead of the whole answer being laid out again for each one. A long answer from a fast model used to finish on screen many seconds after it had arrived.
 - An answer whose connection closes partway now says so (“The connection closed before the answer finished.”) and keeps what arrived. Before, the cut-off text passed for the whole answer.
+- Settings › Usage shows a bar's numbers when the pointer is over it. They sat above the chart, where only their bottom edge showed.
 
 ## v1.12.0 - 2026-10-05
 
