@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Play Again, the one game control that stays. Once a round is over it sits under the transcript with how
-/// the round went; after the game ends it waits on the empty panel, until a new game or its cross. Beside
+/// Play Again, the one game control that stays. Once a round is over it sits under the transcript, whose last
+/// line says how the round went; after the game ends it waits on the empty panel, until a new game or its cross. Beside
 /// it, the tally against the model since Meraline opened, which lives in memory only (see `Versus`).
 struct RematchTray: View {
     let offer: RematchOffer
@@ -15,7 +15,7 @@ struct RematchTray: View {
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
                 Text(offer.message)
-                    .font(.system(size: 13, weight: offer.isAfterGame ? .semibold : .regular))
+                    .font(.system(size: 13, weight: offer.message == offer.game.title ? .semibold : .regular))
                     .fixedSize(horizontal: false, vertical: true)
                 if let tally = offer.versus.tally {
                     Text(tally)

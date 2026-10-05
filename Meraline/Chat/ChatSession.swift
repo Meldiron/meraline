@@ -1083,10 +1083,13 @@ final class ChatSession {
     }
 
     /// What the rematch tray offers: the game's next round once one is over, or the last game again on an
-    /// empty panel after it ended.
+    /// empty panel after it ended. How the round went is the transcript's last line, right above the tray, so the
+    /// tray leads with the game's name rather than say it a second time; anything else there is to say, such as a
+    /// move that broke the rules, still shows there.
     var rematch: RematchOffer? {
         if let game, !isStreaming, case .over(let outcome, _)? = gameState?.phase {
-            return RematchOffer(game: game, message: nudge ?? outcome.text, versus: versus[game] ?? Versus(), isAfterGame: false)
+            let said = nudge.flatMap { $0 == outcome.text ? nil : $0 }
+            return RematchOffer(game: game, message: said ?? game.title, versus: versus[game] ?? Versus(), isAfterGame: false)
         }
         guard !isPlaying, turns.isEmpty, let lastGame else { return nil }
         return RematchOffer(game: lastGame, message: lastGame.title, versus: versus[lastGame] ?? Versus(), isAfterGame: true)

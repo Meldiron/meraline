@@ -31,7 +31,8 @@ nonisolated struct Versus: Equatable, Sendable {
 /// What the rematch tray shows: a game to play again, how it has gone, and a line to go with it.
 nonisolated struct RematchOffer: Equatable, Sendable {
     let game: Game
-    /// The round's outcome while the game is open, or the game's title once it has ended.
+    /// The game's title, or what there is to say about the next move while the game is open. Not how the round
+    /// went: the transcript above the tray ends on that.
     let message: String
     let versus: Versus
     /// Whether the game has ended and the tray sits on an empty panel, where it can be put away.

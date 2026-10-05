@@ -17,6 +17,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - Settings › Usage shows a bar's numbers when the pointer is over it. They sat above the chart, where only their bottom edge showed.
 - Settings › Usage labels its chart every few bars again. Every bar had a label, so a month's days ran together.
 - The Hour chart in Settings › Usage no longer counts every five minutes twice, and the Day chart's bars are clock hours, so the bar for now sits over the hour it is. Both ran backwards from the current minute, which cut the counted five minutes in two.
+- A round's result shows once when a game ends. It stood in the transcript and again in the Play Again tray right under it; the tray now leads with the game's name.
 
 ## v1.12.0 - 2026-10-05
 

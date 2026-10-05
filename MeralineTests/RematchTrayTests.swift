@@ -31,7 +31,9 @@ struct RematchTrayTests {
         let over = session.rematch
         #expect(over?.game == .wordFootball)
         #expect(over?.isAfterGame == false)
-        #expect(over?.message == "Foul! “salmon” doesn’t start with “E”. You win!")
+        #expect(over?.message == "Word Football", "the game's name: how the round went is the transcript's last line")
+        let said = Game.wordFootball.rules.lines(for: session.turns).map(\.text)
+        #expect(said.filter { $0 == "Foul! “salmon” doesn’t start with “E”. You win!" }.count == 1, "said once, right above the tray")
         #expect(over?.versus.tally == "You 1 – 0 Model")
 
         session.draft = "half a word"
