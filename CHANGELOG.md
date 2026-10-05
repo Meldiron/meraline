@@ -15,6 +15,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - **Fast answers no longer fall behind the model.** Words that arrive within a twentieth of a second go on screen together, instead of the whole answer being laid out again for each one. A long answer from a fast model used to finish on screen many seconds after it had arrived.
 - An answer whose connection closes partway now says so (“The connection closed before the answer finished.”) and keeps what arrived. Before, the cut-off text passed for the whole answer.
 - Settings › Usage shows a bar's numbers when the pointer is over it. They sat above the chart, where only their bottom edge showed.
+- Settings › Usage labels its chart every few bars again. Every bar had a label, so a month's days ran together.
 
 ## v1.12.0 - 2026-10-05
 

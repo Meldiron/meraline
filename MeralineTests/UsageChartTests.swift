@@ -75,4 +75,37 @@ struct UsageChartTests {
             #expect(found.outside == 0, "bar \(selected) drew \(found.outside) pixels outside the chart")
         }
     }
+
+    /// How many labels stand under the plot: the runs of columns with ink in the strip below the bars, left of the
+    /// token scale's own labels, a few points of clear columns between one label and the next.
+    private func labels(under drawn: (alpha: [UInt8], width: Int, height: Int, scale: CGFloat)) -> Int {
+        let rows = Int((Self.margin + Self.chart.height - 12) * drawn.scale)..<Int((Self.margin + Self.chart.height) * drawn.scale)
+        let columns = Int(Self.margin * drawn.scale)..<Int((Self.margin + Self.chart.width - 31) * drawn.scale)
+        let gap = Int(4 * drawn.scale)
+        var count = 0
+        var clear = gap
+        for x in columns {
+            if rows.contains(where: { drawn.alpha[$0 * drawn.width + x] > 60 }) {
+                if clear >= gap { count += 1 }
+                clear = 0
+            } else {
+                clear += 1
+            }
+        }
+        return count
+    }
+
+    /// A month's thirty days once all had their number under them, run together as "2324252627282930": the axis
+    /// drew a label for every bar, whichever ones it was told to mark.
+    @Test func onlyTheTicksAreLabeled() async throws {
+        // With tokens counted, so the token scale's labels are as wide as they get and the strip stops short of them.
+        let ledger = UsageLedger(file: nil)
+        ledger.record(at: now.addingTimeInterval(-60)) { $0.count(answer: TokenUsage(input: 4_000, output: 900), reported: true, for: "anthropic/claude") }
+        for window in [UsageWindow.month, .hour, .day] {
+            let bars = UsageBar.bars(of: ledger.series(window, now: now), in: window)
+            let ticks = bars.filter(\.isTick).count
+            #expect(ticks < bars.count)
+            #expect(labels(under: try await draw(bars, selected: nil)) == ticks, "\(window): \(ticks) of \(bars.count) bars are ticks")
+        }
+    }
 }

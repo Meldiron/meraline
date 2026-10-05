@@ -563,9 +563,11 @@ struct UsageChart: View {
         .chartXSelection(value: $selectedBar)
         .chartYScale(domain: 0...Double(peak) * 1.1)
         .chartXAxis {
+            // Every bar gets a mark whatever `values` says, on a scale of names, so the label is drawn only for
+            // the bars that are ticks: a month's days once ran together as "2324252627282930".
             AxisMarks(values: points.filter(\.isTick).map(\.label)) { value in
                 AxisValueLabel {
-                    if let label = value.as(String.self), let bar = points.first(where: { $0.label == label }) {
+                    if let label = value.as(String.self), let bar = points.first(where: { $0.label == label }), bar.isTick {
                         Text(bar.tick).font(.caption2).foregroundStyle(.secondary)
                     }
                 }
