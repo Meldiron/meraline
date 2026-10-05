@@ -14,6 +14,13 @@ struct AutomationRouteTests {
         #expect(AutomationRoute(url: URL(string: "meraline://ask?text=%20%20")!) == .ask(text: nil, send: false))
     }
 
+    @Test func controlCharactersInTheTextAreLeftOut() {
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?text=%00%01%02&send=1")!) == .ask(text: nil, send: true), "nothing a keyboard types")
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?text=Hi%00%1B%5Bthere&selection=one%07two")!) == .ask(text: "Hi[there", selection: "onetwo", send: false))
+        #expect(AutomationRoute(url: URL(string: "meraline://ask?text=one%0Atwo%09three%0D%0Afour")!) == .ask(text: "one\ntwo\tthree\nfour", send: false), "line breaks and tabs stay")
+        #expect("café 👩‍💻".withoutControlCharacters == "café 👩‍💻", "the joiner inside an emoji is no control character")
+    }
+
     @Test func sendAcceptsSeveralSpellings() {
         for value in ["1", "true", "YES"] {
             #expect(AutomationRoute(url: URL(string: "meraline://ask?text=hi&send=\(value)")!) == .ask(text: "hi", send: true))

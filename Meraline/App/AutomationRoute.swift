@@ -52,8 +52,8 @@ nonisolated enum AutomationRoute: Equatable, Sendable {
 
         switch (url.host() ?? "").lowercased() {
         case "ask", "":
-            let text = value("text")?.trimmed ?? ""
-            let selection = value("selection")?.trimmed ?? ""
+            let text = value("text")?.withoutControlCharacters.trimmed ?? ""
+            let selection = value("selection")?.withoutControlCharacters.trimmed ?? ""
             self = .ask(
                 text: text.isEmpty ? nil : text,
                 selection: selection.isEmpty ? nil : selection,
@@ -97,6 +97,17 @@ nonisolated enum AutomationRoute: Equatable, Sendable {
         case "0", "false", "no", "off": false
         default: nil
         }
+    }
+}
+
+nonisolated extension String {
+    /// The text without the control characters a URL can carry (`%00`, `%1B`), which no keyboard types and no
+    /// model should be sent. Line breaks and tabs stay, a Windows line break as one, and so do the invisible
+    /// characters that are part of writing, such as the joiner inside an emoji.
+    var withoutControlCharacters: String {
+        String(String.UnicodeScalarView(replacingOccurrences(of: "\r\n", with: "\n").unicodeScalars.filter { scalar in
+            scalar == "\n" || scalar == "\t" || scalar.properties.generalCategory != .control
+        }))
     }
 }
 
