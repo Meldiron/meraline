@@ -321,6 +321,12 @@ struct PanelContext {
                 }
             }
         }
+        if session.canUndoRewrite {
+            answer.append(PanelAction(id: "undoRewrite", title: "Undo Rewrite", subtitle: "Bring back the answer it replaced", icon: .symbol("arrow.uturn.backward"), keywords: ["undo", "revert", "back", "preset", "rewrite"]) {
+                session.undoRewrite()
+                focusInput()
+            })
+        }
         let zoom = zoomActions
         var chat = [PanelAction(id: "newChat", title: "New Chat", icon: .symbol("square.and.pencil"), shortcut: .command("n")) {
             if session.reset() { layout.stashNotice += 1 }

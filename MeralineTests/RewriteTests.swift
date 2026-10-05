@@ -106,6 +106,54 @@ struct RewriteTests {
         }
     }
 
+    @Test func undoRewriteBringsTheReplacedAnswerBack() async throws {
+        let model = ScriptedModel(["A long answer about DNS.", "DNS finds addresses.", "- DNS finds addresses.", "Sure."])
+        let session = Support.session(model)
+        session.followUpSuggester = { request in ["About \(request.answer.prefix(6))?"] }
+        await Support.play("What is DNS?", in: session)
+        #expect(!session.canUndoRewrite, "nothing replaced yet")
+        #expect(context(session).chatMenu?.actions.contains { $0.id == "undoRewrite" } == false)
+
+        session.rewrite(.shorter)
+        await Support.settle(session)
+        session.rewrite(.bulletList)
+        await Support.settle(session)
+        #expect(session.turns.map(\.answer) == ["- DNS finds addresses."])
+        #expect(session.canUndoRewrite)
+        session.draft = "half a follow-up"
+
+        let undo = try #require(context(session).chatMenu?.actions.first { $0.id == "undoRewrite" })
+        undo.perform()
+        #expect(session.turns.map(\.answer) == ["DNS finds addresses."], "the rewrite before the last")
+        #expect(session.turns.first?.isComplete == true)
+        #expect(session.draft == "half a follow-up")
+        #expect(session.canUndoRewrite, "and the first rewrite can go too")
+        session.undoRewrite()
+        #expect(session.turns.map(\.answer) == ["A long answer about DNS."])
+        #expect(!session.canUndoRewrite)
+        for _ in 0..<50 { await Task.yield() }
+        #expect(session.followUps == ["About A long?"], "the follow-ups are the old answer's again")
+
+        // The next question reads the answer that is back, and leaves nothing to undo.
+        await Support.play("Really?", in: session)
+        #expect(model.lastMessages.contains("A long answer about DNS."))
+        #expect(!model.lastMessages.contains("DNS finds addresses."))
+        #expect(!session.canUndoRewrite)
+    }
+
+    @Test func aFailedRewriteLeavesNothingToUndoAndANewChatForgets() async {
+        let model = ScriptedModel(["First.", "Second."])
+        let session = Support.session(model)
+        await Support.play("Go", in: session)
+        session.rewrite(.longer)
+        await Support.settle(session)
+        #expect(session.canUndoRewrite)
+        session.reset()
+        #expect(!session.canUndoRewrite, "a new chat starts with nothing to undo")
+        session.reopen(session.history.first!.id)
+        #expect(!session.canUndoRewrite, "and a reopened one too: the replaced answer lived with the open chat")
+    }
+
     @Test func theChatsPanelOffersRewritesOnlyForAFinishedAnswer() async throws {
         let waiting = ChatSession(preferences: Support.preferences()) { _ in AsyncThrowingStream { _ in } }
         waiting.draft = "Tell me a story"

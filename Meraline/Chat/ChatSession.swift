@@ -232,6 +232,10 @@ final class ChatSession {
     @ObservationIgnored private var replacedTurn: Turn?
     /// Whether the answer streaming now rewrites `replacedTurn`, which then comes back unless it finishes.
     @ObservationIgnored private var isRewriting = false
+    /// The answers that rewrites and presets replaced, most recent last, each with the turn that took its place,
+    /// so Undo Rewrite can bring it back while that turn is still the last (see `undoRewrite()`). In memory with
+    /// the chat, and gone with it.
+    @ObservationIgnored private var rewritten: [(before: Turn, after: Turn.ID)] = []
     /// How to answer each prompt the agent is waiting on, by the prompt's id.
     @ObservationIgnored private var responders: [String: AgentPromptResponder] = [:]
     /// Lets go of the chats whose time is up, at the next deadline.
@@ -621,6 +625,24 @@ final class ChatSession {
         stream(request, for: turn.id)
     }
 
+    /// Whether the last answer came from a rewrite or a preset that Undo Rewrite can take back: the answer it
+    /// replaced is kept while that one is the last, and nothing is streaming.
+    var canUndoRewrite: Bool {
+        guard !isStreaming, let last = turns.last, let replaced = rewritten.last else { return false }
+        return replaced.after == last.id
+    }
+
+    /// Puts back the answer the last rewrite or preset replaced, with what it carried, under the same question,
+    /// so a ⌘1 pressed by habit, or a rewrite that came out worse, costs nothing. Another undo takes back the
+    /// rewrite before it. Whatever is typed in the input stays there.
+    func undoRewrite() {
+        guard canUndoRewrite, let undone = rewritten.popLast() else { return }
+        turns[turns.count - 1] = undone.before
+        failure = nil
+        suggestFollowUps(after: undone.before)
+        Log.chat.info("Rewrite undone; the answer it replaced is back")
+    }
+
     /// What Return does in a game: asks the model for its move, opens a round with your line or leaves it to
     /// the other side when nothing is typed, or plays your line.
     private func play(_ game: Game) {
@@ -1005,6 +1027,7 @@ final class ChatSession {
         responders = [:]
         replacedTurn = nil
         isRewriting = false
+        rewritten = []
         draft = ""
         draftImages = []
         draftFiles = []
@@ -1711,6 +1734,9 @@ final class ChatSession {
         let wasStopped = error is CancellationError || (error as? URLError)?.code == .cancelled
         count(error == nil ? .complete : wasStopped ? .stopped : .failed, of: turns[last], tools: !wasRewriting)
 
+        if wasRewriting, error == nil, let replaced {
+            rewritten.append((before: replaced, after: turns[last].id))
+        }
         // A rewrite stopped or failed partway gives the old answer back rather than keep half of the new one.
         if wasRewriting, let error, let replaced {
             turns[last] = replaced
