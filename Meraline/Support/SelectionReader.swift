@@ -233,6 +233,29 @@ enum SelectionReader {
         }
     }
 
+    /// What the digit keys of the number row, 1 to 0, type without a modifier in the current keyboard layout: the
+    /// digits on most, "+ ě š č ř ž ý á í é" on a Czech one, where the digits take Shift. Empty when the layout
+    /// can't be read.
+    nonisolated static func plainCharacters(ofDigitKeys: Void = ()) -> [String] {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let pointer = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return [] }
+        let data = Unmanaged<CFData>.fromOpaque(pointer).takeUnretainedValue() as Data
+        let digitKeys = [kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9, kVK_ANSI_0]
+        return data.withUnsafeBytes { bytes -> [String] in
+            guard let layout = bytes.baseAddress?.assumingMemoryBound(to: UCKeyboardLayout.self) else { return [] }
+            return digitKeys.map { code in
+                var deadKeys: UInt32 = 0
+                var length = 0
+                var characters = [UniChar](repeating: 0, count: 4)
+                let status = UCKeyTranslate(
+                    layout, UInt16(code), UInt16(kUCKeyActionDisplay), 0, UInt32(LMGetKbdType()),
+                    OptionBits(kUCKeyTranslateNoDeadKeysMask), &deadKeys, characters.count, &length, &characters
+                )
+                return status == noErr ? String(utf16CodeUnits: characters, count: length) : ""
+            }
+        }
+    }
+
     /// The menu item for ⌘ and a letter, Copy's or Paste's, in the first menus of the app's menu bar, where
     /// Edit is, unless it says it is unavailable. Reading a menu through Accessibility doesn't open it.
     static func commandMenuItem(_ character: Character, in app: AXUIElement) -> AXUIElement? {

@@ -84,9 +84,21 @@ struct AnswerZoomTests {
     }
 
     @Test func theKeycapsSayPlusAndMinus() {
-        #expect(AnswerZoom.Step.zoomIn.shortcut.keycaps == ["⌘", "+"])
+        #expect(AnswerZoom.Step.zoomIn.shortcut.keycaps == ["⌘", ActionShortcut.plusKeycap])
         #expect(AnswerZoom.Step.zoomOut.shortcut.keycaps == ["⌘", "−"])
         #expect(AnswerZoom.Step.actualSize.shortcut.text == "⌘0")
+    }
+
+    /// On a Czech or Slovak keyboard the key that types + is the 1 key, so ⌘ and it is ⌘1, a preset's once an
+    /// answer is ready; Zoom In works there as ⌘=, which its keycap then says.
+    @Test func zoomInsKeycapIsTheKeyThatWorksOnThisKeyboard() {
+        #expect(ActionShortcut.plusKeycap(typing: { ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"] }) == "+", "a US keyboard")
+        #expect(ActionShortcut.plusKeycap(typing: { ["+", "ě", "š", "č", "ř", "ž", "ý", "á", "í", "é"] }) == "=", "a Czech one")
+        #expect(ActionShortcut.plusKeycap(typing: { ["&", "é", "\"", "'", "(", "§", "è", "!", "ç", "à"] }) == "+", "a French one: its + is elsewhere")
+        #expect(ActionShortcut.plusKeycap(typing: { [] }) == "+", "a layout that can't be read")
+        let digits = SelectionReader.plainCharacters(ofDigitKeys: ())
+        #expect(digits.count == 10, "this Mac's layout reads: \(digits)")
+        #expect(["+", "="].contains(ActionShortcut.plusKeycap))
     }
 
     // MARK: The chat's actions

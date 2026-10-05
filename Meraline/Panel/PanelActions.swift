@@ -80,7 +80,7 @@ nonisolated struct ActionShortcut: Equatable, Sendable {
         if modifiers.contains(.command) { caps.append("⌘") }
         switch key {
         case .character(let character): caps.append(String(character).uppercased())
-        case .plus: caps.append("+")
+        case .plus: caps.append(Self.plusKeycap)
         case .minus: caps.append("−")
         case .digit(let digit): caps.append("\(digit)")
         case .delete: caps.append("⌫")
@@ -92,6 +92,15 @@ nonisolated struct ActionShortcut: Equatable, Sendable {
 
     /// The shortcut in one line, for tooltips: "⇧⌘C".
     var text: String { keycaps.joined() }
+
+    /// The keycap Zoom In shows: "=" on a keyboard where the key that types + is one of the digit keys, since ⌘
+    /// and that key is ⌘1 there (see `PanelContext.action(forKeyCode:characters:modifiers:)`), and "+" on any other.
+    static var plusKeycap: String { plusKeycap(typing: { SelectionReader.plainCharacters(ofDigitKeys: ()) }) }
+
+    /// `plusKeycap` for a layout whose digit keys, 1 to 0, type `digitKeys` without Shift.
+    static func plusKeycap(typing digitKeys: () -> [String]) -> String {
+        digitKeys().contains("+") ? "=" : "+"
+    }
 
     /// Whether a key press is this shortcut. `characters` is the press's `charactersIgnoringModifiers`, which
     /// keeps Shift, so it is compared without case.
