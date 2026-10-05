@@ -290,8 +290,13 @@ struct PanelContext {
         let session = session
         var primary: [PanelAction] = []
         var copy: [PanelAction] = []
+        // After an answer that failed partway, asking again comes first; the cut-off answer can still be copied.
+        let failed = !session.isStreaming && session.failureRetry == .askAgain && session.canAskAgain
         if session.isStreaming {
             primary.append(stop)
+            if session.lastAnswer != nil { copy.append(copyAnswer) }
+        } else if failed {
+            primary.append(askAgain)
             if session.lastAnswer != nil { copy.append(copyAnswer) }
         } else if session.lastAnswer != nil {
             primary.append(copyAnswer)
@@ -332,10 +337,7 @@ struct PanelContext {
         let presets = presetActions
         var answer: [PanelAction] = []
         if session.canAskAgain {
-            answer.append(PanelAction(id: "askAgain", title: "Ask Again", icon: .symbol("arrow.clockwise"), shortcut: .command("r")) {
-                session.askAgain()
-                focusInput()
-            })
+            if !failed { answer.append(askAgain) }
             answer += askAgainElsewhere
         }
         if session.canRewrite {
@@ -480,6 +482,13 @@ struct PanelContext {
                 Log.panel.info("Code block copied")
                 layout.copyNotice += 1
             }
+        }
+    }
+
+    private var askAgain: PanelAction {
+        PanelAction(id: "askAgain", title: "Ask Again", icon: .symbol("arrow.clockwise"), shortcut: .command("r")) { [session] in
+            session.askAgain()
+            focusInput()
         }
     }
 

@@ -168,7 +168,10 @@ struct ChatPanelView: View {
                     conversation
                 }
                 if let failure = session.failure {
-                    FailureRow(message: failure, showsSettings: session.failureNeedsSettings) { openSettings(nil) }
+                    FailureRow(message: failure, showsSettings: session.failureNeedsSettings, tryAgain: session.canTryAgain ? {
+                        session.tryAgain()
+                        isInputFocused = true
+                    } : nil) { openSettings(nil) }
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
                 } else if let notice = session.fileNotice {
@@ -1376,9 +1379,13 @@ private struct AttachmentThumbnail: View {
     }
 }
 
+/// What went wrong, with the way out when there is one: Open Settings for a setup problem, Try Again for a
+/// failure asking again might mend (see `ChatSession.tryAgain()`).
 private struct FailureRow: View {
     let message: String
     let showsSettings: Bool
+    /// Asks the question again. Without it there is no Try Again button.
+    var tryAgain: (() -> Void)?
     let openSettings: () -> Void
 
     var body: some View {
@@ -1393,6 +1400,10 @@ private struct FailureRow: View {
             if showsSettings {
                 Button("Open Settings", action: openSettings)
                     .buttonStyle(.glass)
+            } else if let tryAgain {
+                Button("Try Again", action: tryAgain)
+                    .buttonStyle(.glass(.regular.tint(.meralinePink.opacity(0.18))))
+                    .help("Ask the question again")
             }
         }
         .padding(12)

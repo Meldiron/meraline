@@ -191,8 +191,17 @@ final class ChatSession {
     /// The folder an agent works in for this chat, made on the first question to one.
     private(set) var workspace: ChatWorkspace?
     private(set) var isStreaming = false
-    private(set) var failure: String?
+    private(set) var failure: String? {
+        didSet { if failure == nil { failureRetry = nil } }
+    }
     private(set) var failureNeedsSettings = false
+    /// What Try Again on the failure's banner does, when the failure is one asking again might mend: ask the
+    /// question again for the answer that was cut short, or send the question that came back to the input.
+    enum FailureRetry: Equatable {
+        case askAgain
+        case send
+    }
+    private(set) var failureRetry: FailureRetry?
     /// A friendly line from a game: its invitation, why a move came back, or that the round is over.
     /// Unlike `failure`, nothing went wrong.
     private(set) var nudge: String?
@@ -558,6 +567,26 @@ final class ChatSession {
     /// Whether Ask Again can ask the last question once more: a chat, not a game, whose last answer is done.
     var canAskAgain: Bool {
         !isStreaming && !isPlaying && turns.last?.isComplete == true && preferences.activeProvider != nil
+    }
+
+    /// Whether the failure on the banner is one asking again might mend, which Try Again does: not a game's,
+    /// nor a setup problem, which Open Settings is for.
+    var canTryAgain: Bool {
+        guard let failureRetry, !failureNeedsSettings, !isStreaming, !isPlaying else { return false }
+        switch failureRetry {
+        case .askAgain: return canAskAgain
+        case .send: return !draft.trimmed.isEmpty
+        }
+    }
+
+    /// Try Again on the failure's banner: asks the question again when its answer is on screen, cut short, and
+    /// sends the question again as Return would when it came back to the input.
+    func tryAgain() {
+        guard canTryAgain, let failureRetry else { return }
+        switch failureRetry {
+        case .askAgain: askAgain()
+        case .send: send()
+        }
     }
 
     /// Asks the last question again, of the provider in use now, for an answer in place of the last one.
@@ -1746,6 +1775,7 @@ final class ChatSession {
             } else {
                 Log.chat.error("Rewrite failed: \(error.localizedDescription)")
                 fail(with: error.localizedDescription, needsSettings: Self.needsSettings(error))
+                failureRetry = .askAgain
             }
             return
         }
@@ -1765,12 +1795,16 @@ final class ChatSession {
         }
         Log.chat.error("Answer failed: \(error.localizedDescription)")
 
+        // The question comes back to the input when no answer came, unless Ask Again asked it, which puts the
+        // answer it was to replace back instead; Try Again then sends it or asks again accordingly.
+        let cameBack = turns[last].answer.isEmpty && replaced == nil
         if turns[last].answer.isEmpty {
             takeBackQuestion(restoring: replaced)
         } else {
             turns[last].isComplete = true
         }
         fail(with: error.localizedDescription, needsSettings: Self.needsSettings(error))
+        failureRetry = cameBack ? .send : .askAgain
     }
 
     /// Looks for what the finished answer at `index` changed in the text its question was about, or, for a
