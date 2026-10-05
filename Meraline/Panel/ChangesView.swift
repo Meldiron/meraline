@@ -20,6 +20,10 @@ struct ChangesView: View {
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
+            // One element with the label, not the selectable text's own element relabeled: on macOS 27 a
+            // selectable Text with a label, shown once accessibility is in use, sends whoever reads its label
+            // (VoiceOver, any accessibility client) into a recursion in SwiftUI that never returns.
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(changes.spokenText)
     }
 

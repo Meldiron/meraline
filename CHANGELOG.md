@@ -4,6 +4,12 @@ Notable changes in each Meraline release, newest first.
 
 When a version has an entry here, the Release workflow uses it as the release notes on GitHub and in the in-app update window. A version without an entry gets the list of commits since the previous tag instead. Headings are `## vX.Y.Z - YYYY-MM-DD`.
 
+## Unreleased
+
+### Fixes
+
+- **Show What Changed no longer freezes Meraline under VoiceOver.** With VoiceOver or any other accessibility tool reading the window, showing what an answer changed sent macOS 27 into a loop that never ended, and Meraline had to be force quit.
+
 ## v1.12.0 - 2026-10-05
 
 ### Presets
