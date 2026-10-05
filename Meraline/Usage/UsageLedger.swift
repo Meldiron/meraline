@@ -38,11 +38,12 @@ nonisolated enum UsageWindow: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// The bars of the window's chart: their number and length, in seconds or in calendar days or months.
+    /// The bars of the window's chart: their number and length, in the ledger's own five-minute slots or in the
+    /// calendar's hours, days, or months.
     var bars: Bars {
         switch self {
-        case .hour: .seconds(5 * 60, count: 12)
-        case .day: .seconds(3_600, count: 24)
+        case .hour: .slots(1, count: 12)
+        case .day: .hours(1, count: 24)
         case .week: .days(1, count: 7)
         case .month: .days(1, count: 30)
         case .year: .months(1, count: 12)
@@ -50,13 +51,14 @@ nonisolated enum UsageWindow: String, CaseIterable, Identifiable, Sendable {
     }
 
     enum Bars: Equatable, Sendable {
-        case seconds(TimeInterval, count: Int)
+        case slots(Int, count: Int)
+        case hours(Int, count: Int)
         case days(Int, count: Int)
         case months(Int, count: Int)
 
         var count: Int {
             switch self {
-            case .seconds(_, let count), .days(_, let count), .months(_, let count): count
+            case .slots(_, let count), .hours(_, let count), .days(_, let count), .months(_, let count): count
             }
         }
     }
@@ -203,8 +205,11 @@ final class UsageLedger {
         return slots.keys.sorted().reduce(UsageTally()) { $0 + (tally(ofSlot: $1, kinds: every) ?? UsageTally()) }
     }
 
-    /// The window's chart for `kinds`, one point a bar, the last bar ending at `now`. Bars of days and months
-    /// follow the calendar, so a week's bars are its days and a year's its months, the last of each cut at `now`.
+    /// The window's chart for `kinds`, one point a bar, the last bar ending at `now`. Every bar follows the clock
+    /// or the calendar: an hour's bars are the ledger's five-minute slots, a day's its clock hours, a week's its
+    /// days, and a year's its months, the last of each the one `now` is in, cut at `now`. Bars that ran from `now`
+    /// backwards instead cut slots in two, and a slot was counted in both of the bars it lay across, so an hour's
+    /// bars showed every five minutes twice.
     func series(_ window: UsageWindow, now: Date = .now, calendar: Calendar = .current, kinds: Set<ProviderKind> = Set(ProviderKind.allCases)) -> [UsagePoint] {
         let edges = Self.edges(of: window, now: now, calendar: calendar)
         return zip(edges, edges.dropFirst()).map { start, end in
@@ -215,8 +220,14 @@ final class UsageLedger {
     /// The bars' starts and, last, the window's end.
     static func edges(of window: UsageWindow, now: Date, calendar: Calendar) -> [Date] {
         switch window.bars {
-        case .seconds(let length, let count):
-            return (0...count).map { now.addingTimeInterval(TimeInterval($0 - count) * length) }
+        case .slots(let slots, let count):
+            let length = slotLength * TimeInterval(slots)
+            let current = (now.timeIntervalSince1970 / length).rounded(.down) * length
+            return (0..<count).map { Date(timeIntervalSince1970: current + TimeInterval($0 - count + 1) * length) } + [now]
+        case .hours(let hours, let count):
+            let thisHour = calendar.dateInterval(of: .hour, for: now)?.start ?? now
+            let starts = (0..<count).compactMap { calendar.date(byAdding: .hour, value: ($0 - count + 1) * hours, to: thisHour) }
+            return starts + [now]
         case .days(let days, let count):
             let today = calendar.startOfDay(for: now)
             let starts = (0..<count).compactMap { calendar.date(byAdding: .day, value: ($0 - count + 1) * days, to: today) }

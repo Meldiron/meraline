@@ -83,7 +83,8 @@ struct UsageInsightsTests {
     }
 
     @Test func theChartsBarsAreNamedAlongTheirAxis() {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        // 08:02:30 UTC: the bars follow the clock, and the last one is the five minutes now is in.
+        let now = Date(timeIntervalSince1970: 1_800_000_000 + 150)
         let ledger = UsageLedger(file: nil)
         ledger.record(at: now.addingTimeInterval(-60)) { $0.questions += 1; $0.count(answer: TokenUsage(input: 50, output: 5), reported: true, for: "x") }
         let hour = UsageBar.bars(of: ledger.series(.hour, now: now, calendar: utc), in: .hour, calendar: utc)

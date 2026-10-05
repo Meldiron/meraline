@@ -103,15 +103,20 @@ struct UsageLedgerTests {
 
     @Test func theChartsBarsFollowTheClockAndTheCalendar() {
         let ledger = ledger()
-        let hour = ledger.series(.hour, now: now, calendar: utc)
+        // 08:44:30, partway through a five-minute slot and an hour, as it nearly always is.
+        let later = now.addingTimeInterval(44 * 60 + 30)
+        let hour = ledger.series(.hour, now: later, calendar: utc)
         #expect(hour.count == 12)
-        #expect(hour.last?.end == now && hour.first?.start == now.addingTimeInterval(-3_600))
-        #expect(hour.map(\.tally.questions) == [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0], "ten minutes ago opens the second-to-last five minutes")
+        #expect(hour.last?.start == now.addingTimeInterval(40 * 60) && hour.last?.end == later, "the five minutes now is in, so far")
+        #expect(hour.first?.start == now.addingTimeInterval(-15 * 60), "after the eleven before them")
+        #expect(hour.map(\.tally.questions) == [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "07:50 opens the second of them")
 
-        let day = ledger.series(.day, now: now, calendar: utc)
+        let day = ledger.series(.day, now: later, calendar: utc)
         #expect(day.count == 24)
+        #expect(day.last?.start == now && day.last?.end == later, "the clock hour now is in, so far")
+        #expect(day.first?.start == now.addingTimeInterval(-23 * 3_600))
         #expect(day.map(\.tally.questions).reduce(0, +) == 3)
-        #expect(day[24 - 3].tally.questions == 2 || day[24 - 4].tally.questions == 2, "three hours ago")
+        #expect(day[20].tally.questions == 2 && day[22].tally.questions == 1, "05:00 and 07:50, each in its own hour")
 
         let week = ledger.series(.week, now: now, calendar: utc)
         #expect(week.count == 7)
@@ -124,6 +129,26 @@ struct UsageLedgerTests {
         #expect(year.last?.start == utc.dateInterval(of: .month, for: now)?.start, "twelve calendar months, this one last")
         #expect(year.map(\.tally.questions).reduce(0, +) == 63)
         #expect(ledger.series(.month, now: now, calendar: utc).count == 30)
+    }
+
+    /// Bars that ran backwards from now cut the ledger's slots in two, and a slot counted in both bars it lay
+    /// across: an hour's chart showed every five minutes twice.
+    @Test func noSlotIsCountedInTwoBars() {
+        let ledger = UsageLedger(file: nil)
+        let latest = now.addingTimeInterval(44 * 60 + 30)
+        // One question in each five minutes of the last 25 hours.
+        for slot in 0..<300 {
+            ledger.record(at: latest.addingTimeInterval(TimeInterval(-slot) * UsageLedger.slotLength)) { $0.questions += 1 }
+        }
+        // However far into its five minutes now is: 08:44:01, 08:44:30, and 08:44:59.
+        for offset in [-29.0, 0, 29] {
+            let now = latest.addingTimeInterval(offset)
+            let hour = ledger.series(.hour, now: now, calendar: utc).map(\.tally.questions)
+            #expect(hour == Array(repeating: 1, count: 12), "\(offset) s: a slot a bar")
+            let day = ledger.series(.day, now: now, calendar: utc).map(\.tally.questions)
+            #expect(day.dropLast().allSatisfy { $0 == 12 }, "\(offset) s: twelve slots an hour")
+            #expect(day.last == 9, "08:00 to 08:40, so far")
+        }
     }
 
     @Test func activeDaysStreaksAndBusiestHours() {
