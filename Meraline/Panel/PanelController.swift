@@ -633,7 +633,8 @@ final class PanelController: NSObject {
 
     /// ⌘K opens or closes the panel of actions: the chat's while a chat is open, the sparkle's otherwise. The
     /// shortcut of one of the chat's actions runs it, from anywhere in the window and with a panel open or
-    /// not; one that can't be undone opens its confirmation.
+    /// not; one that can't be undone opens its confirmation. So do the mode toggle's ⌘1, ⌘2, and ⌘3, chat or no
+    /// chat.
     private func runAction(for event: NSEvent) -> Bool {
         let modifiers = ActionShortcut.Modifiers(event.modifierFlags.intersection(.deviceIndependentFlagsMask))
         let context = context

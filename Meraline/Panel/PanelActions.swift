@@ -237,10 +237,12 @@ struct PanelContext {
         action.perform()
     }
 
-    /// The action a key press runs from anywhere in the window: one of the open chat's, or Stash Draft while
-    /// there is no chat.
+    /// The action a key press runs from anywhere in the window: a switch of mode (see `modeSwitches`), one of the
+    /// open chat's, or Stash Draft while there is no chat. The modes come first, as the presets come ahead of the
+    /// zoom: a digit they hold goes by its key's place, so ⌘ and the key where a Czech keyboard types + is ⌘1,
+    /// never Zoom In.
     func action(forKeyCode keyCode: UInt16, characters: String?, modifiers: ActionShortcut.Modifiers) -> PanelAction? {
-        (chatMenu?.actions ?? [stashDraft].compactMap { $0 }).first { action in
+        (modeSwitches + (chatMenu?.actions ?? [stashDraft].compactMap { $0 })).first { action in
             action.shortcut?.matches(keyCode: keyCode, characters: characters, modifiers: modifiers) == true
         }
     }
@@ -600,14 +602,7 @@ struct PanelContext {
                 openSettings(.provider(kind.providers[0]))
             })
         }
-        let switches = ProviderKind.allCases.filter { $0 != kind }.map { other in
-            let number = (ProviderKind.allCases.firstIndex(of: other) ?? 0) + 1
-            return PanelAction(id: "switchMode.\(other.rawValue)", title: "Switch to \(other.title)", icon: .image(other.image), shortcut: .command(Character("\(number)"))) {
-                preferences.mode = other
-                session.prewarm()
-                focusInput()
-            }
-        }
+        let switches = ProviderKind.allCases.filter { $0 != kind }.map(modeSwitch)
         let modes = switches + [
             PanelAction(id: "anonymous", title: "Anonymous Mode", subtitle: "Keep chats out of Recent Chats", icon: .symbol("sunglasses"), shortcut: .command("n", .shift), isChecked: session.isAnonymous) {
                 session.isAnonymous.toggle()
@@ -661,6 +656,41 @@ struct PanelContext {
             sections: sections,
             searchPrompt: searchPrompt
         )
+    }
+
+    /// Switch to LLM, Agent, and Decision: the mode toggle's ⌘1, ⌘2, and ⌘3, which the window's key monitor
+    /// matches by the key's place, since a Czech or AZERTY keyboard types a digit only with Shift. The mode in use
+    /// has one too, which changes nothing, so its key never reaches the input.
+    var modeSwitches: [PanelAction] {
+        ProviderKind.allCases.map(modeSwitch)
+    }
+
+    /// Switch to a mode, for its key and for the sparkle's panel. The digit is the mode's only while no preset
+    /// holds it for a ready answer (see `ChatSession.presetShortcuts(among:)`).
+    private func modeSwitch(to kind: ProviderKind) -> PanelAction {
+        let number = (ProviderKind.allCases.firstIndex(of: kind) ?? 0) + 1
+        let held = session.presetShortcuts(among: preferences.presets)
+        return PanelAction(
+            id: "switchMode.\(kind.rawValue)",
+            title: "Switch to \(kind.title)",
+            icon: .image(kind.image),
+            shortcut: number > held ? .command(digit: number) : nil
+        ) {
+            switchMode(to: kind)
+        }
+    }
+
+    /// Makes a mode the one in use: a click on the toggle under the input, its key, or its row in the sparkle's
+    /// panel.
+    func switchMode(to mode: ProviderKind) {
+        guard mode != preferences.mode else { return }
+        // The games fold away as the answers take their place.
+        if mode == .decision, layout.expandedTray == .games {
+            withAnimation(GameTray.spring) { layout.expandedTray = nil }
+        }
+        preferences.mode = mode
+        session.prewarm()
+        focusInput()
     }
 
     /// The model a provider answers with, and how many MCP servers an agent may use.

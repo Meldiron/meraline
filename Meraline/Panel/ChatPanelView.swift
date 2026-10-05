@@ -136,7 +136,7 @@ struct ChatPanelView: View {
                     .padding(.bottom, 10)
                     .transition(Self.cardRowTransition)
                 }
-                ModeBar(preferences: preferences, session: session, layout: layout) { isInputFocused = true }
+                ModeBar(preferences: preferences, session: session, layout: layout, switchMode: context.switchMode(to:)) { isInputFocused = true }
                     .padding(.leading, 14)
                     .padding(.trailing, 12)
                     .padding(.bottom, 12)

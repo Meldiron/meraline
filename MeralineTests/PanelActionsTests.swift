@@ -255,12 +255,133 @@ struct PanelActionsTests {
         let menu = context(session, preferences: preferences).providersMenu
         let other = menu.actions.first { $0.id == "switchMode.agent" }
         #expect(other?.title == "Switch to Agent")
-        #expect(other?.shortcut == .command("2"))
+        #expect(other?.shortcut == .command(digit: 2), "by the key's place, as the window matches it")
         other?.perform()
         #expect(preferences.mode == .agent)
         let agents = context(session, preferences: preferences).providersMenu
         #expect(agents.title == "Agents")
         #expect(ids(agents).contains("setUp"), "no agent is turned on in the test preferences")
+    }
+
+    // MARK: The mode toggle's keys
+
+    /// ⌘ and a key as the window's key monitor hands it over: the key's code, and what the layout types there.
+    private func key(_ keyCode: Int, typing characters: String, in context: PanelContext) -> PanelAction? {
+        context.action(forKeyCode: UInt16(keyCode), characters: characters, modifiers: .command)
+    }
+
+    @Test func commandDigitsSwitchModesByTheKeysPlace() throws {
+        let preferences = Support.preferences()
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { _ in AsyncThrowingStream { _ in } }
+        let context = context(session, preferences: preferences)
+        // A Czech keyboard types + ě š on the keys of 1 2 3, and the digits only with Shift.
+        let agent = try #require(key(kVK_ANSI_2, typing: "ě", in: context))
+        #expect(agent.id == "switchMode.agent")
+        #expect(agent.shortcut?.keycaps == ["⌘", "2"])
+        context.run(agent, in: .chat, fromShortcut: true)
+        #expect(preferences.mode == .agent)
+        context.run(try #require(key(kVK_ANSI_3, typing: "š", in: context)), in: .chat, fromShortcut: true)
+        #expect(preferences.mode == .decision)
+        context.run(try #require(key(kVK_ANSI_1, typing: "+", in: context)), in: .chat, fromShortcut: true)
+        #expect(preferences.mode == .llm)
+        #expect(key(kVK_ANSI_Keypad3, typing: "3", in: context)?.id == "switchMode.decision")
+
+        #expect(context.action(forKeyCode: UInt16(kVK_ANSI_2), characters: "2", modifiers: [.command, .shift]) == nil, "⇧⌘ and the key is another shortcut")
+        #expect(context.action(forKeyCode: UInt16(kVK_ANSI_2), characters: "ě", modifiers: []) == nil)
+        #expect(key(kVK_ANSI_4, typing: "č", in: context) == nil, "three modes, three keys")
+        #expect(key(kVK_ANSI_W, typing: "2", in: context) == nil, "a 2 typed by another key isn't the key")
+    }
+
+    @Test func everyModeSwitchesToEveryOther() throws {
+        let preferences = Support.preferences()
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { _ in AsyncThrowingStream { _ in } }
+        let context = context(session, preferences: preferences)
+        let keys = [kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3]
+        for from in ProviderKind.allCases {
+            for (to, keyCode) in zip(ProviderKind.allCases, keys) {
+                preferences.mode = from
+                // The mode in use has its key too, which changes nothing, so the key never reaches the input.
+                let action = try #require(key(keyCode, typing: "", in: context), "\(from) to \(to)")
+                context.run(action, in: .chat, fromShortcut: true)
+                #expect(preferences.mode == to, "\(from) to \(to)")
+            }
+        }
+    }
+
+    @Test func aModesKeyIsThePresetsWhileTheyHoldIt() async throws {
+        let preferences = Support.preferences()
+        let model = ScriptedModel(["Paris."])
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { model.stream($0) }
+        let context = context(session, preferences: preferences)
+        #expect(key(kVK_ANSI_2, typing: "ě", in: context)?.id == "switchMode.agent", "an empty chat")
+        await Support.play("Capital of France?", in: session)
+
+        // Four presets by default, so they hold all three of the modes' digits once the answer is ready.
+        let second = preferences.presets[1]
+        #expect(key(kVK_ANSI_2, typing: "ě", in: context)?.id == "preset.\(second.id)")
+        #expect(context.modeSwitches.allSatisfy { $0.shortcut == nil })
+        #expect(context.providersMenu.actions.first { $0.id == "switchMode.agent" }?.shortcut == nil, "the sparkle's row says so too")
+
+        // With two presets, ⌘3 stays the mode's.
+        preferences.presets = Array(preferences.presets.prefix(2))
+        #expect(key(kVK_ANSI_2, typing: "ě", in: context)?.id == "preset.\(second.id)")
+        let decision = try #require(key(kVK_ANSI_3, typing: "š", in: context))
+        #expect(decision.id == "switchMode.decision")
+        #expect(context.providersMenu.actions.first { $0.id == "switchMode.decision" }?.shortcut == .command(digit: 3))
+        context.run(decision, in: .chat, fromShortcut: true)
+        #expect(preferences.mode == .decision)
+    }
+
+    @Test func modesSwitchWhileAnAnswerIsComingAndWithAPanelOpen() throws {
+        let preferences = Support.preferences()
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { _ in AsyncThrowingStream { _ in } }
+        session.draft = "Tell me a story"
+        session.send()
+        #expect(session.isStreaming)
+        let context = context(session, preferences: preferences)
+        #expect(context.chatMenu != nil, "a chat with no answer ready")
+        let agent = try #require(key(kVK_ANSI_2, typing: "ě", in: context))
+        #expect(agent.id == "switchMode.agent")
+
+        // With a panel of actions open, the key closes it and switches, as the chat's shortcuts do.
+        for kind in [ActionPanelKind.chat, .providers, .history] {
+            preferences.mode = .llm
+            context.layout.actionPanel = ActionPanelRequest(kind: kind)
+            context.run(try #require(key(kVK_ANSI_2, typing: "ě", in: context)), in: .chat, fromShortcut: true)
+            #expect(preferences.mode == .agent)
+            #expect(context.layout.actionPanel == nil)
+        }
+    }
+
+    @Test func modesSwitchInAGame() async throws {
+        let preferences = Support.preferences()
+        let model = ScriptedModel(["OK: apple"])
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { model.stream($0) }
+        session.startGame(.wordFootball)
+        await Support.play("banana", in: session)
+        let context = context(session, preferences: preferences)
+        #expect(key(kVK_ANSI_2, typing: "ě", in: context)?.id == "switchMode.agent")
+    }
+
+    @Test func theKeyWhereACzechKeyboardTypesPlusIsCommandOneNotZoomIn() async throws {
+        // An answer to zoom, and a follow-up still coming, so no preset holds ⌘1.
+        let preferences = Support.preferences()
+        let model = ScriptedModel(["Paris."])
+        var asked = 0
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { request in
+            asked += 1
+            return asked == 1 ? model.stream(request) : AsyncThrowingStream { _ in }
+        }
+        await Support.play("Capital of France?", in: session)
+        session.draft = "And of Spain?"
+        session.send()
+        #expect(session.isStreaming)
+        preferences.mode = .agent
+        let context = context(session, preferences: preferences)
+        #expect(context.canZoomAnswers)
+        #expect(key(kVK_ANSI_1, typing: "+", in: context)?.id == "switchMode.llm")
+        #expect(key(kVK_ANSI_Equal, typing: "=", in: context)?.id == "zoomIn", "⌘= zooms on any keyboard")
+        #expect(key(kVK_ANSI_KeypadPlus, typing: "+", in: context)?.id == "zoomIn", "as does the keypad's +")
     }
 
     // MARK: Recent chats

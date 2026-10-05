@@ -15,6 +15,8 @@ struct ModeBar: View {
     let preferences: Preferences
     let session: ChatSession
     let layout: PanelLayout
+    /// Makes a mode the one in use, as its key does (see `PanelContext.switchMode(to:)`).
+    let switchMode: (ProviderKind) -> Void
     let focusInput: () -> Void
 
     var body: some View {
@@ -76,22 +78,13 @@ struct ModeBar: View {
             layout.expandedTray = layout.expandedTray == tray ? nil : tray
         }
     }
-
-    private func switchMode(to mode: ProviderKind) {
-        guard mode != preferences.mode else { return }
-        // The games fold away as the answers take their place.
-        if mode == .decision, layout.expandedTray == .games {
-            withAnimation(GameTray.spring) { layout.expandedTray = nil }
-        }
-        preferences.mode = mode
-        session.prewarm()
-        focusInput()
-    }
 }
 
 /// Three segments in a glass capsule. The chosen one carries a tinted glass pill that slides across when the
 /// mode changes. ⌘1, ⌘2, and ⌘3 pick them from the keyboard, except while presets hold those shortcuts for a
-/// ready answer (see `ChatSession.presetShortcuts(among:)`).
+/// ready answer (see `ChatSession.presetShortcuts(among:)`). The window's key monitor matches them by the key's
+/// place (`PanelContext.modeSwitches`), not a `keyboardShortcut` here, which follows what the layout types: on a
+/// Czech keyboard, where the digits take Shift, it only answered ⇧⌘1.
 private struct ModeToggle: View {
     let mode: ProviderKind
     /// How many of ⌘1…⌘9 run presets on the answer now.
@@ -143,7 +136,6 @@ private struct ModeToggle: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .keyboardShortcut(number > presetShortcuts ? KeyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: .command) : nil)
         .onHover { inside in
             if inside { hovered = kind } else if hovered == kind { hovered = nil }
         }

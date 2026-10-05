@@ -74,7 +74,7 @@ struct PresetShortcutTests {
         #expect(waiting.session.isStreaming)
         #expect(presetRows(waiting.context.chatMenu).isEmpty, "not while the answer streams")
         #expect(waiting.session.presetShortcuts(among: waiting.preferences.presets) == 0)
-        #expect(waiting.context.action(forKeyCode: UInt16(kVK_ANSI_1), characters: "1", modifiers: .command) == nil)
+        #expect(waiting.context.action(forKeyCode: UInt16(kVK_ANSI_1), characters: "1", modifiers: .command)?.id == "switchMode.llm", "the mode toggle's meanwhile")
 
         let game = chat(["OK: salmon"])
         game.session.startGame(.wordFootball)
