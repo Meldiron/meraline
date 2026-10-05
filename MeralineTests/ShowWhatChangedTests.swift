@@ -87,6 +87,36 @@ struct ShowWhatChangedTests {
         #expect(session.turns.isEmpty)
     }
 
+    /// After Fix Grammar on a note about a parcel, the follow-ups once asked who was receiving the parcel.
+    @Test func anAnswerThatIsTheTextChangedGetsNoFollowUps() async throws {
+        let session = Support.session(ScriptedModel(["I have an apple.", "It says someone owns an apple."]))
+        var asked = 0
+        session.followUpSuggester = { _ in
+            asked += 1
+            return ["Who has the apple?", "What is an apple?"]
+        }
+        session.bring(try #require(SelectedText("i has a apple", appName: "Notes")))
+        await play("Fix the grammar", in: session)
+        for _ in 0..<50 { await Task.yield() }
+        #expect(session.turns.first?.changes != nil)
+        #expect(session.followUps.isEmpty, "the corrected text is something to use, not a subject")
+        #expect(!session.isSuggestingFollowUps)
+
+        // Reopened from Recent Chats, it still gets none, and none are asked for.
+        let before = asked
+        session.reset()
+        session.reopen(try #require(session.history.first).id)
+        for _ in 0..<50 { await Task.yield() }
+        #expect(session.followUps.isEmpty)
+        #expect(asked == before)
+
+        // An answer about the text, which changes nothing in it, gets them as any answer does.
+        await play("What does it say?", in: session)
+        for _ in 0..<50 { await Task.yield() }
+        #expect(session.turns.last?.changes == nil)
+        #expect(session.followUps == ["Who has the apple?", "What is an apple?"])
+    }
+
     @Test func recentChatsKeepThem() async throws {
         let session = try await fixGrammar(replying: ["I have an apple."])
         session.reset()

@@ -1659,7 +1659,9 @@ final class ChatSession {
     /// finished answer gets any: not a game's move, nor an answer still coming.
     private func suggestFollowUps(after turn: Turn?) {
         clearFollowUps()
-        guard let turn, !isPlaying, !isStreaming, turn.isComplete, !turn.answer.trimmed.isEmpty, !turn.isDecision else { return }
+        // An answer that is the question's text, changed (see `findChanges`), is something to use, not a subject:
+        // asked about a corrected note, the suggestions took the note for one ("Who is receiving the package?").
+        guard let turn, !isPlaying, !isStreaming, turn.isComplete, !turn.answer.trimmed.isEmpty, !turn.isDecision, turn.changes == nil else { return }
         let request = FollowUps.Request(question: turn.question, answer: turn.answer, asked: turns.map(\.question), language: preferences.language)
         let suggest = followUpSuggester
         followUpTask = Task { [weak self] in
@@ -1760,6 +1762,8 @@ final class ChatSession {
             guard let self, let changes, let index = self.turns.firstIndex(where: { $0.id == id }) else { return }
             self.turns[index].changes = changes
             Log.chat.info("The answer changes the text in \(changes.count) place(s)")
+            // The follow-ups asked for when the answer ended, coming or already here, go (see `suggestFollowUps`).
+            if index == self.turns.count - 1 { self.clearFollowUps() }
         }
     }
 
