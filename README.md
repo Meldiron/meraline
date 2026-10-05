@@ -207,7 +207,7 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
     <td align="center">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/usage.png">
-        <img src="docs/screenshots/usage-light.png" width="440" alt="Settings › Usage over the last 30 days: questions, answers, tokens in and out, cost, and rounds, with a chart of tokens by day">
+        <img src="docs/screenshots/usage-light.png" width="440" alt="Settings › Usage over the last 30 days: a tile each for LLMs, agents, and decisions with what it cost, all three counted, then questions, answers, tokens in and out, cost, and rounds">
       </picture>
     </td>
     <td align="center">
