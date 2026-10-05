@@ -85,10 +85,13 @@ struct ShakeDetectorTests {
         #expect(shakes(in: wiggle(legs: 6, swing: 60, hertz: 5)).count == 1)
     }
 
-    @Test func aSpentShakeNeedsFreshTurns() {
-        // Shaking on after a shake completes makes another only after four more turns.
-        let found = shakes(in: wiggle(legs: 10, swing: 60, hertz: 5))
-        #expect(found.count == 2)
+    @Test func oneDragShakesAtMostOnce() {
+        // Shaking on after a shake completes makes no second one: on 2026-10-05 a continued wiggle said
+        // "Nothing to forget" a moment after "Forgotten". Letting go and shaking again does.
+        let first = wiggle(legs: 10, swing: 60, hertz: 5)
+        #expect(shakes(in: first).count == 1)
+        let second = wiggle(legs: 5, swing: 60, hertz: 5, from: first.last!.2 + 1)
+        #expect(shakes(in: first + second).count == 2)
     }
 
     @Test func standingStillChangesNothing() {

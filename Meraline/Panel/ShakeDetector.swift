@@ -8,7 +8,9 @@ import Foundation
 ///
 /// A shake is `reversals` changes of direction within `window` seconds, each after a swing of at least
 /// `minimumSwing` points, in whatever direction the window goes. A drag from here to there reverses
-/// rarely, and the tremble of a hand never swings far enough to count.
+/// rarely, and the tremble of a hand never swings far enough to count. One drag shakes at most once: a shake
+/// that goes on after it counted said "Nothing to forget" a moment after "Forgotten", and the hand has to let go
+/// before another counts.
 nonisolated struct ShakeDetector: Sendable {
     /// How far the window must travel one way before turning back counts.
     var minimumSwing: CGFloat = 20
@@ -24,16 +26,20 @@ nonisolated struct ShakeDetector: Sendable {
     private var swing = CGVector(dx: 0, dy: 0)
     /// When the window turned, most recent last.
     private var turns: [TimeInterval] = []
+    /// Whether this drag has shaken already, until the window is let go.
+    private var isSpent = false
 
     /// Notes where the window is now. True once, at the move that completes a shake; the shake is then
-    /// spent, and only a fresh set of turns makes another.
+    /// spent until the window is let go, and only a fresh drag with its own turns makes another.
     mutating func move(to point: CGPoint, at time: TimeInterval) -> Bool {
         defer { last = (point, time) }
         guard let last, time - last.time <= pause else {
             swing = CGVector(dx: 0, dy: 0)
             turns = []
+            isSpent = false
             return false
         }
+        guard !isSpent else { return false }
         let delta = CGVector(dx: point.x - last.point.x, dy: point.y - last.point.y)
         guard delta.dx != 0 || delta.dy != 0 else { return false }
         let turnedBack = swing.dx * delta.dx + swing.dy * delta.dy < 0
@@ -44,6 +50,7 @@ nonisolated struct ShakeDetector: Sendable {
             if turns.count >= reversals {
                 turns = []
                 swing = CGVector(dx: 0, dy: 0)
+                isSpent = true
                 return true
             }
         } else {

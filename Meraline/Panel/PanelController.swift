@@ -721,9 +721,10 @@ extension PanelController: NSWindowDelegate {
         }
     }
 
-    /// A shake of the window forgets the recent chats, and the clock under the input says so.
+    /// A shake of the window forgets the recent chats, and the clock under the input says so, offering Undo for
+    /// a few seconds (see `ChatSession.shakeAwayHistory()`).
     private func forgetRecentChats() {
-        let forgot = session.forgetHistory()
+        let forgot = session.shakeAwayHistory()
         Log.panel.info("Window shaken: \(forgot) recent chat(s) forgotten")
         layout.noteForgotten(forgot)
     }

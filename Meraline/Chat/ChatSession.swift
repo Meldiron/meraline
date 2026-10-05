@@ -1300,11 +1300,76 @@ final class ChatSession {
     /// Forgets the recent chats, workspaces and all, and says how many went. The open chat stays.
     @discardableResult
     func forgetHistory() -> Int {
+        dropShakenChats()
         let count = history.count
         for chat in history { chat.workspace?.remove() }
         history = []
         if count > 0 { Log.chat.info("\(count) recent chat(s) forgotten") }
         return count
+    }
+
+    /// How long a shake's forgetting can be taken back (see `shakeAwayHistory()`).
+    static let shakeUndoWindow: Duration = .seconds(5)
+    /// `shakeUndoWindow`, or a test's own.
+    @ObservationIgnored var shakeUndoWindow = ChatSession.shakeUndoWindow
+    /// The chats a shake forgot, held aside for `shakeUndoWindow` in case it was an accident, and the task that
+    /// lets them go for good once it is up. Held, they count nowhere: not in the clock's count, nor the chats'
+    /// limit, nor its panel. Nothing of them reaches disk that wasn't there: the workspaces stay until they go.
+    @ObservationIgnored private var shakenChats: [PastChat] = []
+    @ObservationIgnored private var shakenChatsTask: Task<Void, Never>?
+
+    /// Whether a shake's forgetting can still be taken back.
+    var canTakeBackShakenChats: Bool { !shakenChats.isEmpty }
+
+    /// A shake of the window: the recent chats are forgotten, but held aside for `shakeUndoWindow` so the clock's
+    /// capsule can offer Undo, since a shake asks nothing first. A shake inside that window lets the chats held
+    /// before go for good. Says how many went.
+    @discardableResult
+    func shakeAwayHistory() -> Int {
+        dropShakenChats()
+        let count = history.count
+        guard count > 0 else { return 0 }
+        shakenChats = history
+        history = []
+        Log.chat.info("\(count) recent chat(s) forgotten by a shake, held for a moment")
+        let window = shakeUndoWindow
+        shakenChatsTask = Task { [weak self] in
+            try? await Task.sleep(for: window)
+            guard !Task.isCancelled else { return }
+            self?.dropShakenChats()
+        }
+        return count
+    }
+
+    /// Puts back the chats the last shake forgot, as they were: their order, the time each has left, their
+    /// drafts and workspaces. One whose time ran out meanwhile stays gone, as it would have in Recent Chats.
+    /// Says how many came back.
+    @discardableResult
+    func takeBackShakenChats(now: Date = .now) -> Int {
+        shakenChatsTask?.cancel()
+        shakenChatsTask = nil
+        let held = shakenChats
+        shakenChats = []
+        guard !held.isEmpty else { return 0 }
+        let expired = held.filter { $0.expiresAt <= now }
+        for chat in expired { chat.workspace?.remove() }
+        let kept = held.filter { $0.expiresAt > now }
+        // Anything archived meanwhile is newer, so it stays on top.
+        let previous = history
+        history = Array((history + kept).prefix(Self.chatLimit - 1))
+        removeWorkspaces(leftFrom: previous + kept)
+        Log.chat.info("\(kept.count) recent chat(s) back after a shake")
+        return kept.count
+    }
+
+    /// Lets the chats a shake held aside go for good, workspaces and all.
+    private func dropShakenChats() {
+        shakenChatsTask?.cancel()
+        shakenChatsTask = nil
+        guard !shakenChats.isEmpty else { return }
+        for chat in shakenChats { chat.workspace?.remove() }
+        Log.chat.info("\(shakenChats.count) recent chat(s) shaken away for good")
+        shakenChats = []
     }
 
     /// Forgets every chat at once, as quitting does: the open one, with what is typed in it and the text on offer,

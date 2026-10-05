@@ -62,8 +62,10 @@ struct ModeBar: View {
                 HistoryButton(
                     count: session.history.count,
                     forgetting: layout.lastForgetting,
+                    canUndo: session.canTakeBackShakenChats,
                     stashNotice: layout.stashNotice,
-                    isOpen: layout.actionPanel?.kind == .history
+                    isOpen: layout.actionPanel?.kind == .history,
+                    undo: { session.takeBackShakenChats() }
                 ) {
                     layout.toggleActionPanel(.history)
                 }
@@ -327,19 +329,31 @@ private struct Emergence: ViewModifier {
 /// where a chat reopens and Clear Recent Chats forgets them all after asking. When they are forgotten, by
 /// that or by a shake of the window, the capsule says so for a moment, looking like the mode toggle's chosen
 /// segment (a pink clock, the words in the primary color, faint pink glass): the count rolls down to nothing
-/// and the clock bounces. A stashed draft gets the same moment, saying Stashed, so you see where it went.
+/// and the clock bounces. After a shake, which asks nothing first, it says "Forgotten · Undo" for as long as
+/// the chats can come back (`ChatSession.shakeUndoWindow`), and a click then brings them back instead of
+/// opening the panel. A stashed draft gets the same moment, saying Stashed, so you see where it went.
 private struct HistoryButton: View {
     let count: Int
     let forgetting: PanelLayout.Forgetting?
+    /// Whether a shake's forgetting can still be taken back, which a click then does.
+    let canUndo: Bool
     let stashNotice: Int
     let isOpen: Bool
+    let undo: () -> Void
     let toggle: () -> Void
     /// What the capsule says in place of the count, for a moment after the chats were forgotten.
     @State private var caption: String?
     @State private var captionTask: Task<Void, Never>?
 
     var body: some View {
-        Button(action: toggle) {
+        Button {
+            if canUndo {
+                undo()
+                say("Back")
+            } else {
+                toggle()
+            }
+        } label: {
             HStack(spacing: 5) {
                 Image(systemName: "clock.arrow.circlepath")
                     .frame(width: 16)
@@ -374,7 +388,15 @@ private struct HistoryButton: View {
         .accessibilityValue(count == 1 ? "1 chat" : "\(count) chats")
         .onChange(of: forgetting) { _, forgetting in
             guard let forgetting else { return }
-            say(forgetting.count > 0 ? "Forgotten" : "Nothing to forget")
+            if forgetting.count > 0, canUndo {
+                say("Forgotten · Undo", for: ChatSession.shakeUndoWindow)
+            } else {
+                say(forgetting.count > 0 ? "Forgotten" : "Nothing to forget")
+            }
+        }
+        // The chats' time to come back ran out, or they came back: either way the count is the news.
+        .onChange(of: canUndo) { _, canUndo in
+            if !canUndo, caption == "Forgotten · Undo" { caption = nil }
         }
         .onChange(of: stashNotice) { say("Stashed") }
     }
@@ -385,18 +407,19 @@ private struct HistoryButton: View {
     }
 
     private var help: String {
+        if canUndo { return "Bring the recent chats back" }
         switch count {
-        case 0: "No recent chats yet"
-        case 1: "1 recent chat. Shake the window to forget it."
-        default: "\(count) recent chats. Shake the window to forget them."
+        case 0: return "No recent chats yet"
+        case 1: return "1 recent chat. Shake the window to forget it."
+        default: return "\(count) recent chats. Shake the window to forget them."
         }
     }
 
-    private func say(_ text: String) {
+    private func say(_ text: String, for duration: Duration = .seconds(1.6)) {
         captionTask?.cancel()
         caption = text
         captionTask = Task {
-            try? await Task.sleep(for: .seconds(1.6))
+            try? await Task.sleep(for: duration)
             guard !Task.isCancelled else { return }
             caption = nil
         }

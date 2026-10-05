@@ -28,6 +28,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - **Undo Rewrite.** A rewrite, or a preset run on the answer, can be taken back from the chat's actions: the answer it replaced comes back under the same question. Each undo takes back the rewrite before it. Handy when ⌘1 ran Fix Grammar on an answer you only meant to zoom.
 - Zoom In shows the key that works on your keyboard. On a Czech or Slovak one the key that types + is the 1 key, which runs the first preset once an answer is ready, so Zoom In says ⌘= there.
 - **Try Again after a failed answer.** The error's banner has a Try Again button: it asks the question again when the answer was cut off, and sends it again when it came back to the input. After an answer fails partway, Ask Again is the footer's first action, with Copy Answer still in the actions.
+- **A shake can be undone.** Shaking the window still forgets Recent Chats without asking, but the clock's capsule says “Forgotten · Undo” for five seconds, and a click on it brings every chat back as it was. One drag shakes at most once, too; before, a wiggle that went on fired twice.
 
 ## v1.12.0 - 2026-10-05
 
