@@ -139,6 +139,10 @@ final class ChatSession {
     static let chatLimit = 1_000
     /// The most memory one chat may take, pictures mostly. A question that would take it past this doesn't go.
     static let chatByteLimit = 512 * 1_024 * 1_024
+    /// How long streamed text waits at most before it joins its answer (see `hold(_:)`). An answer is laid out
+    /// again each time it grows, which takes longer the longer it is, so the words that come within this of each
+    /// other go in together: a long answer that streams fast then shows as fast as it comes.
+    static let textInterval: Duration = .milliseconds(50)
 
     var draft = "" {
         didSet {
@@ -216,6 +220,12 @@ final class ChatSession {
     }
 
     @ObservationIgnored private var streamTask: Task<Void, Never>?
+    /// Streamed text that hasn't joined the streaming turn's answer yet, and the task that adds it once
+    /// `textInterval` is up (see `hold(_:)`).
+    @ObservationIgnored private var heldText = ""
+    @ObservationIgnored private var heldTextTask: Task<Void, Never>?
+    /// How long streamed text waits at most; `textInterval`, and their own in tests.
+    @ObservationIgnored var textInterval = ChatSession.textInterval
     /// The game move that came back last; sending it again unchanged insists on it.
     @ObservationIgnored private var insistedInput: String?
     /// The answer Ask Again is replacing, which comes back if the new one brings no text.
@@ -985,6 +995,8 @@ final class ChatSession {
     /// Starts a new chat, `unsent` going to Recent Chats with the open one, or on its own when it has no answer to
     /// keep. Says whether it went on its own.
     private func reset(keepingChat: Bool, draft unsent: Draft?) -> Bool {
+        // An answer cut short here goes to Recent Chats with every word that arrived.
+        addHeldText()
         let stashed = archiveCurrentChat(keeping: keepingChat, draft: unsent)
         // The next chat's Context card starts with Live off and nothing on.
         liveDecisions.reset()
@@ -1542,6 +1554,13 @@ final class ChatSession {
 
     private func receive(_ output: StreamOutput, for id: Turn.ID) {
         guard turns.last?.id == id else { return }
+        // Text that waits goes in ahead of whatever came after it, so nothing shows out of order: a tool, an
+        // ask, or a file never shows before the words the model wrote first. What an answer took is no part of
+        // what shows, and Gemini reports it with every chunk, so it leaves the text waiting.
+        switch output {
+        case .text, .usage: break
+        default: addHeldText()
+        }
         let last = turns.count - 1
         switch output {
         case .activity(let activity):
@@ -1552,8 +1571,12 @@ final class ChatSession {
             if turns[last].startsOverOnNextText {
                 turns[last].answer = text
                 turns[last].startsOverOnNextText = false
+            } else if turns[last].answer.isEmpty {
+                // An answer's first words show at once, in the thinking line's place.
+                turns[last].answer = text
             } else {
-                turns[last].answer += text
+                hold(text)
+                return
             }
             turns[last].activity = nil
         case .prompt(let prompt, let responder):
@@ -1584,6 +1607,33 @@ final class ChatSession {
             turns[last].presentedFiles += handed
             Log.chat.info("Agent handed over \(handed.count) file(s)")
         }
+    }
+
+    /// Keeps streamed text back until `textInterval` after the first of it came, then adds all that came
+    /// meanwhile to the answer in one go. Counting from the text's arrival, not from the last time the answer
+    /// grew, leaves the stream that long to be read between two layouts however long a layout takes, so a slow
+    /// one takes in everything that queued behind it instead of a chunk at a time.
+    private func hold(_ text: String) {
+        heldText += text
+        guard heldTextTask == nil else { return }
+        let interval = textInterval
+        heldTextTask = Task { [weak self] in
+            try? await Task.sleep(for: interval)
+            guard !Task.isCancelled else { return }
+            self?.addHeldText()
+        }
+    }
+
+    /// Adds the streamed text that waited to the answer of the last turn, the one that streams: when its time
+    /// is up, ahead of anything else the stream brings, and before the answer ends, fails, or is stopped, so a
+    /// turn that is done holds every character that arrived.
+    private func addHeldText() {
+        heldTextTask?.cancel()
+        heldTextTask = nil
+        guard !heldText.isEmpty, let last = turns.indices.last else { return }
+        turns[last].answer += heldText
+        turns[last].activity = nil
+        heldText = ""
     }
 
     /// Keeps the trail of tools an answer used. Thinking is not a tool. An agent often announces a tool
@@ -1637,6 +1687,7 @@ final class ChatSession {
 
     private func finishStreaming(_ id: Turn.ID, error: Error?) {
         guard isStreaming, turns.last?.id == id else { return }
+        addHeldText()
         isStreaming = false
         restartClock()
         streamTask = nil

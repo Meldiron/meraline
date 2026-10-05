@@ -29,6 +29,17 @@ struct ConversationScrollTests {
         (view as? NSScrollView).map { [$0] } ?? [] + view.subviews.flatMap(scrollViews(under:))
     }
 
+    /// Turns the scroll wheel over `scroll`, as a reader does: up for a positive `distance`, in points.
+    private func wheel(_ scroll: NSScrollView, by distance: Int32) throws {
+        var left = distance
+        while left != 0 {
+            let step = max(-80, min(80, left))
+            let turn = try #require(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: step, wheel2: 0, wheel3: 0))
+            scroll.scrollWheel(with: try #require(NSEvent(cgEvent: turn)))
+            left -= step
+        }
+    }
+
     /// Lets the panel read its stream and lay itself out, for at most `seconds`, until `condition` holds.
     private func settle(_ seconds: TimeInterval = 5, until condition: () -> Bool = { false }) async {
         let deadline = Date(timeIntervalSinceNow: seconds)
@@ -78,8 +89,7 @@ struct ConversationScrollTests {
         #expect(isAtEnd(), "and follows it")
 
         // The reader scrolls up to the start. More of the answer comes, and the view stays where it was put.
-        scroll.contentView.scroll(to: .zero)
-        scroll.reflectScrolledClipView(scroll.contentView)
+        try wheel(scroll, by: Int32(height()))
         await settle(0.5)
         #expect(offset() < 2)
         grown = height()
@@ -90,9 +100,9 @@ struct ConversationScrollTests {
         #expect(offset() < 2, "and the reader is still at its start, not pulled to its end")
 
         // Back at the end, the view follows again.
-        scroll.contentView.scroll(to: NSPoint(x: 0, y: height() - scroll.contentView.bounds.height))
-        scroll.reflectScrolledClipView(scroll.contentView)
+        try wheel(scroll, by: -Int32(height()))
         await settle(0.5)
+        #expect(isAtEnd())
         grown = height()
         feed.yield(.text(Self.paragraphs(61...70)))
         await settle { height() > grown + 100 && isAtEnd() }
