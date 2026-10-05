@@ -140,7 +140,7 @@ nonisolated struct PromptPreset: Codable, Hashable, Identifiable, Sendable {
 
     // MARK: Icons
 
-    /// The icons Settings offers for a preset, beside a field for any SF Symbol's name.
+    /// The icons Settings suggests for a preset, first among every SF Symbol its search finds (`SymbolPicker`).
     static let symbols = [
         "text.badge.checkmark", "textformat.abc", "eraser", "theatermasks", "translate", "character.bubble", "globe", "text.bubble",
         "quote.bubble", "bubble.left", "text.quote", "list.bullet", "checklist", "list.number", "text.append", "text.redaction",
@@ -148,6 +148,7 @@ nonisolated struct PromptPreset: Codable, Hashable, Identifiable, Sendable {
         "lightbulb", "brain", "questionmark.bubble", "text.magnifyingglass", "chevron.left.forwardslash.chevron.right", "terminal", "ant", "hammer",
         "function", "number", "calendar", "clock", "chart.bar", "face.smiling", "heart", "star",
         "bolt", "flag", "tag", "paperplane", "hand.raised", "shield", "person.fill.questionmark", "textformat.size",
+        "exclamationmark.triangle", "checkmark.circle", "xmark.circle", "envelope.open",
     ]
 }
 

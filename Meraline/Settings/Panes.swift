@@ -201,7 +201,9 @@ struct PromptPane: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            ForEach(ProviderKind.allCases) { kind in
+            // Ids of their own: under the prompts' ids, the same modes, the form drew one section's rows and
+            // footer in another's place.
+            ForEach(ProviderKind.allCases, id: \.presetsSection) { kind in
                 PresetsSection(preferences: preferences, kind: kind)
             }
 

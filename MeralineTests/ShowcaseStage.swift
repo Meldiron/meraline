@@ -179,6 +179,27 @@ final class ShowcaseStage {
         FileHandle.standardError.write(Data("Showcase: \(file.lastPathComponent)\n".utf8))
     }
 
+    /// A window with what it has open over it, a sheet and a popover, over the gradient: ScreenCaptureKit takes
+    /// just those windows, in the frame around all of them with room for their shadows. The test host is active for
+    /// the moment of the capture, as for `captureWindow(_:as:)`, so they draw active.
+    func captureWindows(_ windows: [NSWindow], as name: String) async throws {
+        guard Showcase.output != nil, let first = windows.first else { return }
+        await Showcase.waitForIdle()
+        let previous = NSWorkspace.shared.frontmostApplication
+        NSApp.activate(ignoringOtherApps: true)
+        await Showcase.settle(0.8)
+        let frame = windows.dropFirst().reduce(first.frame) { $0.union($1.frame) }.insetBy(dx: -36, dy: -36)
+        let filter = SCContentFilter(display: try await display(), including: try await shareable([backdrop] + windows))
+        let configuration = configuration(size: frame.size)
+        configuration.sourceRect = CGRect(x: frame.minX - screen.frame.minX, y: screen.frame.maxY - frame.maxY, width: frame.width, height: frame.height)
+        let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+        if let previous, previous != .current {
+            NSApp.yieldActivation(to: previous)
+            previous.activate(from: .current, options: [])
+        }
+        try write(image, as: name)
+    }
+
     func close(_ windows: NSWindow?...) {
         for window in windows { window?.orderOut(nil) }
         backdrop.orderOut(nil)

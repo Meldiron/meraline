@@ -19,6 +19,8 @@
 #   preset-text   Fix Grammar put in the input with nothing to work on: the Context card open under it with the keyboard
 #   colon-card    "Fix the grammar:" typed in the input, and the Context card it opened, holding the text
 #   prompt-presets  Settings › Prompt › Presets: the four defaults and one of your own
+#   preset-editor  Settings › Prompt with Urgent? open in its sheet
+#   preset-icons  the same sheet with its icons searched for “urgent”
 #   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
 #   cost-nudge    the empty panel with what LLMs and agents have cost today
 #   preview       Agent mode: a page and a Markdown file an agent handed over, each with its preview strip

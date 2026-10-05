@@ -168,6 +168,47 @@ struct PromptPresetTests {
         #expect(Self.preferences(defaults).presets == presets)
     }
 
+    @Test func aPresetMovesToItsPlaceAmongTheOthers() {
+        let titles = { (list: [PromptPreset]) in list.map(\.title) }
+        #expect(titles(PromptPreset.moving(presets, from: 0, to: 2)) == ["Anti-Slop", "Anonymize", "Fix Grammar", "Translate"])
+        #expect(titles(PromptPreset.moving(presets, from: 3, to: 0)) == ["Translate", "Fix Grammar", "Anti-Slop", "Anonymize"])
+        #expect(PromptPreset.moving(presets, from: 1, to: 1) == presets)
+        #expect(PromptPreset.moving(presets, from: 9, to: 0) == presets)
+        #expect(titles(PromptPreset.moving(presets, from: 0, to: 99)).last == "Fix Grammar")
+    }
+
+    /// A dragged row lands past every row whose middle its leading edge has passed, and those between make way.
+    @Test func aDraggedRowLandsPastTheMiddlesItsEdgesPass() {
+        let heights: [CGFloat] = [40, 40, 40, 40]
+        #expect(PresetDrag.destination(from: 0, translation: 0, heights: heights) == 0)
+        #expect(PresetDrag.destination(from: 0, translation: 19, heights: heights) == 0)
+        #expect(PresetDrag.destination(from: 0, translation: 41, heights: heights) == 1)
+        #expect(PresetDrag.destination(from: 0, translation: 120, heights: heights) == 3)
+        #expect(PresetDrag.destination(from: 3, translation: -41, heights: heights) == 2)
+        #expect(PresetDrag.destination(from: 3, translation: -120, heights: heights) == 0)
+        #expect(PresetDrag.destination(from: 1, translation: 0, heights: [30, 60, 30]) == 1)
+        #expect(PresetDrag.destination(from: 1, translation: 31, heights: [30, 60, 30]) == 2)
+        // A tall row dragged as far as it goes reaches either end.
+        #expect(PresetDrag.destination(from: 0, translation: PresetDrag.clamped(500, from: 0, heights: [60, 30, 30]), heights: [60, 30, 30]) == 2)
+        #expect(PresetDrag.destination(from: 2, translation: PresetDrag.clamped(-500, from: 2, heights: [30, 30, 60]), heights: [30, 30, 60]) == 0)
+
+        #expect(PresetDrag.clamped(-500, from: 1, heights: heights) == -40)
+        #expect(PresetDrag.clamped(500, from: 1, heights: heights) == 80)
+        #expect(PresetDrag.clamped(12, from: 1, heights: heights) == 12)
+
+        // Dragged from the top to the third place, the two it passes move up; dragged up, they move down.
+        #expect((0..<4).map { PresetDrag.shift(of: $0, from: 0, to: 2, height: 40) } == [0, -40, -40, 0])
+        #expect((0..<4).map { PresetDrag.shift(of: $0, from: 3, to: 1, height: 40) } == [0, 40, 40, 0])
+    }
+
+    /// The Suggested icons are each a symbol macOS has under its current name, once.
+    @Test func theSuggestedIconsAreEachOneSymbol() {
+        let catalog = SymbolCatalog.shared
+        let current = PromptPreset.symbols.map(catalog.current)
+        #expect(Set(current).count == current.count)
+        #expect(current.allSatisfy(PromptPreset.exists))
+    }
+
     // MARK: The hidden panel
 
     /// Runs `body`, then the run loop for the display cycle to lay the window out as the presets animate, and

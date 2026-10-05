@@ -6,6 +6,11 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ## Unreleased
 
+### Presets
+
+- **Presets are a list you rearrange by dragging.** Settings › Prompt shows each mode's presets as rows: the icon, the name, and the start of the text. Drag a row to change the order the capsules come in above an empty chat. Edit…, a double-click, or the row's menu opens the preset in a sheet with its icon, name, and text, and Save keeps the changes; Duplicate makes a copy to start from. Deleting a preset and Restore Defaults now ask first.
+- **An icon search that finds icons.** Click the icon in a preset's sheet and type what you want. The search covers every SF Symbol on your Mac, by its name, Apple's keywords, and everyday words, so mail, urgent, idea, money, and bug find envelopes, warning signs, light bulbs, dollar signs, and ants, even half typed. With nothing typed it shows suggestions, then Apple's categories to browse. Return takes the first icon found.
+
 ### Usage
 
 - **See the LLMs, the agents, or the decisions alone.** Settings › Usage has a tile for each kind of model under the span, with what it cost and how much you used it. Click one to leave it out of every number, chart, and row below, or back in; Option-click it, or pick Show Only from its menu, to see it alone, and Show All brings every kind back. Meraline remembers what you chose. Usage counted before this version is sorted into kinds by what it holds.

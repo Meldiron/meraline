@@ -18,6 +18,8 @@ import WebKit
 ///   follow-ups    an answer about DNS with three follow-ups under it
 ///   presets       the presets above an empty chat, Fix Grammar put in the input for a text selected in Mail
 ///   prompt-presets  Settings › Prompt › Presets: the four defaults and one of your own
+///   preset-editor  Settings › Prompt with Urgent? open in its sheet
+///   preset-icons  the same sheet with its icons searched for “urgent”
 ///   software-update  Settings › Software Update on a beta: its channel chip and the switch for beta updates
 ///   cost-nudge    the empty panel with what LLMs and agents have cost today
 ///   preview       Agent mode: a page and a Markdown file an agent handed over, each with its preview strip
@@ -184,18 +186,49 @@ struct ShowcaseTests {
         }
     }
 
+    /// How far Settings › Prompt scrolls for the LLMs' presets at the top.
+    private static let presetsScroll: CGFloat = 1_085
+
     @Test func promptPresets() async throws {
         guard Showcase.wants("prompt-presets") else { return }
         var presets = PromptPreset.defaults(in: .english)
-        presets.append(PromptPreset(id: "eli5", title: "Explain Simply", symbol: "lightbulb", text: "Explain this as you would to a curious twelve-year-old, in a short paragraph:"))
+        presets.append(PromptPreset(id: "eli5", title: "Explain Simply", symbol: "lightbulb", text: "Explain this as you would to a curious twelve-year-old, in a short paragraph."))
         let changed = [PromptPreset.key: try JSONEncoder().encode(presets)]
         for appearance in Showcase.appearances {
             let stage = ShowcaseStage(appearance)
             try await Self.settings(on: stage, pane: .prompt, defaults: changed) { window in
-                Self.scroll(window, to: 835)
+                await Self.scrollGradually(window, to: Self.presetsScroll)
                 try await stage.captureWindow(window, as: "prompt-presets")
             }
             stage.close()
+        }
+    }
+
+    /// Decision mode's Urgent? open in its editor, and, for `preset-icons`, the icons it can take searched for
+    /// “urgent”, a word Apple's keywords don't know.
+    @Test func presetEditor() async throws {
+        for (name, query) in [("preset-editor", nil), ("preset-icons", "urgent")] where Showcase.wants(name) {
+            for appearance in Showcase.appearances {
+                let stage = ShowcaseStage(appearance)
+                try await Self.settings(on: stage, pane: .prompt) { window in
+                    await Self.scrollGradually(window, to: Self.presetsScroll)
+                    let editor = PresetEditor(
+                        kind: .decision, preset: PromptPreset.decisionDefaults[0], isNew: false, comesBack: true,
+                        choosingIcon: query != nil, iconQuery: query ?? ""
+                    ) { _ in } delete: {}
+                    let sheet = NSWindow(contentViewController: NSHostingController(rootView: editor))
+                    sheet.appearance = appearance.appearance
+                    window.beginSheet(sheet) { _ in }
+                    await Showcase.settle(1.5)
+                    // The sheet and the popover stay behind every other app, as the stage's windows do.
+                    let popovers = NSApp.windows.filter { $0.isVisible && String(describing: type(of: $0)).contains("Popover") }
+                    for extra in [sheet] + popovers { extra.level = ShowcaseStage.desktop }
+                    try await stage.captureWindows([window, sheet] + popovers, as: name)
+                    for popover in popovers { popover.orderOut(nil) }
+                    window.endSheet(sheet)
+                }
+                stage.close()
+            }
         }
     }
 
@@ -647,6 +680,17 @@ struct ShowcaseTests {
         let offset = min(max(top, top + y), max(top, bottom))
         clip.scroll(to: NSPoint(x: clip.bounds.minX, y: document.isFlipped ? offset : document.frame.height - clip.bounds.height - offset))
         scrollView.reflectScrolledClipView(clip)
+    }
+
+    /// Scrolls the pane to `y` a step at a time, as a hand would, so a lazy form lays out each part it passes:
+    /// one jump down Settings › Prompt left sections drawn where others had been.
+    private static func scrollGradually(_ window: NSWindow, to y: CGFloat) async {
+        for step in stride(from: 0, to: y, by: 120) {
+            scroll(window, to: step)
+            await Showcase.settle(0.05)
+        }
+        scroll(window, to: y)
+        await Showcase.settle(0.5)
     }
 
     /// Picks the segment called `label` of the first segmented control that has one, as a click would.
