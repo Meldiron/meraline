@@ -13,8 +13,8 @@ nonisolated struct ActionShortcut: Equatable, Sendable {
         case plus
         /// − as Zoom Out has it, the keypad's too.
         case minus
-        /// 1 to 9 by the key's place, on the number row or the keypad, whatever the layout types there without ⌘,
-        /// as the menu bar's ⌘1 does on an AZERTY or Czech keyboard.
+        /// 0 to 9 by the key's place, on the number row or the keypad, whatever the layout types there without ⌘,
+        /// as the menu bar's ⌘1 does on an AZERTY or Czech keyboard, where a digit takes Shift.
         case digit(Int)
         case delete
         case returnKey
@@ -58,13 +58,14 @@ nonisolated struct ActionShortcut: Equatable, Sendable {
     static let escape = ActionShortcut(.escape)
     static let returnKey = ActionShortcut(.returnKey)
 
-    /// ⌘ and a digit, 1 to 9.
+    /// ⌘ and a digit, 0 to 9.
     static func command(digit: Int) -> ActionShortcut {
         ActionShortcut(.digit(digit), .command)
     }
 
-    /// The number row's keys and the keypad's, 1 to 9, by key code.
+    /// The number row's keys and the keypad's, 0 to 9, by key code.
     private static let digitKeys: [Int: [Int]] = [
+        0: [kVK_ANSI_0, kVK_ANSI_Keypad0],
         1: [kVK_ANSI_1, kVK_ANSI_Keypad1], 2: [kVK_ANSI_2, kVK_ANSI_Keypad2], 3: [kVK_ANSI_3, kVK_ANSI_Keypad3],
         4: [kVK_ANSI_4, kVK_ANSI_Keypad4], 5: [kVK_ANSI_5, kVK_ANSI_Keypad5], 6: [kVK_ANSI_6, kVK_ANSI_Keypad6],
         7: [kVK_ANSI_7, kVK_ANSI_Keypad7], 8: [kVK_ANSI_8, kVK_ANSI_Keypad8], 9: [kVK_ANSI_9, kVK_ANSI_Keypad9],

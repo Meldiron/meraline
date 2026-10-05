@@ -77,7 +77,8 @@ nonisolated struct AnswerZoom: Equatable, Sendable {
             switch self {
             case .zoomIn: ActionShortcut(.plus, .command)
             case .zoomOut: ActionShortcut(.minus, .command)
-            case .actualSize: .command("0")
+            // By the key's place, as the presets' ⌘1…⌘9 are: a Czech or AZERTY keyboard types 0 with Shift.
+            case .actualSize: .command(digit: 0)
             }
         }
 

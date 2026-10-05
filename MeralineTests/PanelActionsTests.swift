@@ -42,6 +42,17 @@ struct PanelActionsTests {
         #expect(!ActionShortcut.escape.matches(keyCode: UInt16(kVK_Escape), characters: "\u{1B}", modifiers: []))
     }
 
+    @Test func zeroIsADigitMatchedByTheKeysPlace() {
+        let zero = ActionShortcut.command(digit: 0)
+        #expect(zero.keycaps == ["⌘", "0"])
+        #expect(zero.matches(keyCode: UInt16(kVK_ANSI_0), characters: "0", modifiers: .command))
+        #expect(zero.matches(keyCode: UInt16(kVK_ANSI_0), characters: "é", modifiers: .command), "the key where a Czech keyboard types é")
+        #expect(zero.matches(keyCode: UInt16(kVK_ANSI_Keypad0), characters: "0", modifiers: .command))
+        #expect(!zero.matches(keyCode: UInt16(kVK_ANSI_0), characters: "0", modifiers: [.command, .shift]), "Shift makes it another shortcut")
+        #expect(!zero.matches(keyCode: UInt16(kVK_ANSI_1), characters: "0", modifiers: .command))
+        #expect(!ActionShortcut.command(digit: 1).matches(keyCode: UInt16(kVK_ANSI_0), characters: "1", modifiers: .command))
+    }
+
     // MARK: The chat's actions
 
     @Test func noChatNoActions() {

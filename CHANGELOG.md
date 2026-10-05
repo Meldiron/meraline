@@ -9,6 +9,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 ### Fixes
 
 - **Show What Changed no longer freezes Meraline under VoiceOver.** With VoiceOver or any other accessibility tool reading the window, showing what an answer changed sent macOS 27 into a loop that never ended, and Meraline had to be force quit.
+- ⌘0 puts answers back to actual size on keyboards where 0 takes Shift, such as Czech and AZERTY ones. It goes by the key's place now, as ⌘1 to ⌘9 do.
 
 ## v1.12.0 - 2026-10-05
 

@@ -71,7 +71,16 @@ struct AnswerZoomTests {
         #expect(step(kVK_ANSI_Equal, "=", []) == nil)
         #expect(step(kVK_ANSI_Equal, "=", [.command, .option]) == nil)
         #expect(step(kVK_ANSI_Minus, "_", [.command, .shift]) == nil)
-        #expect(step(kVK_ANSI_0, "0", [.command, .shift]) == nil)
+        #expect(step(kVK_ANSI_0, ")", [.command, .shift]) == nil)
+    }
+
+    @Test func commandZeroGoesByTheKeysPlaceWhateverTheLayoutTypesThere() {
+        #expect(step(kVK_ANSI_0, "é", .command) == .actualSize, "the key where a Czech keyboard types é, and 0 only with Shift")
+        #expect(step(kVK_ANSI_0, "à", .command) == .actualSize, "and where a French one types à")
+        #expect(step(kVK_ANSI_Keypad0, "0", .command) == .actualSize)
+        #expect(step(kVK_ANSI_0, "0", [.command, .shift]) == nil, "⇧⌘ and the key isn't ⌘0, though it types 0 there")
+        #expect(step(kVK_ANSI_0, "é", []) == nil)
+        #expect(step(kVK_ANSI_9, "0", .command) == nil, "a 0 typed by another key isn't the key")
     }
 
     @Test func theKeycapsSayPlusAndMinus() {
@@ -104,6 +113,11 @@ struct AnswerZoomTests {
         #expect(context.chatMenu?.filtered(by: "bigger").flatMap(\.actions).map(\.id) == ["zoomIn"])
         context.run(actualSize, in: .chat, fromShortcut: true)
         #expect(layout.answerZoom == .actualSize)
+
+        // On a Czech keyboard the 0 key types é, and the chat's shortcut still finds Actual Size.
+        layout.zoomAnswers(.zoomIn)
+        #expect(context.action(forKeyCode: UInt16(kVK_ANSI_0), characters: "é", modifiers: .command)?.id == "actualSize")
+        #expect(context.action(forKeyCode: UInt16(kVK_ANSI_0), characters: "0", modifiers: [.command, .shift]) == nil)
     }
 
     @Test func theLargestZoomOffersNoZoomIn() async {
