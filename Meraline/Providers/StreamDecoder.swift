@@ -176,6 +176,29 @@ nonisolated enum StreamDecoder {
         }
     }
 
+    /// Whether `payload` is the provider's word that the answer is whole, where that word isn't the stream's
+    /// closing event, which `decode` reads as `.finished`. Chat completions name a `finish_reason` in the last
+    /// chunk with text, before what the answer took and `[DONE]`, which some servers never send; Gemini puts a
+    /// `finishReason` on its last chunk and closes the stream without a word; Ollama's last line says `done`, and
+    /// may still carry text. A stream that runs out of data before any of these was cut off (see `StreamReading`).
+    static func endsAnswer(_ payload: String, from provider: Provider) -> Bool {
+        let data = Data(payload.utf8)
+        switch provider {
+        case .openRouter, .custom:
+            if payload == "[DONE]" { return true }
+            guard payload.contains("finish_reason"), let chunk = try? decoder.decode(ChatCompletionChunk.self, from: data) else { return false }
+            return chunk.choices?.contains { $0.finishReason != nil } == true
+        case .gemini:
+            guard payload.contains("finishReason"), let chunk = try? decoder.decode(GeminiChunk.self, from: data) else { return false }
+            return chunk.candidates?.contains { $0.finishReason != nil } == true
+        case .ollama:
+            guard payload.contains("\"done\""), let chunk = try? decoder.decode(OllamaChunk.self, from: data) else { return false }
+            return chunk.done == true
+        case .anthropic, .openAI, .claudeCode, .codex, .opencode, .apple, .typeSafe, .openRouterDecision, .ollamaDecision:
+            return false
+        }
+    }
+
     /// What `payload` says the answer took, if it says: read beside `decode`, since a Gemini chunk carries its
     /// text and its usage together, and OpenAI's last event the end of the stream and the usage. Input tokens
     /// are the ones not served from a cache, whatever the provider counts, and cached ones are `cacheRead`.

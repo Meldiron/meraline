@@ -22,14 +22,13 @@ nonisolated enum LLMClient {
                         throw LLMError.http(http.statusCode, StreamDecoder.errorMessage(from: body))
                     }
 
-                    var receivedText = false
+                    var reading = StreamReading(provider: request.provider)
                     func handle(_ payload: String) throws -> Bool {
                         if let report = StreamDecoder.usage(in: payload, from: request.provider) {
                             continuation.yield(.usage(report.tokens, adds: report.adds))
                         }
-                        switch try StreamDecoder.decode(payload, from: request.provider) {
+                        switch try reading.read(payload) {
                         case .text(let text):
-                            receivedText = true
                             continuation.yield(.text(text))
                         case .activity(let activity):
                             continuation.yield(.activity(activity))
@@ -50,7 +49,7 @@ nonisolated enum LLMClient {
                             if try handle(event.data) { break }
                         }
                     }
-                    if !receivedText { throw LLMError.emptyResponse }
+                    try reading.end()
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -58,5 +57,39 @@ nonisolated enum LLMClient {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+}
+
+/// What an HTTP provider's stream has brought so far, payload by payload, so that when the data runs out it can
+/// be told whether the answer is whole. A connection that closes partway ends the data just as a finished answer
+/// does, and its cut-off text used to pass for the whole answer.
+nonisolated struct StreamReading {
+    let provider: Provider
+    private(set) var receivedText = false
+    /// The provider said the answer was whole: its closing event came, or a chunk said why it finished
+    /// (`StreamDecoder.endsAnswer`).
+    private(set) var ended = false
+
+    init(provider: Provider) {
+        self.provider = provider
+    }
+
+    /// What `payload` holds, noted for `end()`.
+    mutating func read(_ payload: String) throws -> StreamChunk {
+        if StreamDecoder.endsAnswer(payload, from: provider) { ended = true }
+        let chunk = try StreamDecoder.decode(payload, from: provider)
+        switch chunk {
+        case .text: receivedText = true
+        case .finished: ended = true
+        default: break
+        }
+        return chunk
+    }
+
+    /// The data ran out. Throws when no answer came, or when it stopped short of the provider's word that it was
+    /// whole.
+    func end() throws {
+        if !receivedText { throw LLMError.emptyResponse }
+        if !ended { throw LLMError.interrupted }
     }
 }

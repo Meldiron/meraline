@@ -181,6 +181,8 @@ nonisolated enum LLMError: LocalizedError, Equatable {
     case provider(String)
     case refused
     case truncated
+    /// The connection closed with part of the answer here and no word from the provider that it was whole.
+    case interrupted
     case emptyResponse
 
     var errorDescription: String? {
@@ -192,6 +194,7 @@ nonisolated enum LLMError: LocalizedError, Equatable {
         case .provider(let message): message
         case .refused: "The model declined to answer this request."
         case .truncated: "The answer was cut off because it reached the length limit."
+        case .interrupted: "The connection closed before the answer finished."
         case .emptyResponse: "The model returned an empty answer."
         }
     }
