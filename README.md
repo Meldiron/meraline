@@ -218,8 +218,26 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
     </td>
   </tr>
   <tr>
-    <td align="center"><sub>Settings › Usage counts what you asked, played, and spent, numbers only</sub></td>
+    <td align="center"><sub>Settings › Usage counts what you asked, played, and spent, numbers only, for every kind of model or one alone</sub></td>
     <td align="center"><sub>Settings look like System Settings; each agent lists its MCP servers with a switch for each</sub></td>
+  </tr>
+  <tr>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/prompt-presets.png">
+        <img src="docs/screenshots/prompt-presets-light.png" width="440" alt="Settings › Prompt: the LLM presets as rows, Fix Grammar, Anti-Slop, Anonymize, Translate, and Explain Simply, each with its icon, the start of its text, Edit…, and a handle to drag it by">
+      </picture>
+    </td>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/preset-icons.png">
+        <img src="docs/screenshots/preset-icons-light.png" width="440" alt="A preset's sheet with its icon search open: urgent typed, and 41 icons found, warning signs, exclamation marks, and bells, the first one chosen">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Your presets in a list: drag one into place, or open it to change its text</sub></td>
+    <td align="center"><sub>Type a word, such as urgent, and pick an icon among every SF Symbol on your Mac</sub></td>
   </tr>
 </table>
 
