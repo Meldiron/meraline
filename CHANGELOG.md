@@ -6,6 +6,10 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ## Unreleased
 
+### Agents
+
+- **⌘1 to ⌘9 answer an agent's question.** When Claude Code asks a question with choices, the keys pick them, as a click does, and the choices show their keycaps. Allow and Deny already took Return.
+
 ### Fixes
 
 - **Show What Changed no longer freezes Meraline under VoiceOver.** With VoiceOver or any other accessibility tool reading the window, showing what an answer changed sent macOS 27 into a loop that never ended, and Meraline had to be force quit.

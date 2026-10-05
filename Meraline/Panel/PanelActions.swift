@@ -58,6 +58,9 @@ nonisolated struct ActionShortcut: Equatable, Sendable {
     static let escape = ActionShortcut(.escape)
     static let returnKey = ActionShortcut(.returnKey)
 
+    /// How many digits there are to hold shortcuts, ⌘1 to ⌘9.
+    static let digits = 9
+
     /// ⌘ and a digit, 0 to 9.
     static func command(digit: Int) -> ActionShortcut {
         ActionShortcut(.digit(digit), .command)
@@ -251,8 +254,21 @@ struct PanelContext {
     /// zoom: a digit they hold goes by its key's place, so ⌘ and the key where a Czech keyboard types + is ⌘1,
     /// never Zoom In.
     func action(forKeyCode keyCode: UInt16, characters: String?, modifiers: ActionShortcut.Modifiers) -> PanelAction? {
-        (modeSwitches + (chatMenu?.actions ?? [stashDraft].compactMap { $0 })).first { action in
+        (promptChoices + modeSwitches + (chatMenu?.actions ?? [stashDraft].compactMap { $0 })).first { action in
             action.shortcut?.matches(keyCode: keyCode, characters: characters, modifiers: modifiers) == true
+        }
+    }
+
+    /// ⌘1 to ⌘9 while an agent's question with choices waits: each picks a choice, the first to the ninth, of
+    /// the first question not yet answered, as a click on it does (see `PromptCard`). They come ahead of the
+    /// modes' and the presets' digits, which the keys go back to once the question is answered. Not in any panel.
+    var promptChoices: [PanelAction] {
+        guard let prompt = session.turns.last?.pendingPrompt, case .question(let questions) = prompt.kind else { return [] }
+        let choices = min(ActionShortcut.digits, questions.map(\.options.count).max() ?? 0)
+        return (0..<choices).map { index in
+            PanelAction(id: "promptChoice.\(index + 1)", title: "Choice \(index + 1)", icon: .symbol("\(index + 1).circle"), shortcut: .command(digit: index + 1)) { [layout] in
+                layout.choose(index, of: prompt.id)
+            }
         }
     }
 

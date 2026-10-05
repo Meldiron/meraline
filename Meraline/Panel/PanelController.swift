@@ -98,6 +98,19 @@ final class PanelLayout {
     var roomOnScreenAbove: CGFloat = .greatestFiniteMagnitude
     /// How large the answers are drawn, in every chat, until Meraline quits or ⌘0.
     var answerZoom = AnswerZoom.actualSize
+    /// A choice ⌘1 to ⌘9 made on an agent's question that waits (see `PanelContext.promptChoices`): the ask and
+    /// the choice's place, which the card answers as it would a click (`PromptCard`). `number` tells one press
+    /// from the next.
+    struct PromptChoice: Equatable {
+        let prompt: AgentPrompt.ID
+        let index: Int
+        let number: Int
+    }
+    var promptChoice: PromptChoice?
+
+    func choose(_ index: Int, of prompt: AgentPrompt.ID) {
+        promptChoice = PromptChoice(prompt: prompt, index: index, number: (promptChoice?.number ?? 0) + 1)
+    }
 
     /// Closes the panel of actions and gives the keyboard back to the input.
     func closeActionPanel() {

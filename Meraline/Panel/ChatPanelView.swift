@@ -508,7 +508,8 @@ struct ChatPanelView: View {
                                 agent: agentName,
                                 answer: { session.answer($0, with: $1) },
                                 explain: explain,
-                                explainTool: explainTool(for: turn)
+                                explainTool: explainTool(for: turn),
+                                promptChoice: layout.promptChoice
                             )
                         }
                         .environment(\.answerWorkspace, session.workspace?.url)
@@ -709,6 +710,8 @@ private struct TurnView: View {
     var explain: ((AgentPrompt) async throws -> String)?
     /// Asks the provider that answered why it used one of the answer's tools.
     var explainTool: ((Int) async throws -> String)?
+    /// A choice ⌘1 to ⌘9 made on the agent's question, for its card.
+    var promptChoice: PanelLayout.PromptChoice?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -759,7 +762,7 @@ private struct TurnView: View {
                 }
             }
             if let prompt = turn.pendingPrompt {
-                PromptCard(prompt: prompt, agent: agent, answer: { answer(prompt.id, $0) }, explain: explain)
+                PromptCard(prompt: prompt, agent: agent, answer: { answer(prompt.id, $0) }, explain: explain, choice: promptChoice)
                     .id(prompt.id)
             } else if isAnswering && (turn.answer.isEmpty || turn.activity != nil) {
                 ActivityRow(activity: turn.activity)
@@ -788,14 +791,17 @@ private struct TurnView: View {
 
 /// An agent's ask, with the means to settle it: Allow and Deny for a tool, with Why? for the agent's reason
 /// in one line, or a question's choices as buttons and a field for an answer of your own. One question with
-/// single choices is answered by the first tap; several, or several choices, wait for Done. Neutral glass,
-/// with the panel's faint pink on the default choice.
+/// single choices is answered by the first tap; several, or several choices, wait for Done. ⌘1 to ⌘9 pick the
+/// choices of the first question not yet answered, which wear the keycaps (see `PanelContext.promptChoices`).
+/// Neutral glass, with the panel's faint pink on the default choice.
 private struct PromptCard: View {
     let prompt: AgentPrompt
     let agent: String
     let answer: (AgentAnswer) -> Void
     /// Asks the agent why it wants the tool. Without it there is no Why? button.
     var explain: ((AgentPrompt) async throws -> String)?
+    /// The choice a key made last, which the card takes as a click when it is this ask's.
+    var choice: PanelLayout.PromptChoice?
     /// The labels picked so far, by question.
     @State private var picks: [String: [String]] = [:]
     /// Answers typed instead of picked, by question.
@@ -826,6 +832,16 @@ private struct PromptCard: View {
         .padding(12)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
         .accessibilityElement(children: .contain)
+        .onChange(of: choice) { _, choice in
+            guard let choice, choice.prompt == prompt.id, case .question(let questions) = prompt.kind,
+                  let question = unanswered(questions), question.options.indices.contains(choice.index) else { return }
+            pick(question.options[choice.index].label, for: question, of: questions)
+        }
+    }
+
+    /// The first question with nothing picked or typed yet, whose choices the keys pick.
+    private func unanswered(_ questions: [AgentPrompt.Question]) -> AgentPrompt.Question? {
+        questions.first { answerText(for: $0).isEmpty }
     }
 
     private func permission(_ activity: Activity, detail: String?) -> some View {
@@ -893,12 +909,24 @@ private struct PromptCard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
             if !question.options.isEmpty {
+                let keyed = unanswered(questions)?.id == question.id
                 FlowLayout(spacing: 8) {
-                    ForEach(question.options) { option in
+                    ForEach(Array(question.options.enumerated()), id: \.element.id) { index, option in
                         let picked = picks[question.id, default: []].contains(option.label)
-                        Button(option.label) { pick(option.label, for: question, of: questions) }
-                            .buttonStyle(.glass(picked ? .regular.tint(.meralinePink.opacity(0.18)) : .regular))
-                            .help(option.detail ?? option.label)
+                        let shortcut = keyed && index < ActionShortcut.digits ? ActionShortcut.command(digit: index + 1) : nil
+                        Button {
+                            pick(option.label, for: question, of: questions)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text(option.label)
+                                if let shortcut {
+                                    KeyCaps(keys: shortcut.keycaps, size: 15)
+                                }
+                            }
+                        }
+                        .buttonStyle(.glass(picked ? .regular.tint(.meralinePink.opacity(0.18)) : .regular))
+                        .help(shortcut.map { "\(option.detail ?? option.label) (\($0.text))" } ?? option.detail ?? option.label)
+                        .accessibilityLabel(option.label)
                     }
                 }
             }
