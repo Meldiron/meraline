@@ -302,6 +302,15 @@ final class ChatSession {
         turns.last(where: { !$0.answer.isEmpty })?.answer
     }
 
+    /// The kind of model the last answer came from, for the count of what is done with it: the mode's when no
+    /// model gave it, as with a game's move drawn on this Mac.
+    var lastAnswerKind: ProviderKind {
+        turns.last(where: { !$0.answer.isEmpty })?.provider?.kind ?? preferences.mode
+    }
+
+    /// The kind of model the draft goes to, for the count of what is added to it.
+    var askingKind: ProviderKind { preferences.mode }
+
     /// The files an agent handed over last in this chat, for the chat's actions.
     var lastPresentedFiles: [PresentedFile] {
         turns.last(where: { !$0.presentedFiles.isEmpty })?.presentedFiles ?? []
@@ -505,7 +514,7 @@ final class ChatSession {
         turns.append(turn)
         isStreaming = true
         let isFirst = turns.count == 1
-        usage.record { tally in
+        usage.record(as: provider.kind) { tally in
             tally.questions += 1
             if isFirst { tally.chats += 1 }
             tally.wordsAsked += UsageTally.words(in: question)
@@ -552,7 +561,7 @@ final class ChatSession {
         turn.estimatedInput = Self.estimatedTokens(in: request)
         turns.append(turn)
         isStreaming = true
-        usage.record { tally in
+        usage.record(as: provider.kind) { tally in
             tally.askAgains += 1
             tally.providers[provider.rawValue, default: 0] += 1
             if provider.isCommandLine { tally.agentRuns += 1 }
@@ -593,7 +602,7 @@ final class ChatSession {
         turn.estimatedInput = Self.estimatedTokens(in: request)
         turns.append(turn)
         isStreaming = true
-        usage.record { tally in
+        usage.record(as: provider.kind) { tally in
             tally.rewrites[key, default: 0] += 1
             tally.providers[provider.rawValue, default: 0] += 1
             if provider.isCommandLine { tally.agentRuns += 1 }
@@ -629,9 +638,9 @@ final class ChatSession {
     /// Carries out a move you typed as `input`.
     private func make(_ move: GameMove, from input: String, in game: Game) {
         if case .reject = move {
-            usage.record { $0.games[game.rawValue, default: .init()].rejectedMoves += 1 }
+            usage.record(as: gameKind) { $0.games[game.rawValue, default: .init()].rejectedMoves += 1 }
         } else {
-            usage.record { $0.games[game.rawValue, default: .init()].moves += 1 }
+            usage.record(as: gameKind) { $0.games[game.rawValue, default: .init()].moves += 1 }
         }
         switch move {
         case .reject(let message):
@@ -707,7 +716,7 @@ final class ChatSession {
             Log.chat.info("\(game.title): round over")
             versus[game, default: Versus()].record(outcome)
             let figures = game.figures(ofRoundEndingIn: turns)
-            usage.record { $0.games[game.rawValue, default: .init()].count(round: outcome.youWon, with: figures) }
+            usage.record(as: gameKind) { $0.games[game.rawValue, default: .init()].count(round: outcome.youWon, with: figures) }
             nudge = outcome.text
         default:
             break
@@ -752,6 +761,9 @@ final class ChatSession {
         return provider
     }
 
+    /// The kind of model a game is played against, for the count of usage.
+    private var gameKind: ProviderKind { gameProvider?.kind ?? .llm }
+
     private func modelName(for provider: Provider) -> String {
         let model = preferences[provider].model.trimmed
         return model.isEmpty ? "default model" : model
@@ -773,7 +785,7 @@ final class ChatSession {
         // Every decision Jev made: one about the text, or one a word or line.
         let decided = turn.decisions.map { $0.items.map(\.decision) } ?? turn.decision.map { [$0] } ?? []
         let unsure = decided.filter { $0.isUnsure(below: preferences.unsureBelow) }.count
-        usage.record(at: now) { tally in
+        usage.record(at: now, as: provider.kind) { tally in
             switch end {
             case .failed:
                 tally.failures += 1
@@ -1024,7 +1036,7 @@ final class ChatSession {
         mode = .game(game)
         lastGame = game
         Log.chat.info("\(game.title) started")
-        usage.record { $0.games[game.rawValue, default: .init()].started += 1 }
+        usage.record(as: gameKind) { $0.games[game.rawValue, default: .init()].started += 1 }
         advance(game, asksModel: true)
         nudge = game.rules.invitation
     }
@@ -1055,7 +1067,7 @@ final class ChatSession {
         guard let hint = (others.isEmpty ? hints : others).randomElement() else { return }
         nudge = hint
         Log.chat.info("\(game.title): hint shown")
-        usage.record { $0.games[game.rawValue, default: .init()].hints += 1 }
+        usage.record(as: gameKind) { $0.games[game.rawValue, default: .init()].hints += 1 }
     }
 
     /// What the rematch tray offers: the game's next round once one is over, or the last game again on an
@@ -1477,7 +1489,7 @@ final class ChatSession {
         guard let lastAnswer else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lastAnswer, forType: .string)
-        usage.record { $0.answersCopied += 1 }
+        usage.record(as: lastAnswerKind) { $0.answersCopied += 1 }
     }
 
     /// The chat as Markdown, or a game's own transcript.

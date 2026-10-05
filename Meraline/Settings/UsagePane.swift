@@ -2,12 +2,13 @@ import Charts
 import SwiftUI
 
 /// Settings › Usage: how Meraline has been used over the last hour, day, week, month, or year, from the usage
-/// ledger. A chart of tokens along the span, tiles with the headline numbers, and rows for asking, models and
-/// what they cost, and agents, tiles for each game played, then rows for what went with questions, habits, and
-/// what was done with answers. Every
-/// number is a count; nothing here ever says what was asked or answered.
+/// ledger, by the LLMs, the agents, the decision models, or any of them together (`KindTile`). A chart of tokens
+/// along the span, tiles with the headline numbers, and rows for asking, models and what they cost, and agents,
+/// tiles for each game played, then rows for what went with questions, habits, and what was done with answers.
+/// Every number is a count; nothing here ever says what was asked or answered.
 struct UsagePane: View {
     let ledger: UsageLedger
+    let preferences: Preferences
     @State private var window: UsageWindow
     /// The bar under the pointer, by its label.
     @State private var selectedBar: String?
@@ -15,12 +16,14 @@ struct UsagePane: View {
     /// Moves on while the pane is open, so the spans roll with the clock.
     @State private var now = Date.now
 
-    init(ledger: UsageLedger, window: UsageWindow = .day) {
+    init(ledger: UsageLedger, preferences: Preferences, window: UsageWindow = .day) {
         self.ledger = ledger
+        self.preferences = preferences
         _window = State(initialValue: window)
     }
 
     var body: some View {
+        let insights = insights
         Form {
             PaneHeader(pane: .usage, summary: "What you’ve asked, played, and spent, counted on this Mac. Numbers only, never a word of it.")
 
@@ -30,25 +33,28 @@ struct UsagePane: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                kindTiles
+            } footer: {
+                kindsFooter
             }
 
             if insights.isEmpty {
                 Section {
-                    Text("Nothing in \(window.phrase) yet. Ask something, or play a game, and it shows up here.")
+                    Text(emptyMessage)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 8)
                 }
             } else {
-                glance
+                glance(insights)
                 chart
-                asking
-                modelsSection
-                if insights.tally.agentRuns > 0 { agents }
-                if insights.tally.decisions > 0 { decisions }
-                if insights.tally.games.values.contains(where: { $0.started > 0 || $0.rounds > 0 }) { games }
-                if insights.contextItems > 0 { context }
-                habits
+                asking(insights)
+                modelsSection(insights)
+                if insights.tally.agentRuns > 0 { agents(insights) }
+                if insights.tally.decisions > 0 { decisions(insights) }
+                if insights.tally.games.values.contains(where: { $0.started > 0 || $0.rounds > 0 }) { games(insights) }
+                if insights.contextItems > 0 { context(insights) }
+                habits(insights)
             }
 
             prices
@@ -71,28 +77,93 @@ struct UsagePane: View {
         }
     }
 
+    /// The kinds counted, as Preferences keeps them.
+    private var kinds: Set<ProviderKind> { preferences.usageKinds }
+
     private var insights: UsageInsights {
         UsageInsights(
-            tally: ledger.summary(window, now: now),
+            tally: ledger.summary(window, now: now, kinds: kinds),
             window: window,
-            activeDays: ledger.activeDays(window, now: now).count,
-            longestStreak: ledger.longestStreak(window, now: now),
-            busiestHour: ledger.busiestHour(window, now: now),
-            busiestWeekday: ledger.busiestWeekday(window, now: now),
+            activeDays: ledger.activeDays(window, now: now, kinds: kinds).count,
+            longestStreak: ledger.longestStreak(window, now: now, kinds: kinds),
+            busiestHour: ledger.busiestHour(window, now: now, kinds: kinds),
+            busiestWeekday: ledger.busiestWeekday(window, now: now, kinds: kinds),
             price: ledger.price(forKey:)
         )
     }
 
+    private var emptyMessage: String {
+        kinds.count == ProviderKind.allCases.count
+            ? "Nothing in \(window.phrase) yet. Ask something, or play a game, and it shows up here."
+            : "Nothing from \(ProviderKind.phrase(for: kinds, or: true)) in \(window.phrase) yet."
+    }
+
+    // MARK: Kinds
+
+    /// A tile for each kind of model, with what it cost and did in the span whether it is counted or not.
+    private var kindTiles: some View {
+        HStack(spacing: 12) {
+            ForEach(ProviderKind.allCases) { kind in
+                let tally = ledger.summary(window, now: now, kinds: [kind])
+                KindTile(
+                    kind: kind,
+                    cost: UsageInsights.money(tally.cost(pricedBy: ledger.price(forKey:)).total, short: true),
+                    detail: kind.usageDetail(of: tally),
+                    isOn: kinds.contains(kind),
+                    isAlone: kinds == [kind]
+                ) { alone in
+                    toggle(kind, alone: alone)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// Counts `kind` or leaves it out; `alone`, as an Option-click does, counts it and nothing else, or every kind
+    /// when it was alone already. The last kind counted never goes: clicking it counts every kind again.
+    private func toggle(_ kind: ProviderKind, alone: Bool) {
+        var kinds = kinds
+        let every = Set(ProviderKind.allCases)
+        if alone {
+            kinds = kinds == [kind] ? every : [kind]
+        } else if kinds == [kind] {
+            kinds = every
+        } else if kinds.contains(kind) {
+            kinds.remove(kind)
+        } else {
+            kinds.insert(kind)
+        }
+        withAnimation(.smooth(duration: 0.3)) {
+            preferences.usageKinds = kinds
+            selectedBar = nil
+        }
+    }
+
+    private var kindsFooter: some View {
+        HStack(alignment: .firstTextBaseline) {
+            if kinds.count == ProviderKind.allCases.count {
+                Text("Click a kind to leave it out, or Option-click it to see it alone.")
+            } else {
+                Text("Counting \(ProviderKind.phrase(for: kinds)) only.")
+                Spacer()
+                Button("Show All") {
+                    withAnimation(.smooth(duration: 0.3)) { preferences.usageKinds = Set(ProviderKind.allCases) }
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+
     // MARK: At a glance
 
-    private var glance: some View {
+    private func glance(_ insights: UsageInsights) -> some View {
         Section {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 12)], spacing: 12) {
                 StatTile(label: "Questions", value: UsageInsights.compact(insights.tally.questions), detail: UsageInsights.count(insights.tally.chats, "chat"))
                 StatTile(label: "Answers", value: UsageInsights.compact(insights.tally.answers), detail: UsageInsights.count(insights.tally.wordsRead, "word"))
                 StatTile(label: "Tokens in", value: UsageInsights.compact(insights.tally.inputTokens), detail: "prompts and history")
                 StatTile(label: "Tokens out", value: UsageInsights.compact(insights.tally.outputTokens), detail: "answers and thinking")
-                StatTile(label: "Cost", value: UsageInsights.money(insights.cost), detail: costDetail)
+                StatTile(label: "Cost", value: UsageInsights.money(insights.cost, short: true), detail: costDetail(insights))
                 if insights.tally.rounds > 0 {
                     StatTile(label: "Rounds", value: UsageInsights.compact(insights.tally.rounds), detail: "won \(insights.tally.roundsWon), lost \(insights.tally.roundsLost)")
                 }
@@ -103,7 +174,7 @@ struct UsagePane: View {
         }
     }
 
-    private var costDetail: String {
+    private func costDetail(_ insights: UsageInsights) -> String {
         if insights.unpricedAnswers > 0 { return "\(UsageInsights.count(insights.unpricedAnswers, "answer")) unpriced" }
         if insights.estimatedAnswers > 0 { return "\(UsageInsights.count(insights.estimatedAnswers, "answer")) estimated" }
         return "from the providers"
@@ -112,7 +183,7 @@ struct UsagePane: View {
     // MARK: The chart
 
     private var points: [UsageBar] {
-        UsageBar.bars(of: ledger.series(window, now: now), in: window)
+        UsageBar.bars(of: ledger.series(window, now: now, kinds: kinds), in: window)
     }
 
     private var chart: some View {
@@ -164,7 +235,7 @@ struct UsagePane: View {
 
     // MARK: Rows
 
-    private var asking: some View {
+    private func asking(_ insights: UsageInsights) -> some View {
         Section("Asking") {
             row("Questions", UsageInsights.compact(insights.tally.questions), "\(UsageInsights.count(insights.tally.chats, "chat")) started")
             row("Follow-ups", UsageInsights.compact(max(0, insights.tally.questions - insights.tally.chats)), "questions asked in a chat already going")
@@ -187,7 +258,7 @@ struct UsagePane: View {
         }
     }
 
-    private var modelsSection: some View {
+    private func modelsSection(_ insights: UsageInsights) -> some View {
         Section {
             ForEach(insights.models, id: \.key) { entry in
                 LabeledContent {
@@ -222,7 +293,7 @@ struct UsagePane: View {
         return UsageInsights.money(cost)
     }
 
-    private var agents: some View {
+    private func agents(_ insights: UsageInsights) -> some View {
         Section("Agents") {
             row("Runs", UsageInsights.compact(insights.tally.agentRuns), "questions to Claude Code, Codex, or OpenCode")
             row("Tools used", UsageInsights.compact(insights.tally.toolUses), insights.tally.mcpUses > 0 ? "\(UsageInsights.compact(insights.tally.mcpUses)) of them MCP tools" : "")
@@ -238,7 +309,7 @@ struct UsagePane: View {
         }
     }
 
-    private var decisions: some View {
+    private func decisions(_ insights: UsageInsights) -> some View {
         Section("Decisions") {
             row("Decisions", UsageInsights.compact(insights.tally.decisions), "yes, no, or one of your answers, from a decision model")
             row("Not sure", UsageInsights.compact(insights.tally.unsureDecisions), "\(UsageInsights.percent(Double(insights.tally.unsureDecisions) / Double(max(1, insights.tally.decisions)))) of them, under the line set in Settings › Prompt")
@@ -249,7 +320,7 @@ struct UsagePane: View {
     }
 
     /// Every game together when there was more than one, then a section for each.
-    @ViewBuilder private var games: some View {
+    @ViewBuilder private func games(_ insights: UsageInsights) -> some View {
         let games = insights.games
         if games.count > 1 {
             Section("Games") {
@@ -278,7 +349,7 @@ struct UsagePane: View {
         }
     }
 
-    private var context: some View {
+    private func context(_ insights: UsageInsights) -> some View {
         Section {
             if insights.tally.selections > 0 { row("Selected text", UsageInsights.compact(insights.tally.selections), "from other apps") }
             if insights.tally.clipboards > 0 { row("Clipboard", UsageInsights.compact(insights.tally.clipboards), "copies added") }
@@ -291,7 +362,7 @@ struct UsagePane: View {
         }
     }
 
-    private var habits: some View {
+    private func habits(_ insights: UsageInsights) -> some View {
         Section {
             if let hour = insights.busiestHour {
                 row("Busiest hour", UsageInsights.hour(hour), insights.busiestWeekday.map { "and \(UsageInsights.weekday($0))s most of all" } ?? "")
@@ -367,6 +438,7 @@ private struct StatTile: View {
                 .font(.title2.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .contentTransition(.numericText())
             Text(detail)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
@@ -376,6 +448,125 @@ private struct StatTile: View {
         .padding(10)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A kind of model at the top of Settings › Usage, laid out as a `StatTile` is: its name with the mode toggle's
+/// symbol, what it cost in the span, and how much it was used, with a check that says whether the numbers under it
+/// count it. A click counts it or leaves it out, and an Option-click counts it alone. A kind left out keeps its own
+/// numbers, faded, so you see what you are leaving out.
+private struct KindTile: View {
+    let kind: ProviderKind
+    let cost: String
+    let detail: String
+    let isOn: Bool
+    /// Whether it is the only kind counted, so a click counts every kind again.
+    let isAlone: Bool
+    /// Called with whether Option was down, for counting it alone.
+    let toggle: (_ alone: Bool) -> Void
+    @State private var isHovered = false
+
+    private let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+
+    var body: some View {
+        Button {
+            toggle(NSEvent.modifierFlags.contains(.option))
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 5) {
+                    kind.image
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isOn ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.secondary))
+                        .frame(width: 14)
+                    Text(kind.usageTitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                        .font(.body)
+                        .foregroundStyle(isOn ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.tertiary))
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                Group {
+                    Text(cost)
+                        .font(.title2.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .contentTransition(.numericText())
+                    Text(detail)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+                .opacity(isOn ? 1 : 0.45)
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(10)
+            .background(.quaternary.opacity(isHovered ? 0.8 : 0.5), in: shape)
+            .background(Color.meralinePink.opacity(isOn ? 0.06 : 0), in: shape)
+            .overlay(shape.strokeBorder(Color.meralinePink.opacity(isOn ? 0.32 : 0), lineWidth: 1))
+            .contentShape(shape)
+        }
+        .buttonStyle(KindTileStyle())
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovered)
+        .help(isAlone ? "Click to count every kind again." : "Click to \(isOn ? "leave out" : "count") \(kind.usagePhrase). Option-click to count only \(kind.usagePhrase).")
+        .contextMenu {
+            Button("Show Only \(kind.usageTitle)") { toggle(true) }
+                .disabled(isAlone)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(kind.usageTitle)
+        .accessibilityValue("\(isOn ? "Counted" : "Left out"), \(cost), \(detail)")
+        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction(named: "Show Only \(kind.usageTitle)") { if !isAlone { toggle(true) } }
+    }
+}
+
+/// A tile that sinks a little while pressed.
+private struct KindTileStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+private extension ProviderKind {
+    /// The tile's name: shorter than `pluralTitle` for the decision models.
+    var usageTitle: String {
+        switch self {
+        case .llm: "LLMs"
+        case .agent: "Agents"
+        case .decision: "Decisions"
+        }
+    }
+
+    /// The kind inside a sentence.
+    var usagePhrase: String {
+        switch self {
+        case .llm: "LLMs"
+        case .agent: "agents"
+        case .decision: "decision models"
+        }
+    }
+
+    /// How much the kind was used, in its own words: questions to the LLMs, an agent's runs, decisions made.
+    func usageDetail(of tally: UsageTally) -> String {
+        switch self {
+        case .llm where tally.questions > 0: UsageInsights.count(tally.questions, "question")
+        case .llm where tally.rounds > 0: UsageInsights.count(tally.rounds, "round")
+        case .agent where tally.agentRuns > 0: UsageInsights.count(tally.agentRuns, "run")
+        case .agent where tally.rounds > 0: UsageInsights.count(tally.rounds, "round")
+        case .decision where tally.decisions > 0: UsageInsights.count(tally.decisions, "decision")
+        default: "nothing yet"
+        }
+    }
+
+    /// The kinds of `kinds` in a sentence, in the toggle's order: “LLMs and agents”, “LLMs or agents”.
+    static func phrase(for kinds: Set<ProviderKind>, or: Bool = false) -> String {
+        allCases.filter(kinds.contains).map(\.usagePhrase).formatted(.list(type: or ? .or : .and))
     }
 }
 

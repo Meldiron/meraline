@@ -414,6 +414,8 @@ struct DecisionTests {
         #expect(session.usage.summary(.day).decisions == 1)
         #expect(session.usage.summary(.day).unsureDecisions == 0)
         #expect(session.usage.summary(.day).answers == 1)
+        #expect(session.usage.summary(.day, kinds: [.decision]).answers == 1 && session.usage.summary(.day, kinds: [.llm, .agent]).isEmpty,
+                "counted under the decision models")
 
         // A follow-up asks about the same text, which the chat keeps.
         session.draft = "Should I reply today? Yes / No"

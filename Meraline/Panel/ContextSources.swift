@@ -104,7 +104,7 @@ final class ContextSources {
             Log.panel.info("Screenshot added the screen")
             if notice == .noScreenAccess { notice = nil }
             screenshotsAdded += 1
-            session.usage.record { $0.screenshots += 1 }
+            session.usage.record(as: session.askingKind) { $0.screenshots += 1 }
             return !added.isEmpty
         } catch ScreenCapture.Failure.noAccess {
             Log.panel.info("Screenshot: Screen Recording access refused")

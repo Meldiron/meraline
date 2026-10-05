@@ -261,3 +261,134 @@ struct UsageCountingTests {
         #expect(usage.allTime.questions == 0, "moves are not questions")
     }
 }
+
+@MainActor
+struct UsageKindTests {
+    private typealias Support = GameTestSupport
+    /// 2027-01-15 08:00 UTC, a Friday.
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func aTallyIsPartedByTheKindOfModelItCameFrom() throws {
+        var tally = UsageTally()
+        tally.questions = 4
+        tally.chats = 2
+        tally.wordsRead = 300
+        tally.providers = ["anthropic": 3, "claudeCode": 1]
+        tally.count(answer: TokenUsage(input: 100, output: 10, cost: 0.5), reported: true, for: "anthropic/claude-sonnet-5")
+        tally.count(answer: TokenUsage(input: 900, output: 40, cost: 2), reported: true, for: "claudeCode")
+        tally.count(answer: TokenUsage(input: 50, output: 1), reported: true, for: "typeSafe/jev-latest")
+        tally.agentRuns = 1
+        tally.toolUses = 6
+        tally.decisions = 3
+        tally.liveDecisions = 2
+        tally.games = ["rhymeDuel": .init(started: 1, roundsWon: 1)]
+        tally.answersCopied = 1
+
+        let parts = tally.byKind()
+        let llm = try #require(parts[.llm])
+        let agent = try #require(parts[.agent])
+        let decision = try #require(parts[.decision])
+        #expect(llm.providers == ["anthropic": 3] && agent.providers == ["claudeCode": 1])
+        #expect(Array(llm.models.keys) == ["anthropic/claude-sonnet-5"] && Array(agent.models.keys) == ["claudeCode"])
+        #expect(Array(decision.models.keys) == ["typeSafe/jev-latest"])
+        #expect(agent.agentRuns == 1 && agent.toolUses == 6 && llm.toolUses == 0, "what only agents do is the agents'")
+        #expect(decision.decisions == 3 && decision.liveDecisions == 2 && llm.decisions == 0)
+        #expect(llm.questions == 4 && llm.wordsRead == 300 && llm.games["rhymeDuel"]?.started == 1 && llm.answersCopied == 1,
+                "what says nothing of its kind goes to the kind asked most")
+        #expect(parts.values.reduce(UsageTally(), +).questions == tally.questions)
+        #expect(parts.values.map { $0.cost(pricedBy: { _ in nil }).total }.reduce(0, +) == tally.cost(pricedBy: { _ in nil }).total, "no cost is lost or doubled")
+
+        var agentOnly = UsageTally()
+        agentOnly.toolUses = 2
+        agentOnly.wordsRead = 40
+        agentOnly.count(answer: TokenUsage(input: 10, output: 1), reported: true, for: "codex")
+        #expect(Array(agentOnly.byKind().keys) == [.agent], "with no questions, the answers say whose it is")
+        var unknown = UsageTally()
+        unknown.answersCopied = 1
+        #expect(unknown.byKind()[.llm]?.answersCopied == 1, "and with nothing to tell, the LLMs'")
+        #expect(UsageTally().byKind().isEmpty)
+    }
+
+    @Test func theLedgerCountsAndShowsEachKindApart() {
+        let ledger = UsageLedger(file: nil)
+        ledger.record(at: now.addingTimeInterval(-60), as: .llm) { $0.questions += 2 }
+        ledger.record(at: now.addingTimeInterval(-60), as: .agent) { $0.questions += 1; $0.agentRuns += 1 }
+        ledger.record(at: now.addingTimeInterval(-3 * 3_600), as: .decision) { $0.questions += 5; $0.decisions += 5 }
+        ledger.record(at: now.addingTimeInterval(-3 * 3_600)) { $0.count(answer: TokenUsage(input: 7, output: 1), reported: true, for: "codex") }
+
+        #expect(ledger.summary(.day, now: now).questions == 8, "every kind unless said")
+        #expect(ledger.summary(.day, now: now, kinds: [.llm]).questions == 2)
+        #expect(ledger.summary(.day, now: now, kinds: [.agent, .decision]).questions == 6)
+        #expect(ledger.summary(.day, now: now, kinds: [.agent]).models["codex"]?.input == 7, "a count without a kind goes by what it holds")
+        #expect(ledger.summary(.hour, now: now, kinds: [.decision]).isEmpty)
+        #expect(ledger.series(.day, now: now, kinds: [.decision]).map(\.tally.questions).reduce(0, +) == 5)
+        #expect(ledger.activeDays(.week, now: now, kinds: [.llm]).count == 1)
+        #expect(ledger.busiestHour(.day, now: now, calendar: Self.utc, kinds: [.decision]) == 5, "the decisions at 05:00 UTC")
+        #expect(ledger.busiestHour(.day, now: now, calendar: Self.utc, kinds: [.llm]) == 7)
+        #expect(ledger.allTime.questions == 8)
+
+        ledger.record(at: now, as: .agent) { _ in }
+        #expect(ledger.slots[UsageLedger.slot(of: now)] == nil, "nothing counted, nothing kept")
+    }
+
+    @Test func aLedgerFromBeforeKindsIsPartedAsItIsRead() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "MeralineTests.\(UUID().uuidString)")
+        let file = folder.appending(path: "usage.json")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let slot = UsageLedger.slot(of: now)
+        let old = """
+        {"version":1,"savedAt":0,"slots":{"\(slot)":{"questions":3,"providers":{"openAI":2,"codex":1},"agentRuns":1,"toolUses":4,\
+        "decisions":2,"models":{"openAI/gpt-5":{"answers":2,"input":40,"output":9,"cost":0.25}}}}}
+        """
+        try Data(old.utf8).write(to: file)
+
+        let ledger = UsageLedger(file: file)
+        #expect(ledger.summary(.hour, now: now).questions == 3, "nothing lost")
+        #expect(ledger.summary(.hour, now: now, kinds: [.llm]).questions == 3, "the kind asked most takes what says nothing of its kind")
+        #expect(ledger.summary(.hour, now: now, kinds: [.agent]).toolUses == 4)
+        #expect(ledger.summary(.hour, now: now, kinds: [.agent]).providers == ["codex": 1])
+        #expect(ledger.summary(.hour, now: now, kinds: [.decision]).decisions == 2)
+        #expect(ledger.summary(.hour, now: now, kinds: [.llm]).models["openAI/gpt-5"]?.cost == 0.25)
+
+        await ledger.save()
+        let text = try String(contentsOf: file, encoding: .utf8)
+        #expect(text.contains("\"version\":2"))
+        #expect(UsageLedger(file: file).slots == ledger.slots, "written by kind, and read back the same")
+    }
+
+    @Test func preferencesKeepTheKindsShownAndNeverNone() {
+        let suite = "MeralineTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let secrets = SecretStore(read: { _ in "" }, write: { _, _ in })
+        let preferences = Preferences(defaults: defaults, secrets: secrets, onDeviceModelAvailable: false)
+        #expect(preferences.usageKinds == Set(ProviderKind.allCases))
+        preferences.usageKinds = [.agent]
+        #expect(defaults.stringArray(forKey: "usage.kinds") == ["agent"])
+        preferences.usageKinds = []
+        #expect(preferences.usageKinds == [.agent], "the last kind stays")
+        #expect(Preferences(defaults: defaults, secrets: secrets, onDeviceModelAvailable: false).usageKinds == [.agent])
+        preferences.usageKinds = Set(ProviderKind.allCases)
+        #expect(defaults.object(forKey: "usage.kinds") == nil, "only a change is kept")
+    }
+
+    @Test func aChatAndItsGameCountUnderTheirModelsKind() async throws {
+        let usage = UsageLedger(file: nil)
+        let session = Support.session(ScriptedModel(["Hello there", "DRAPE"]), usage: usage)
+        await Support.play("What is up", in: session)
+        session.copyLastAnswer()
+        session.startGame(.longestWord)
+        await Support.settle(session)
+        let llm = usage.summary(.day, kinds: [.llm])
+        #expect(llm.questions == 1 && llm.answers == 1 && llm.answersCopied == 1)
+        #expect(llm.games["longestWord"]?.started == 1, "played against the LLM")
+        #expect(usage.summary(.day, kinds: [.agent, .decision]).isEmpty)
+    }
+
+    private static var utc: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }
+}

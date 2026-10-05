@@ -64,6 +64,7 @@ struct UsageInsightsTests {
         #expect(UsageInsights.compact(12_900, locale: Locale(identifier: "cs_CZ")) == "12,9K", "as the Mac writes numbers")
         #expect(UsageInsights.money(0) == "$0")
         #expect(UsageInsights.money(0.0001) == "less than a tenth of a cent")
+        #expect(UsageInsights.money(0.0001, short: true) == "<$0.001", "short enough for a tile")
         #expect(UsageInsights.money(0.003, locale: us) == "$0.003")
         #expect(UsageInsights.money(4.2, locale: us) == "$4.20")
         #expect(UsageInsights.money(123.4, locale: us) == "$123")

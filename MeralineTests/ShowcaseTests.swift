@@ -12,6 +12,7 @@ import WebKit
 ///   what-changed  a grammar fix of text selected in Mail, showing what it changed
 ///   usage         Settings › Usage over the last 30 days, from `DemoUsage`
 ///   usage-games   further down the same page: the games played, and a section for each
+///   usage-kinds   the same page counting the agents alone: the LLMs' and the decisions' tiles faded, left out
 ///   prompt        Settings › Prompt: the language, and the LLMs' and the agents' instructions
 ///   prompt-games  further down the same page: the games, one of them changed, and Why?
 ///   follow-ups    an answer about DNS with three follow-ups under it
@@ -94,8 +95,22 @@ struct ShowcaseTests {
                 await Showcase.settle(1)
                 Self.scroll(window, to: 170)
                 if Showcase.wants("usage") { try await stage.captureWindow(window, as: "usage") }
-                Self.scroll(window, to: 2_010)
+                Self.scroll(window, to: 2_404)
                 if Showcase.wants("usage-games") { try await stage.captureWindow(window, as: "usage-games") }
+            }
+            stage.close()
+        }
+    }
+
+    @Test func usageKinds() async throws {
+        guard Showcase.wants("usage-kinds") else { return }
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            try await Self.settings(on: stage, pane: .usage, defaults: ["usage.kinds": ["agent"]], fill: { DemoUsage.fill($0.usage) }) { window in
+                Self.select("Month", in: window)
+                await Showcase.settle(1)
+                Self.scroll(window, to: 170)
+                try await stage.captureWindow(window, as: "usage-kinds")
             }
             stage.close()
         }

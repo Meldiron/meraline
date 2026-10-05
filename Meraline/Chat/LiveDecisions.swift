@@ -395,7 +395,7 @@ final class LiveDecisions {
             took.input = UsageTally.estimatedTokens(in: (state.map(\.text) + asked.map(\.question)).joined(separator: "\n"))
             took.output = UsageTally.estimatedTokens(in: decided.map { $0.summary(unsureBelow: 0) }.joined(separator: "\n"))
         }
-        usage.record { tally in
+        usage.record(as: .decision) { tally in
             tally.decisions += decided.count
             tally.unsureDecisions += unsure
             tally.liveDecisions += decided.count

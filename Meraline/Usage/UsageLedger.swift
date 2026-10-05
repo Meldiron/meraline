@@ -72,9 +72,10 @@ nonisolated struct UsagePoint: Identifiable, Equatable, Sendable {
 }
 
 /// The count of how Meraline is used, in five-minute slots, kept on disk as counts alone: how many questions,
-/// answers, tokens, games, and so on happened when, never a word of them (see `UsageTally`). Settings › Usage
-/// reads it by the hour, day, week, month, and year. It lives in Application Support, the one thing Meraline
-/// keeps there, and Clear Usage Data in Settings deletes it.
+/// answers, tokens, games, and so on happened when, never a word of them (see `UsageTally`), each slot's apart by
+/// the kind of model they came from, the LLMs', the agents', or the decision models'. Settings › Usage reads it
+/// by the hour, day, week, month, and year, for the kinds it shows. It lives in Application Support, the one
+/// thing Meraline keeps there, and Clear Usage Data in Settings deletes it.
 @Observable
 final class UsageLedger {
     /// The slots' length: fine enough for the last hour's chart, coarse enough that a year of heavy use stays a
@@ -97,8 +98,8 @@ final class UsageLedger {
     /// The app's ledger. In the test host it stays in memory, as the tests' own ledgers do.
     static let shared = UsageLedger(file: MeralineApp.isHostingTests ? nil : defaultFile)
 
-    /// Each slot's tally, by the slot's number: the seconds since 1970 divided by `slotLength`.
-    private(set) var slots: [Int: UsageTally] = [:]
+    /// Each slot's tallies by kind, by the slot's number: the seconds since 1970 divided by `slotLength`.
+    private(set) var slots: [Int: [ProviderKind: UsageTally]] = [:]
     /// When the ledger was last written, for Settings to say.
     private(set) var savedAt: Date?
     /// OpenRouter's prices, as last fetched (see `PriceTable`), for costing answers whose provider names no cost.
@@ -115,11 +116,24 @@ final class UsageLedger {
         self.file = file
         guard let file, let data = try? Data(contentsOf: file) else { return }
         do {
-            let stored = try JSONDecoder().decode(StoredLedger.self, from: data)
-            slots = Dictionary(uniqueKeysWithValues: stored.slots.compactMap { key, tally in Int(key).map { ($0, tally) } })
+            let decoder = JSONDecoder()
+            let version = try decoder.decode(StoredVersion.self, from: data).version ?? 1
+            let stored: StoredLedger
+            if version < 2 {
+                // Before the counts were kept by kind, a slot was one tally: what it holds says whose it was.
+                let old = try decoder.decode(StoredLedgerV1.self, from: data)
+                stored = StoredLedger(slots: old.slots.mapValues { tally in
+                    Dictionary(uniqueKeysWithValues: tally.byKind().map { ($0.key.rawValue, $0.value) })
+                }, savedAt: old.savedAt, prices: old.prices)
+            } else {
+                stored = try decoder.decode(StoredLedger.self, from: data)
+            }
+            slots = Dictionary(uniqueKeysWithValues: stored.slots.compactMap { key, kinds in
+                Int(key).map { ($0, Dictionary(uniqueKeysWithValues: kinds.compactMap { kind, tally in ProviderKind(rawValue: kind).map { ($0, tally) } })) }
+            })
             savedAt = stored.savedAt
             prices = stored.prices
-            Log.usage.info("Usage ledger read: \(self.slots.count) slots, \(stored.prices?.prices.count ?? 0) prices")
+            Log.usage.info("Usage ledger read: \(self.slots.count) slots\(version < 2 ? ", parted by kind" : ""), \(stored.prices?.prices.count ?? 0) prices")
         } catch {
             Log.usage.error("Couldn’t read the usage ledger: \(error.localizedDescription)")
         }
@@ -133,22 +147,35 @@ final class UsageLedger {
         Date(timeIntervalSince1970: TimeInterval(slot) * slotLength)
     }
 
-    /// Counts something in the slot of `date`, then writes the ledger soon.
-    func record(at date: Date = .now, _ change: (inout UsageTally) -> Void) {
-        var tally = slots[Self.slot(of: date)] ?? UsageTally()
-        change(&tally)
-        slots[Self.slot(of: date)] = tally
+    /// Counts something in the slot of `date`, under the kind of model it came from, then writes the ledger soon.
+    /// Without a kind, what it counts says whose it is (see `UsageTally.byKind()`).
+    func record(at date: Date = .now, as kind: ProviderKind? = nil, _ change: (inout UsageTally) -> Void) {
+        var counted = UsageTally()
+        change(&counted)
+        guard !counted.isEmpty else { return }
+        let slot = Self.slot(of: date)
+        for (kind, part) in kind.map({ [$0: counted] }) ?? counted.byKind() {
+            slots[slot, default: [:]][kind] = (slots[slot]?[kind] ?? UsageTally()) + part
+        }
         scheduleSave()
     }
 
-    /// Everything counted in the window ending at `now`.
-    func summary(_ window: UsageWindow, now: Date = .now) -> UsageTally {
-        summary(from: now.addingTimeInterval(-window.length), to: now)
+    /// What a slot counted for `kinds`, nil when it counted nothing for them. Its kinds are summed in the
+    /// toggle's order.
+    private func tally(ofSlot slot: Int, kinds: Set<ProviderKind>) -> UsageTally? {
+        guard let counted = slots[slot] else { return nil }
+        let parts = ProviderKind.allCases.compactMap { kinds.contains($0) ? counted[$0] : nil }
+        return parts.isEmpty ? nil : parts.dropFirst().reduce(parts[0], +)
     }
 
-    /// Everything counted from `start` up to `end`, summed slot by slot from the earliest, so games' runs of wins
-    /// carry on from one slot into the next.
-    func summary(from start: Date, to end: Date) -> UsageTally {
+    /// Everything counted in the window ending at `now`, for `kinds`.
+    func summary(_ window: UsageWindow, now: Date = .now, kinds: Set<ProviderKind> = Set(ProviderKind.allCases)) -> UsageTally {
+        summary(from: now.addingTimeInterval(-window.length), to: now, kinds: kinds)
+    }
+
+    /// Everything counted from `start` up to `end`, for `kinds`, summed slot by slot from the earliest, so games'
+    /// runs of wins carry on from one slot into the next.
+    func summary(from start: Date, to end: Date, kinds: Set<ProviderKind> = Set(ProviderKind.allCases)) -> UsageTally {
         let first = Self.slot(of: start)
         let last = Self.slot(of: end)
         guard first <= last else { return UsageTally() }
@@ -158,7 +185,7 @@ final class UsageLedger {
             ? (first...last).filter { slots[$0] != nil }
             : slots.keys.filter { (first...last).contains($0) }.sorted()
         return counted.reduce(UsageTally()) { sum, slot in
-            sum + (slots[slot] ?? UsageTally())
+            sum + (tally(ofSlot: slot, kinds: kinds) ?? UsageTally())
         }
     }
 
@@ -172,15 +199,16 @@ final class UsageLedger {
 
     /// Everything ever counted.
     var allTime: UsageTally {
-        slots.keys.sorted().reduce(UsageTally()) { $0 + (slots[$1] ?? UsageTally()) }
+        let every = Set(ProviderKind.allCases)
+        return slots.keys.sorted().reduce(UsageTally()) { $0 + (tally(ofSlot: $1, kinds: every) ?? UsageTally()) }
     }
 
-    /// The window's chart, one point a bar, the last bar ending at `now`. Bars of days and months follow the
-    /// calendar, so a week's bars are its days and a year's its months, the last of each cut at `now`.
-    func series(_ window: UsageWindow, now: Date = .now, calendar: Calendar = .current) -> [UsagePoint] {
+    /// The window's chart for `kinds`, one point a bar, the last bar ending at `now`. Bars of days and months
+    /// follow the calendar, so a week's bars are its days and a year's its months, the last of each cut at `now`.
+    func series(_ window: UsageWindow, now: Date = .now, calendar: Calendar = .current, kinds: Set<ProviderKind> = Set(ProviderKind.allCases)) -> [UsagePoint] {
         let edges = Self.edges(of: window, now: now, calendar: calendar)
         return zip(edges, edges.dropFirst()).map { start, end in
-            UsagePoint(start: start, end: end, tally: summary(from: start, to: end.addingTimeInterval(-1)))
+            UsagePoint(start: start, end: end, tally: summary(from: start, to: end.addingTimeInterval(-1), kinds: kinds))
         }
     }
 
@@ -200,21 +228,21 @@ final class UsageLedger {
         }
     }
 
-    /// The calendar days with anything counted in the window, most recent last.
-    func activeDays(_ window: UsageWindow, now: Date = .now, calendar: Calendar = .current) -> [Date] {
+    /// The calendar days with anything counted for `kinds` in the window, most recent last.
+    func activeDays(_ window: UsageWindow, now: Date = .now, calendar: Calendar = .current, kinds: Set<ProviderKind> = Set(ProviderKind.allCases)) -> [Date] {
         let first = Self.slot(of: now.addingTimeInterval(-window.length))
         let last = Self.slot(of: now)
-        let days = Set(slots.keys.filter { (first...last).contains($0) && slots[$0]?.isEmpty == false }
+        let days = Set(slots.keys.filter { (first...last).contains($0) && tally(ofSlot: $0, kinds: kinds)?.isEmpty == false }
             .map { calendar.startOfDay(for: Self.start(ofSlot: $0)) })
         return days.sorted()
     }
 
-    /// The most days in a row with something counted, in the window.
-    func longestStreak(_ window: UsageWindow, now: Date = .now, calendar: Calendar = .current) -> Int {
+    /// The most days in a row with something counted for `kinds`, in the window.
+    func longestStreak(_ window: UsageWindow, now: Date = .now, calendar: Calendar = .current, kinds: Set<ProviderKind> = Set(ProviderKind.allCases)) -> Int {
         var longest = 0
         var run = 0
         var previous: Date?
-        for day in activeDays(window, now: now, calendar: calendar) {
+        for day in activeDays(window, now: now, calendar: calendar, kinds: kinds) {
             if let previous, calendar.date(byAdding: .day, value: 1, to: previous) == day {
                 run += 1
             } else {
@@ -226,21 +254,22 @@ final class UsageLedger {
         return longest
     }
 
-    /// The hour of the day (0 to 23) with the most questions in the window, or nil when there were none.
-    func busiestHour(_ window: UsageWindow, now: Date = .now, calendar: Calendar = .current) -> Int? {
-        busiest(window, now: now) { calendar.component(.hour, from: $0) }
+    /// The hour of the day (0 to 23) with the most questions for `kinds` in the window, or nil when there were none.
+    func busiestHour(_ window: UsageWindow, now: Date = .now, calendar: Calendar = .current, kinds: Set<ProviderKind> = Set(ProviderKind.allCases)) -> Int? {
+        busiest(window, now: now, kinds: kinds) { calendar.component(.hour, from: $0) }
     }
 
-    /// The weekday (1 is Sunday, as `Calendar` counts) with the most questions in the window.
-    func busiestWeekday(_ window: UsageWindow, now: Date = .now, calendar: Calendar = .current) -> Int? {
-        busiest(window, now: now) { calendar.component(.weekday, from: $0) }
+    /// The weekday (1 is Sunday, as `Calendar` counts) with the most questions for `kinds` in the window.
+    func busiestWeekday(_ window: UsageWindow, now: Date = .now, calendar: Calendar = .current, kinds: Set<ProviderKind> = Set(ProviderKind.allCases)) -> Int? {
+        busiest(window, now: now, kinds: kinds) { calendar.component(.weekday, from: $0) }
     }
 
-    private func busiest(_ window: UsageWindow, now: Date, by part: (Date) -> Int) -> Int? {
+    private func busiest(_ window: UsageWindow, now: Date, kinds: Set<ProviderKind>, by part: (Date) -> Int) -> Int? {
         let first = Self.slot(of: now.addingTimeInterval(-window.length))
         let last = Self.slot(of: now)
         var counts: [Int: Int] = [:]
-        for (slot, tally) in slots where (first...last).contains(slot) {
+        for slot in slots.keys where (first...last).contains(slot) {
+            guard let tally = tally(ofSlot: slot, kinds: kinds) else { continue }
             let activity = tally.questions + tally.rounds
             guard activity > 0 else { continue }
             counts[part(Self.start(ofSlot: slot)), default: 0] += activity
@@ -301,7 +330,9 @@ final class UsageLedger {
     /// Writes the ledger now.
     func save() async {
         guard let file else { return }
-        let stored = StoredLedger(slots: Dictionary(uniqueKeysWithValues: slots.map { (String($0.key), $0.value) }), savedAt: .now, prices: prices)
+        let stored = StoredLedger(slots: Dictionary(uniqueKeysWithValues: slots.map { slot, kinds in
+            (String(slot), Dictionary(uniqueKeysWithValues: kinds.map { ($0.key.rawValue, $0.value) }))
+        }), savedAt: .now, prices: prices)
         do {
             let data = try JSONEncoder().encode(stored)
             try await Task.detached(priority: .utility) {
@@ -314,11 +345,23 @@ final class UsageLedger {
         }
     }
 
-    /// The file's shape. A slot's number is its key, as text, since JSON keys are.
+    /// The file's shape. A slot's number is its key, as text, since JSON keys are, and in it each kind's tally
+    /// under the kind's name.
     private struct StoredLedger: Codable {
-        var version = 1
+        var version = 2
+        var slots: [String: [String: UsageTally]]
+        var savedAt: Date
+        var prices: PriceTable?
+    }
+
+    /// The file's shape before the counts were kept by kind: one tally a slot.
+    private struct StoredLedgerV1: Decodable {
         var slots: [String: UsageTally]
         var savedAt: Date
         var prices: PriceTable?
+    }
+
+    private struct StoredVersion: Decodable {
+        var version: Int?
     }
 }

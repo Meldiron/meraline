@@ -406,6 +406,50 @@ nonisolated struct UsageTally: Codable, Equatable, Sendable {
     /// Whether anything at all was counted.
     var isEmpty: Bool { self == UsageTally() }
 
+    /// This tally parted by the kind of model each count came from, for a ledger written before it kept them
+    /// apart, or for a count recorded without saying (see `UsageLedger.record(at:as:_:)`). Questions to a
+    /// provider and a model's tokens go to its kind, what only agents or decision models do to theirs, and the
+    /// rest, which says nothing of its kind, to the kind asked most, since a five-minute slot is nearly always
+    /// one kind's; with nothing to tell, the LLMs'.
+    func byKind() -> [ProviderKind: UsageTally] {
+        var weights: [ProviderKind: Int] = [:]
+        for (key, count) in providers {
+            if let kind = Provider(rawValue: key)?.kind { weights[kind, default: 0] += count }
+        }
+        if weights.isEmpty {
+            for (key, model) in models {
+                if let kind = ModelTally.provider(of: key)?.kind { weights[kind, default: 0] += model.answers }
+            }
+        }
+        let order = ProviderKind.allCases
+        let main = weights.max { a, b in
+            a.value != b.value ? a.value < b.value : order.firstIndex(of: a.key)! > order.firstIndex(of: b.key)!
+        }?.key ?? (agentRuns > 0 ? .agent : decisions > 0 ? .decision : .llm)
+
+        var parts: [ProviderKind: UsageTally] = [:]
+        var rest = self
+        rest.providers = [:]
+        rest.models = [:]
+        for (key, count) in providers {
+            parts[Provider(rawValue: key)?.kind ?? main, default: UsageTally()].providers[key] = count
+        }
+        for (key, model) in models {
+            parts[ModelTally.provider(of: key)?.kind ?? main, default: UsageTally()].models[key] = model
+        }
+        var agent = parts[.agent] ?? UsageTally()
+        (agent.agentRuns, agent.toolUses, agent.mcpUses) = (agentRuns, toolUses, mcpUses)
+        (agent.asksAllowed, agent.asksDenied, agent.questionsAnswered, agent.filesHandedOver) = (asksAllowed, asksDenied, questionsAnswered, filesHandedOver)
+        (rest.agentRuns, rest.toolUses, rest.mcpUses) = (0, 0, 0)
+        (rest.asksAllowed, rest.asksDenied, rest.questionsAnswered, rest.filesHandedOver) = (0, 0, 0, 0)
+        parts[.agent] = agent
+        var decision = parts[.decision] ?? UsageTally()
+        (decision.decisions, decision.unsureDecisions, decision.liveDecisions) = (decisions, unsureDecisions, liveDecisions)
+        (rest.decisions, rest.unsureDecisions, rest.liveDecisions) = (0, 0, 0)
+        parts[.decision] = decision
+        parts[main] = (parts[main] ?? UsageTally()) + rest
+        return parts.filter { !$0.value.isEmpty }
+    }
+
     /// A field a later version adds reads as zero from an older file, so the ledger outlives its versions.
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)

@@ -11,6 +11,7 @@
 #   longest-word  Longest Word once the model has picked its word: the nine letters in glass bubbles
 #   usage         Settings › Usage over the last 30 days, from made-up counts (MeralineTests/DemoUsage.swift)
 #   usage-games   further down the same page: the games played, and a section for each
+#   usage-kinds   the same page counting the agents alone: the LLMs' and the decisions' tiles faded, left out
 #   prompt        Settings › Prompt: the language, and the LLMs' and the agents' instructions
 #   prompt-games  further down the same page: the games, one of them changed, and Why?
 #   follow-ups    an answer about DNS with three follow-ups under it

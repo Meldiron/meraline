@@ -124,7 +124,7 @@ struct SettingsView: View {
         case .general: GeneralPane(preferences: preferences) { navigation.selection = .permissions }
         case .prompt: PromptPane(preferences: preferences)
         case .permissions: PermissionsPane(preferences: preferences)
-        case .usage: UsagePane(ledger: session.usage)
+        case .usage: UsagePane(ledger: session.usage, preferences: preferences)
         case .provider(let provider): ProviderPane(provider: provider, preferences: preferences).id(provider)
         case .softwareUpdate: SoftwareUpdatePane(updater: updater)
         case .about: AboutPane(preferences: preferences, updater: updater, session: session)

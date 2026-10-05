@@ -2,8 +2,8 @@ import Foundation
 @testable import Meraline
 
 /// Five made-up weeks of using Meraline, for the showcase's pictures of Settings › Usage: a few questions most
-/// working days, an agent now and then, and games in the evenings and over lunch. Counted through the ledger as
-/// the app counts, and the same every time, ending now.
+/// working days, an agent now and then, decisions about mail, and games in the evenings and over lunch. Counted
+/// through the ledger as the app counts, each under its kind of model, and the same every time, ending now.
 @MainActor
 enum DemoUsage {
     private struct Model {
@@ -26,6 +26,7 @@ enum DemoUsage {
 
     static func fill(_ ledger: UsageLedger, now: Date = .now, calendar: Calendar = .current) {
         var dice = GameDice(seed: 7)
+        var decisionDice = GameDice(seed: 11)
         let today = calendar.startOfDay(for: now)
         for back in (0...35).reversed() {
             guard let day = calendar.date(byAdding: .day, value: -back, to: today) else { continue }
@@ -38,12 +39,16 @@ enum DemoUsage {
                     guard moment <= now else { break }
                     guard chance(0.05 * weight(ofHour: hour) * busy, &dice) else { continue }
                     if chance(0.12, &dice) {
-                        ledger.record(at: moment) { runAgent(&$0, &dice) }
+                        ledger.record(at: moment, as: .agent) { runAgent(&$0, &dice) }
                     } else {
                         let questions = [1, 1, 1, 2, 3].randomElement(using: &dice) ?? 1
-                        ledger.record(at: moment) { tally in
+                        ledger.record(at: moment, as: .llm) { tally in
                             for question in 0..<questions { ask(&tally, startingChat: question == 0, &dice) }
                         }
+                    }
+                    // Mail sorted now and then, by its own draw so the rest stays as it was.
+                    if chance(0.2, &decisionDice) {
+                        ledger.record(at: moment, as: .decision) { decide(&$0, &decisionDice) }
                     }
                 }
             }
@@ -54,7 +59,7 @@ enum DemoUsage {
                 var moment = day.addingTimeInterval(TimeInterval(hour * 3_600 + Int.random(in: 0..<12, using: &dice) * 300))
                 if moment > now { moment = now.addingTimeInterval(-TimeInterval(Int.random(in: 1..<48, using: &dice) * 300)) }
                 let game = [Game.longestWord, .longestWord, .longestWord, .rhymeDuel, .oddOneOut, .categories].randomElement(using: &dice) ?? .longestWord
-                ledger.record(at: moment) { play(game, in: &$0, &dice) }
+                ledger.record(at: moment, as: .llm) { play(game, in: &$0, &dice) }
             }
         }
     }
@@ -144,6 +149,32 @@ enum DemoUsage {
         entry.output += Int(1_900 * scale)
         entry.cost += 0.07 * scale
         entry.costedAnswers += 1
+        tally.models[key] = entry
+    }
+
+    /// A question to Jev about a mail or two, some of them about each line, and some answered as you typed.
+    private static func decide(_ tally: inout UsageTally, _ dice: inout GameDice) {
+        let decided = [1, 1, 1, 2, 6, 12].randomElement(using: &dice) ?? 1
+        tally.questions += 1
+        tally.answers += 1
+        tally.chats += 1
+        tally.decisions += decided
+        tally.unsureDecisions += chance(0.15, &dice) ? 1 : 0
+        if chance(0.3, &dice) { tally.liveDecisions += decided }
+        tally.wordsAsked += Int.random(in: 3...9, using: &dice)
+        tally.selections += 1
+        tally.secondsWaited += Double.random(in: 0.2...0.6, using: &dice)
+        tally.waits += 1
+        tally.providers[Provider.typeSafe.rawValue, default: 0] += 1
+        let input = Int.random(in: 300...2_400, using: &dice) * decided
+        let key = UsageTally.ModelTally.key(provider: .typeSafe, model: Provider.typeSafe.defaultModel)
+        var entry = tally.models[key] ?? UsageTally.ModelTally()
+        entry.answers += 1
+        entry.reportedAnswers += 1
+        entry.input += input
+        entry.output += 4 * decided
+        entry.cost += ModelPrice.jev.cost(of: .init(input: input))
+        entry.pricedAnswers += 1
         tally.models[key] = entry
     }
 

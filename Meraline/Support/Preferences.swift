@@ -174,6 +174,20 @@ final class Preferences {
             Log.settings.info("Hide from screen sharing \(hidesFromScreenSharing ? "on" : "off")")
         }
     }
+    /// The kinds of model Settings › Usage counts: the LLMs, the agents, the decision models, or some of them, never
+    /// none. Every kind until changed, and only a change is kept.
+    var usageKinds: Set<ProviderKind> {
+        didSet {
+            if usageKinds.isEmpty { usageKinds = oldValue }
+            guard usageKinds != oldValue else { return }
+            if usageKinds.count == ProviderKind.allCases.count {
+                defaults.removeObject(forKey: "usage.kinds")
+            } else {
+                defaults.set(ProviderKind.allCases.filter(usageKinds.contains).map(\.rawValue), forKey: "usage.kinds")
+            }
+            Log.settings.info("Usage counts \(ProviderKind.allCases.filter(self.usageKinds.contains).map(\.title).joined(separator: ", "))")
+        }
+    }
     private(set) var providerSettings: [Provider: ProviderSettings]
 
     /// `onDeviceModelAvailable` decides whether Apple Intelligence starts turned on. It is on by default
@@ -232,6 +246,8 @@ final class Preferences {
         language = defaults.string(forKey: "language").flatMap(AnswerLanguage.init(rawValue:)) ?? .english
         updateChannel = defaults.string(forKey: "updateChannel").flatMap(UpdateChannel.init(rawValue:)) ?? .stable
         hidesFromScreenSharing = defaults.bool(forKey: "hidesFromScreenSharing")
+        let usageKinds = Set((defaults.stringArray(forKey: "usage.kinds") ?? []).compactMap(ProviderKind.init(rawValue:)))
+        self.usageKinds = usageKinds.isEmpty ? Set(ProviderKind.allCases) : usageKinds
         providerSettings = Dictionary(uniqueKeysWithValues: Provider.allCases.map { provider in
             (provider, ProviderSettings(
                 model: defaults.string(forKey: "\(provider.rawValue).model") ?? provider.defaultModel,
