@@ -4,16 +4,23 @@ Notable changes in each Meraline release, newest first.
 
 When a version has an entry here, the Release workflow uses it as the release notes on GitHub and in the in-app update window. A version without an entry gets the list of commits since the previous tag instead. Headings are `## vX.Y.Z - YYYY-MM-DD`.
 
-## Unreleased
+## v1.12.0 - 2026-10-05
 
 ### Presets
 
 - **Presets are a list you rearrange by dragging.** Settings › Prompt shows each mode's presets as rows: the icon, the name, and the start of the text. Drag a row to change the order the capsules come in above an empty chat. Edit…, a double-click, or the row's menu opens the preset in a sheet with its icon, name, and text, and Save keeps the changes; Duplicate makes a copy to start from. Deleting a preset and Restore Defaults now ask first.
+
+![Settings › Prompt: the LLM presets as rows, Fix Grammar, Anti-Slop, Anonymize, Translate, and Explain Simply, each with its icon, the start of its text, Edit…, and a handle to drag it by](https://raw.githubusercontent.com/Meldiron/meraline/v1.12.0/docs/screenshots/prompt-presets-light.png)
+![The sheet of the Urgent? preset: its icon with a pencil to change it, its name, its question, Is this urgent?, and Delete Preset…, Cancel, and Save](https://raw.githubusercontent.com/Meldiron/meraline/v1.12.0/docs/screenshots/preset-editor-light.png)
 - **An icon search that finds icons.** Click the icon in a preset's sheet and type what you want. The search covers every SF Symbol on your Mac, by its name, Apple's keywords, and everyday words, so mail, urgent, idea, money, and bug find envelopes, warning signs, light bulbs, dollar signs, and ants, even half typed. With nothing typed it shows suggestions, then Apple's categories to browse. Return takes the first icon found.
+
+![A preset's sheet with its icon search open: urgent typed, and 41 icons found, warning signs, exclamation marks, and bells, the first one chosen](https://raw.githubusercontent.com/Meldiron/meraline/v1.12.0/docs/screenshots/preset-icons-light.png)
 
 ### Usage
 
 - **See the LLMs, the agents, or the decisions alone.** Settings › Usage has a tile for each kind of model under the span, with what it cost and how much you used it. Click one to leave it out of every number, chart, and row below, or back in; Option-click it, or pick Show Only from its menu, to see it alone, and Show All brings every kind back. Meraline remembers what you chose. Usage counted before this version is sorted into kinds by what it holds.
+
+![Settings › Usage with only the Agents tile chosen: Counting agents only, Show All beside it, and the questions, answers, tokens, and cost of the agents alone over the last 30 days](https://raw.githubusercontent.com/Meldiron/meraline/v1.12.0/docs/screenshots/usage-kinds-light.png)
 
 ### Fixes
 
