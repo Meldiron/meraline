@@ -4,6 +4,12 @@ Notable changes in each Meraline release, newest first.
 
 When a version has an entry here, the Release workflow uses it as the release notes on GitHub and in the in-app update window. A version without an entry gets the list of commits since the previous tag instead. Headings are `## vX.Y.Z - YYYY-MM-DD`.
 
+## Unreleased
+
+### Fixes
+
+- A long text pasted into the Context card no longer makes the window tall and mostly empty. The card stops at a few lines and the text scrolls inside it.
+
 ## v1.11.0 - 2026-10-03
 
 ### Decision

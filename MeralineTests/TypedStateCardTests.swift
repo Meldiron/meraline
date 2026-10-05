@@ -46,6 +46,28 @@ struct TypedStateCardTests {
         }
     }
 
+    /// A long paste scrolls inside the field, and the card stops at the field's tallest. The hidden copy of the text
+    /// that sizes the field once sized the card too, so a few hundred words laid it out at the whole text's height:
+    /// a window-tall card, empty under the field's few lines.
+    @Test func aLongTextScrollsInsideTheCard() async throws {
+        let line = "Fix if the alert keeps firing: add a short retry with backoff on 502/503 in the ClickHouse adapter."
+        var heights: [CGFloat] = []
+        for initial in [line, Array(repeating: line, count: 30).joined(separator: "\n")] {
+            var text = initial
+            let binding = Binding(get: { text }, set: { text = $0 })
+            let focus = FocusState<Bool>()
+            let host = NSHostingView(rootView: TypedStateCard(text: binding, isDeciding: true, isFocused: focus.projectedValue, remove: {}).frame(width: 600))
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 300), styleMask: [.borderless], backing: .buffered, defer: false)
+            window.contentView = host
+            host.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(300))
+            host.layoutSubtreeIfNeeded()
+            heights.append(host.fittingSize.height)
+        }
+        #expect(heights[1] > heights[0] + 80, "the field grows with the text: \(heights)")
+        #expect(heights[1] < 240, "and the card stops at the field's tallest: \(heights)")
+    }
+
     @Test func aColonAtTheEndOfTheQuestionOpensTheCard() throws {
         let preferences = Support.preferences()
         let model = ScriptedModel()

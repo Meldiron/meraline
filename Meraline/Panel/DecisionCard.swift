@@ -385,15 +385,6 @@ struct TypedStateCard: View {
             }
             .lineLimit(1)
             ZStack(alignment: .topLeading) {
-                // The text laid out the way the editor lays it out, never drawn, so the editor fits it.
-                Text(text.isEmpty ? " " : text)
-                    .font(Self.font)
-                    .lineSpacing(2)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, Self.inset)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .hidden()
-                    .onGeometryChange(for: CGFloat.self, of: \.size.height) { textHeight = $0 }
                 if text.isEmpty {
                     Text(isDeciding ? "Paste or type the text to decide about…" : "Paste or type text to send with your question…")
                         .font(Self.font)
@@ -415,6 +406,20 @@ struct TypedStateCard: View {
                     .focused(isFocused)
                     .frame(height: min(max(textHeight + 8, 40), Self.tallest) - Self.inset * 2)
                     .padding(.vertical, Self.inset)
+            }
+            .background(alignment: .top) {
+                // The text laid out the way the editor lays it out, never drawn, so the editor fits it. Behind the
+                // field and at its own height, so a long text sizes only the editor, which scrolls past its tallest;
+                // beside it, the copy laid the card out at the whole text's height, empty under the field.
+                Text(text.isEmpty ? " " : text)
+                    .font(Self.font)
+                    .lineSpacing(2)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, Self.inset)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .hidden()
+                    .onGeometryChange(for: CGFloat.self, of: \.size.height) { textHeight = $0 }
             }
             .padding(.horizontal, 4)
             .background(.primary.opacity(0.04), in: .rect(cornerRadius: 10))
