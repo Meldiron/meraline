@@ -110,4 +110,19 @@ struct SymbolCatalogTests {
         }
         #expect(elapsed < .milliseconds(700), "\(elapsed)")
     }
+
+    /// The icons to browse, Suggested and then every category. Many icons are in more than one of them, and the
+    /// grid once knew its cells by the icon's name alone: SwiftUI found the same id on several cells and warned
+    /// of undefined results each time the picker opened.
+    @Test func everyIconToBrowseHasAnIdOfItsOwn() throws {
+        let catalog = try #require(SymbolCatalog.system())
+        var cells = SymbolPicker.cells(PromptPreset.symbols.map(catalog.current), in: SymbolPicker.suggestedSection)
+        for category in catalog.categories {
+            cells += SymbolPicker.cells(category.names, in: category.id)
+        }
+        #expect(Set(cells.map(\.id)).count == cells.count)
+        #expect(Set(cells.map(\.name)).count < cells.count, "the same icon shows in several sections")
+        #expect(!catalog.categories.map(\.id).contains(SymbolPicker.suggestedSection))
+        #expect(SymbolPicker.cells(["star", "bolt", "star"], in: "one").map(\.id) == ["one/star", "one/bolt"], "and once in each")
+    }
 }

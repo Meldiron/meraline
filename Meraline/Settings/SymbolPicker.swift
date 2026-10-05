@@ -89,19 +89,38 @@ struct SymbolPicker: View {
     private var browse: some View {
         LazyVGrid(columns: grid, spacing: Self.spacing) {
             Section {
-                ForEach(suggested, id: \.self) { cell($0) }
+                ForEach(Self.cells(suggested, in: Self.suggestedSection)) { cell($0.name) }
             } header: {
                 header("Suggested")
             }
             ForEach(catalog.categories) { category in
                 Section {
-                    ForEach(category.names, id: \.self) { cell($0) }
+                    ForEach(Self.cells(category.names, in: category.id)) { cell($0.name) }
                 } header: {
                     header(category.title)
                 }
             }
         }
         .padding([.horizontal, .bottom], Self.padding)
+    }
+
+    /// One icon in one section of the icons to browse. An icon shows in every section it belongs to, Suggested
+    /// and its categories, and the grid tells its cells apart by their ids, so a cell is known by its section as
+    /// well as its icon: by the name alone, SwiftUI found the same id on several cells and warned of undefined
+    /// results.
+    nonisolated struct BrowseCell: Identifiable, Equatable {
+        let section: String
+        let name: String
+
+        var id: String { "\(section)/\(name)" }
+    }
+
+    nonisolated static let suggestedSection = "suggested"
+
+    /// The cells of a section, each icon once.
+    nonisolated static func cells(_ names: [String], in section: String) -> [BrowseCell] {
+        var seen: Set<String> = []
+        return names.filter { seen.insert($0).inserted }.map { BrowseCell(section: section, name: $0) }
     }
 
     private func header(_ title: String) -> some View {
