@@ -11,6 +11,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - **Show What Changed no longer freezes Meraline under VoiceOver.** With VoiceOver or any other accessibility tool reading the window, showing what an answer changed sent macOS 27 into a loop that never ended, and Meraline had to be force quit.
 - ⌘0 puts answers back to actual size on keyboards where 0 takes Shift, such as Czech and AZERTY ones. It goes by the key's place now, as ⌘1 to ⌘9 do.
 - ⌘1, ⌘2, and ⌘3 switch between LLM, Agent, and Decision on keyboards where the digits take Shift, such as Czech and AZERTY ones. They go by the key's place now; before, only ⇧⌘2 worked there.
+- **You can scroll up while an answer is still coming.** The conversation follows a growing answer only while you are at its end. Scroll up to read from the start and it stays where you put it; before, every new word pulled you back down, and so did the follow-ups when they arrived. Scroll back to the end, or ask something, and it follows again.
 
 ## v1.12.0 - 2026-10-05
 

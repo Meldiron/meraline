@@ -40,6 +40,10 @@ struct ChatPanelView: View {
     /// The card for context written by hand (`TypedStateCard`), which takes the keyboard as it opens.
     @FocusState private var isStateFocused: Bool
     @State private var conversationHeight: CGFloat = 0
+    /// Whether the conversation keeps to its end as it grows: it does while the reader is there. Scrolling up lets
+    /// go, so a long answer can be read from its start while the rest still comes; scrolling back down to the end,
+    /// or asking, takes hold again.
+    @State private var followsEnd = true
     @State private var isDropTargeted = false
     /// How tall the card is with its margins, where an open panel of actions reaches, and the room the window
     /// makes above the card for a panel that opens upward past the card's top.
@@ -466,8 +470,12 @@ struct ChatPanelView: View {
         .frame(minHeight: 60)
     }
 
-    /// The target pinned to the very bottom of the conversation, scrolled into view whenever it grows.
+    /// The target pinned to the very bottom of the conversation, scrolled into view as it grows while the reader is
+    /// at its end (`followsEnd`).
     private static let bottomAnchor = "conversation-bottom"
+    /// How far above the conversation's very end still counts as being there: the padding under the bottom
+    /// target, where scrolling to it stops, and a few points for a hand at rest on the trackpad.
+    private static let endSlack: CGFloat = 20
 
     private var conversation: some View {
         ScrollViewReader { proxy in
@@ -530,9 +538,27 @@ struct ChatPanelView: View {
             .frame(maxHeight: layout.maximumConversationHeight)
             .defaultScrollAnchor(.bottom)
             .scrollEdgeEffectStyle(.soft, for: .vertical)
+            // Only the reader moves the offset while both sizes stand still: text coming in, a card unfolding, and
+            // the window's own growth change a size, and say nothing about where the reader wants to be.
+            .onScrollGeometryChange(for: ScrollSpot.self) { geometry in
+                ScrollSpot(offset: geometry.contentOffset.y, content: geometry.contentSize.height, container: geometry.containerSize.height)
+            } action: { old, new in
+                guard old.content == new.content, old.container == new.container else { return }
+                if new.offset + new.container >= new.content - Self.endSlack {
+                    followsEnd = true
+                } else if new.offset < old.offset {
+                    followsEnd = false
+                }
+            }
+            // A question asked, or another chat in this one's place, shows its end.
+            .onChange(of: session.turns.last?.id) { followsEnd = true }
             // .defaultScrollAnchor(.bottom, for: .sizeChanges) drifted after a few answers; scroll the bottom marker
-            // into view on every height change instead, so the newest answer is always shown.
-            .onChange(of: conversationHeight) { proxy.scrollTo(Self.bottomAnchor, anchor: .bottom) }
+            // into view when the height changes instead, so the newest of an answer shows as it comes. Not once
+            // the reader has scrolled away from the end: the scroll used to come on every change, which pulled
+            // them back down with each word of a streaming answer, and again when the follow-ups arrived.
+            .onChange(of: conversationHeight) {
+                if followsEnd { proxy.scrollTo(Self.bottomAnchor, anchor: .bottom) }
+            }
         }
     }
 
@@ -627,6 +653,14 @@ struct ChatPanelView: View {
         }
         return accepted
     }
+}
+
+/// Where the conversation's scroll view stands: how far down it is scrolled, how tall its content is, and how
+/// much of it shows.
+private nonisolated struct ScrollSpot: Equatable {
+    let offset: CGFloat
+    let content: CGFloat
+    let container: CGFloat
 }
 
 /// The sparkle at the start of the input row. A click opens its panel of actions: the ready providers of the
