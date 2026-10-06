@@ -329,9 +329,11 @@ private struct Emergence: ViewModifier {
 /// where a chat reopens and Clear Recent Chats forgets them all after asking. When they are forgotten, by
 /// that or by a shake of the window, the capsule says so for a moment, looking like the mode toggle's chosen
 /// segment (a pink clock, the words in the primary color, faint pink glass): the count rolls down to nothing
-/// and the clock bounces. After a shake, which asks nothing first, it says "Forgotten · Undo" for as long as
-/// the chats can come back (`ChatSession.shakeUndoWindow`), and a click then brings them back instead of
-/// opening the panel. A stashed draft gets the same moment, saying Stashed, so you see where it went.
+/// and the clock bounces. After a shake, which asks nothing first, it says Undo for as long as the chats can
+/// come back (`ChatSession.shakeUndoWindow`), and a click then brings them back instead of opening the panel.
+/// One short word: the row keeps room for the mode toggle and, in Decision mode, the scope and the answers,
+/// and a longer caption squeezed the toggle. A stashed draft gets the same moment, saying Stashed, so you see
+/// where it went.
 private struct HistoryButton: View {
     let count: Int
     let forgetting: PanelLayout.Forgetting?
@@ -389,14 +391,14 @@ private struct HistoryButton: View {
         .onChange(of: forgetting) { _, forgetting in
             guard let forgetting else { return }
             if forgetting.count > 0, canUndo {
-                say("Forgotten · Undo", for: ChatSession.shakeUndoWindow)
+                say("Undo", for: ChatSession.shakeUndoWindow)
             } else {
                 say(forgetting.count > 0 ? "Forgotten" : "Nothing to forget")
             }
         }
         // The chats' time to come back ran out, or they came back: either way the count is the news.
         .onChange(of: canUndo) { _, canUndo in
-            if !canUndo, caption == "Forgotten · Undo" { caption = nil }
+            if !canUndo, caption == "Undo" { caption = nil }
         }
         .onChange(of: stashNotice) { say("Stashed") }
     }
