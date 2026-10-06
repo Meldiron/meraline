@@ -264,6 +264,7 @@ struct ChatPanelView: View {
                         PromptPresets(
                             presets: presets, draft: session.draft, isShown: !hasConversation && preferences.mode == kind,
                             sends: !session.hasNoContext, decidesLive: kind == .decision,
+                            live: kind == .decision && session.liveDecisions.isOn ? session.liveDecisions.enabledPresets : [],
                             // Decision's row ends in the circle that asks every preset at once.
                             askAll: kind == .decision ? { session.askPresets(presets) } : nil,
                             canAskAll: kind == .decision && session.canAskPresets(among: presets)

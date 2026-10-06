@@ -187,11 +187,28 @@ struct PromptPresetTests {
         #expect(deciding.turns.isEmpty)
         #expect(deciding.prepare(decisions[2], among: decisions), "another preset joins, and Live stays on")
         #expect(deciding.liveDecisions.enabledPresets == ["urgent", "tone"])
-        #expect(deciding.prepare(decisions[0], among: decisions), "once more leaves it on")
-        #expect(deciding.liveDecisions.enabledPresets == ["urgent", "tone"])
+
+        // A Shift-click on a preset asked already stops asking it; the last one off closes the empty card, Live
+        // with it, and the input takes the keyboard back, so two Shift-clicks leave things as they were.
+        #expect(deciding.prepare(decisions[0], among: decisions), "once more stops asking it, and the card stays with the other, keyboard and all")
+        #expect(deciding.liveDecisions.enabledPresets == ["tone"] && deciding.liveDecisions.isOn && deciding.typedState == "")
+        #expect(!deciding.prepare(decisions[2], among: decisions), "the last one off closes the empty card")
+        #expect(deciding.typedState == nil && !deciding.liveDecisions.isOn && deciding.liveDecisions.enabledPresets.isEmpty)
+        #expect(deciding.prepare(decisions[0], among: decisions), "and a Shift-click opens it again")
+        #expect(deciding.liveDecisions.isOn && deciding.liveDecisions.enabledPresets == ["urgent"] && deciding.typedState == "")
         deciding.typedState = "Production is down"
         try await Task.sleep(for: .milliseconds(250))
-        #expect(asked.ids.last == ["preset.urgent", "preset.tone"], "the presets are asked about the text as it is typed")
+        #expect(asked.ids.last == ["preset.urgent"], "the preset is asked about the text as it is typed")
+        #expect(deciding.prepare(decisions[0], among: decisions), "with text on the card, the last one off only stops asking it, and the card keeps the keyboard")
+        #expect(deciding.typedState == "Production is down" && deciding.liveDecisions.isOn && deciding.liveDecisions.enabledPresets.isEmpty)
+
+        // A kept question holds the empty card open too.
+        deciding.typedState = ""
+        deciding.draft = "Is this a scam?"
+        deciding.keepLiveQuestion()
+        #expect(deciding.prepare(decisions[0], among: decisions) && deciding.prepare(decisions[0], among: decisions), "on, then off")
+        #expect(deciding.typedState == "" && deciding.liveDecisions.isOn && deciding.liveDecisions.keptQuestions.count == 1)
+        #expect(PromptPreset.exists("bolt.slash.fill"), "the crossed bolt the capsule shows for a Shift-click that stops asking")
     }
 
     @MainActor

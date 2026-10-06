@@ -173,15 +173,29 @@ extension ChatSession {
         return put(preset, among: presets)
     }
 
-    /// A Shift-click on a preset's capsule, which never sends. In Decision mode the Context card decides live with
-    /// the preset from now on: Live goes on if it was off, the preset is asked (see `LiveDecisions`), and the card
-    /// opens for the text, or is found open. In LLM and Agent modes the preset's text goes in the input to add
-    /// to, as a click puts it with nothing to work on, whatever the draft holds. Says whether the card should take
-    /// the keyboard.
+    /// A Shift-click on a preset's capsule, which never sends. In Decision mode it is a toggle: the Context card
+    /// decides live with the preset from now on, Live going on if it was off, the preset asked (see
+    /// `LiveDecisions`), and the card opened for the text, or found open, with the keyboard; and a Shift-click on
+    /// a preset asked already stops asking it. When that leaves nothing asked live, no preset on and no question
+    /// kept, and nothing written on the card, the card closes and Live goes off, as before the first Shift-click,
+    /// and the input takes the keyboard back; a card with text, or another preset or a kept question on, stays.
+    /// In LLM and Agent modes the preset's text goes in the input to add to, as a click puts it with nothing to
+    /// work on, whatever the draft holds. Says whether the card should take the keyboard.
     @discardableResult
     func prepare(_ preset: PromptPreset, among presets: [PromptPreset]) -> Bool {
         guard !isStreaming, !isPlaying else { return false }
         guard isDeciding else { return put(preset, among: presets) }
+        if liveDecisions.isOn, liveDecisions.enabledPresets.contains(preset.id) {
+            liveDecisions.enabledPresets.remove(preset.id)
+            let closes = liveDecisions.enabledPresets.isEmpty && liveDecisions.keptQuestions.isEmpty && typedState?.trimmed.isEmpty == true
+            if closes {
+                liveDecisions.toggle()
+                typedState = nil
+            }
+            refreshLiveDecisions(atOnce: true)
+            Log.panel.info("Preset no longer asked live\(closes ? ", and the Context card closed" : "")")
+            return !closes && typedState != nil
+        }
         if !liveDecisions.isOn { liveDecisions.toggle() }
         liveDecisions.enabledPresets.insert(preset.id)
         writeState()

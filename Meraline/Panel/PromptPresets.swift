@@ -6,9 +6,10 @@ import SwiftUI
 /// a click asks it at once, its text ahead of whatever is typed, and the capsule under the pointer shows an arrow
 /// for it and turns pink; with nothing, the click puts the text in the input, and a second click takes it out
 /// again. A Shift-click never sends: it puts the text in the input to add to, or, in Decision mode (`decidesLive`),
-/// has the Context card decide live with the preset, so while Shift is down the capsule under the pointer shows
-/// a bolt, or the card's keyboard, and turns pink. The preset whose text starts the input wears the active pin's
-/// pink too. Decision's row ends, by the gear, in an icon-only glass circle that asks every preset at once
+/// has the Context card decide live with the preset, and once more stops it (`live`, see `ChatSession.prepare`),
+/// so while Shift is down the capsule under the pointer shows a bolt, a crossed bolt for a preset asked already,
+/// or the card's keyboard, and turns pink. The preset whose text starts the input wears the active pin's pink
+/// too. Decision's row ends, by the gear, in an icon-only glass circle that asks every preset at once
 /// (`askAll`, see `ChatSession.askPresets(_:)`), faded like a context button with nothing to add until there is
 /// text to decide about (`canAskAll`). When the names don't fit beside the buttons on the left, only the icons show, and past that the row
 /// scrolls. Here presets are for a chat's first question: once the chat starts they sink into the card one after
@@ -25,6 +26,8 @@ struct PromptPresets: View {
     let sends: Bool
     /// Decision mode, where a Shift-click has the Context card decide live with the preset.
     let decidesLive: Bool
+    /// The presets the Context card asks live right now, whose Shift-click stops asking them; Decision's row only.
+    var live: Set<PromptPreset.ID> = []
     /// The circle at the end of the row that asks every preset at once, Decision's; nil for the other rows.
     var askAll: (() -> Void)?
     /// Whether that circle can ask now: text to decide about, a decision model ready, and a preset with a question.
@@ -106,7 +109,7 @@ struct PromptPresets: View {
         let isUnder = hovered == preset.id
         let prepares = isUnder && isShiftDown
         let willSend = isUnder && !isShiftDown && sends
-        let symbol = prepares ? (decidesLive ? "bolt.fill" : "keyboard") : willSend ? "arrow.up" : preset.shownSymbol
+        let symbol = prepares ? (decidesLive ? (live.contains(preset.id) ? "bolt.slash.fill" : "bolt.fill") : "keyboard") : willSend ? "arrow.up" : preset.shownSymbol
         let isPink = isApplied || prepares || willSend
         return GlassEffectContainer {
             Button { click(preset) } label: {
@@ -175,7 +178,7 @@ struct PromptPresets: View {
 
     private func help(for preset: PromptPreset, isApplied: Bool) -> String {
         let name = preset.title.isEmpty ? "the preset" : preset.title
-        let shift = decidesLive ? "Shift-click to decide live with it" : "Shift-click to put it in the input"
+        let shift = decidesLive ? (live.contains(preset.id) ? "Shift-click to stop deciding live with it" : "Shift-click to decide live with it") : "Shift-click to put it in the input"
         if sends { return "Ask \(name) about the text now, or \(shift)" }
         if isApplied { return "Take \(name) out of the input" }
         return decidesLive ? "Put \(name) in the input and write the text, or \(shift)" : "Put \(name) in the input and write the text"

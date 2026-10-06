@@ -6,7 +6,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 ## Unreleased
 
-- **Presets ask with one click.** With text selected, copied, or written on the Context card, a click on a preset above the window asks it right away, and the capsule shows an arrow as you hover. With no text yet, the click puts the preset in the input and opens the card for it as before; paste the text and click the preset again. Shift-click no longer sends: it puts the preset in the input to add to, and in Decision mode it turns on Live with that preset and puts the cursor in the Context card.
+- **Presets ask with one click.** With text selected, copied, or written on the Context card, a click on a preset above the window asks it right away, and the capsule shows an arrow as you hover. With no text yet, the click puts the preset in the input and opens the card for it as before; paste the text and click the preset again. Shift-click no longer sends: it puts the preset in the input to add to, and in Decision mode it turns on Live with that preset and puts the cursor in the Context card; Shift-click it again and it stops asking the preset, and when nothing else is asked and the card is empty, the card closes, Live goes off, and the cursor is back in the input, as if you never clicked.
 
 - **Every decision preset at once.** In Decision mode, a circle at the end of the presets, by the gear, asks all of them about your text in one click and one request: each preset's answer on one card, Urgent? Yes, Scam? No, Tone Neutral, Priority High, with how sure the model is. Your own question stays in the input for a follow-up, and Ask Again asks them all again.
 
