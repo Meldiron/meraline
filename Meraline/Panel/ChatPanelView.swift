@@ -1453,7 +1453,7 @@ private struct SetupRow: View {
     }
 }
 
-enum MarkdownText {
+nonisolated enum MarkdownText {
     static func render(_ markdown: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .inlineOnlyPreservingWhitespace,

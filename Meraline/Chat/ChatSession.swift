@@ -1617,10 +1617,11 @@ final class ChatSession {
         draftFiles.removeAll { $0.id == id }
     }
 
+    /// Copies the last answer: its Markdown as plain text, and the same answer as HTML and RTF for apps that
+    /// take rich text (see `AnswerExport`).
     func copyLastAnswer() {
         guard let lastAnswer else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(lastAnswer, forType: .string)
+        AnswerExport.copy(lastAnswer, to: .general)
         usage.record(as: lastAnswerKind) { $0.answersCopied += 1 }
     }
 

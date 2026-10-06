@@ -597,8 +597,7 @@ private struct AnswerNoteView: View {
     }
 
     private func copy() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(answer, forType: .string)
+        AnswerExport.copy(answer, to: .general)
         withAnimation(.smooth(duration: 0.2)) { showsCopied = true }
         Task {
             try? await Task.sleep(for: .seconds(1.2))

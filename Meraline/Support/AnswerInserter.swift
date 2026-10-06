@@ -35,16 +35,17 @@ final class AnswerInserter {
         let pasteboard = NSPasteboard.general
         SelectionAccess.shared.refresh()
         guard SelectionAccess.shared.isGranted else {
-            pasteboard.clearContents()
-            pasteboard.setString(text, forType: .string)
+            AnswerExport.copy(text, to: pasteboard)
             Log.panel.info("Answer copied for \(name): no Accessibility access to paste it")
             closeWindow()
             return
         }
 
+        // The answer's Markdown, and the same answer as HTML and RTF, so an app that takes rich text pastes
+        // bold, lists, code, and tables as such (see `AnswerExport`).
         let saved = SelectionReader.snapshot(of: pasteboard)
         let item = NSPasteboardItem()
-        item.setString(text, forType: .string)
+        AnswerExport.write(text, to: item)
         item.setData(Data(), forType: Self.transientType)
         pasteboard.clearContents()
         pasteboard.writeObjects([item])
