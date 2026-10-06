@@ -30,6 +30,13 @@ import WebKit
 ///   decision-lines  Decision mode about each line: six tasks from Notes grouped under Yes, No, and Not sure
 ///   decision-scope  Decision mode: the switch under the input set to each line, and the note that says what it decides about
 ///   decision-live  Decision mode: the Context card deciding as you type, a question kept from the input, the input's, and three presets answered on glass capsules
+///   table-fit     a three-column table wrapped to the card, and beside a capture of 1.12.0 as table-fit-before-after
+///   undo-rewrite  the chat's actions searched for "undo" after Make Shorter: Undo Rewrite
+///   try-again     an answer cut off by its connection, the banner's Try Again, and Ask Again first in the footer
+///   agent-question  Agent mode: Claude Code's question with its two choices wearing ⌘1 and ⌘2
+///   shake-undo    the empty panel right after a shake, the clock's capsule pink and saying Undo
+///   streaming-scrolled  a long answer still coming, scrolled up to its start, with Stop in the footer
+///   rich-copy     what a rich-text app pastes from Copy Answer, the Markdown before and the formatted text after
 @MainActor
 @Suite(.serialized, .enabled(if: Showcase.output != nil, "scripts/showcase.sh takes these pictures"))
 struct ShowcaseTests {
@@ -96,7 +103,16 @@ struct ShowcaseTests {
                 Self.select("Month", in: window)
                 await Showcase.settle(1)
                 Self.scroll(window, to: 170)
-                if Showcase.wants("usage") { try await stage.captureWindow(window, as: "usage") }
+                if Showcase.wants("usage") {
+                    try await stage.captureWindow(window, as: "usage")
+                    // Further down, the chart alone, beside a capture of 1.12.0, whose chart labeled every bar and cut
+                    // its hover numbers off.
+                    Self.scroll(window, to: 500)
+                    await Showcase.settle(0.5)
+                    try await stage.captureWindow(window, as: "usage-chart")
+                    try stage.compose(before: "usage-before", after: "usage-chart", as: "usage-before-after")
+                    Self.scroll(window, to: 170)
+                }
                 Self.scroll(window, to: 2_404)
                 if Showcase.wants("usage-games") { try await stage.captureWindow(window, as: "usage-games") }
             }
@@ -541,6 +557,218 @@ struct ShowcaseTests {
             Cool them in ice water for a minute, and they peel easily.
             """),
     ]
+
+    @Test func tableFit() async throws {
+        guard Showcase.wants("table-fit") else { return }
+        let answer = """
+        | | Cortado | Latte |
+        | --- | --- | --- |
+        | **Espresso** | 1 shot | 1-2 shots |
+        | **Milk** | Small amount, steamed (not foamy) | Large amount, steamed with a layer of foam |
+        | **Milk:Espresso Ratio** | ~1:1 | ~3:1 or more |
+        | **Volume** | ~4 oz (small) | ~8-12 oz (larger) |
+        | **Texture** | Smooth, less foam | Creamy, with foam layer |
+        | **Flavor** | Stronger coffee taste | Milkier, softer coffee taste |
+        """
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage, replies: [answer])
+            scene.session.followUpSuggester = { _ in ["How much milk in a cortado?", "What is a cappuccino?", "How does temperature affect taste?"] }
+            await GameTestSupport.play("What is the difference between a cortado and a latte? Give me a small table.", in: scene.session)
+            await Showcase.settle(1.5)
+            try await stage.capturePanel(scene.panel, as: "table-fit")
+            // Beside a capture of 1.12.0, where the same table scrolled sideways with its last column cut off.
+            try stage.compose(before: "table-fit-before", after: "table-fit", as: "table-fit-before-after")
+            stage.close(scene.panel)
+        }
+    }
+
+    @Test func undoRewrite() async throws {
+        guard Showcase.wants("undo-rewrite") else { return }
+        let answer = """
+        DNS, the Domain Name System, turns names like example.com into the IP addresses computers use to reach \
+        each other. Your Mac asks a resolver, which asks the root servers, the .com servers, and last the domain's \
+        own server, and keeps the answer for a while so the next visit skips the trip.
+        """
+        let shorter = "DNS turns names like example.com into the IP addresses computers use to reach each other."
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage, replies: [answer, shorter])
+            scene.session.followUpSuggester = { _ in [] }
+            await GameTestSupport.play("What is DNS?", in: scene.session)
+            scene.session.rewrite(.shorter)
+            await GameTestSupport.settle(scene.session)
+            // Lower on the stage, so the chat's panel opens upward over the answer, as it does on a screen with room.
+            let room: CGFloat = 360
+            scene.panel.setFrameTopLeftPoint(NSPoint(x: stage.topLeft.x, y: stage.topLeft.y - room))
+            await Showcase.settle(0.5)
+            scene.controller.layout.actionPanel = ActionPanelRequest(kind: .chat)
+            await Showcase.settle(1)
+            // "undo" typed into the panel's search, in the test host alone.
+            await Showcase.waitForIdle()
+            scene.panel.makeKey()
+            await Showcase.settle(0.3)
+            for character in "undo" { Self.press(character, in: scene.panel) }
+            await Showcase.settle(1)
+            try await stage.capturePanel(scene.panel, as: "undo-rewrite", roomAbove: room)
+            stage.close(scene.panel)
+        }
+    }
+
+    @Test func tryAgain() async throws {
+        guard Showcase.wants("try-again") else { return }
+        let partial = "A cortado is espresso cut with about the same amount of warm milk, so it stays strong and short. A latte uses far more steamed milk and a layer of foam, which makes it"
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage) { _ in
+                AsyncThrowingStream { continuation in
+                    continuation.yield(.text(partial))
+                    continuation.finish(throwing: LLMError.interrupted)
+                }
+            }
+            await GameTestSupport.play("How is a cortado different from a latte?", in: scene.session)
+            await Showcase.settle(1.5)
+            try await stage.capturePanel(scene.panel, as: "try-again")
+            stage.close(scene.panel)
+        }
+    }
+
+    @Test func agentQuestion() async throws {
+        guard Showcase.wants("agent-question") else { return }
+        let root = FileManager.default.temporaryDirectory.appending(path: "MeralineShowcase-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let question = AgentPrompt.Question(
+            header: "Release", text: "Which release is this changelog entry for?",
+            options: [.init(label: "1.3.0", detail: "New features, nothing breaks"), .init(label: "2.0.0", detail: "Includes breaking changes")]
+        )
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.agentPanel(on: stage, workspaces: root) { _ in
+                AsyncThrowingStream { continuation in
+                    continuation.yield(.activity(.thinking))
+                    continuation.yield(.prompt(AgentPrompt(id: "req-1", kind: .question([question])), AgentPromptResponder { _ in }))
+                }
+            }
+            scene.session.draft = "Draft a changelog entry for the next release."
+            scene.session.send()
+            for _ in 0..<100 where scene.session.turns.last?.pendingPrompt == nil { await Showcase.settle(0.1) }
+            await Showcase.settle(1.5)
+            try await stage.capturePanel(scene.panel, as: "agent-question")
+            stage.close(scene.panel)
+        }
+    }
+
+    @Test func shakeUndo() async throws {
+        guard Showcase.wants("shake-undo") else { return }
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage, replies: ["Paris.", "Berlin.", "Madrid."])
+            for question in ["What is the capital of France?", "And of Germany?", "Spain?"] {
+                await GameTestSupport.play(question, in: scene.session)
+                scene.session.reset()
+            }
+            await Showcase.settle(1)
+            // The capsule says Undo for five seconds from the shake, so the shake is noted again once the Mac has
+            // been still for the capture's own wait, and the capture follows at once.
+            scene.session.shakeUndoWindow = .seconds(600)
+            let forgot = scene.session.shakeAwayHistory()
+            await Showcase.waitForIdle(6)
+            scene.controller.layout.noteForgotten(forgot)
+            await Showcase.settle(0.8)
+            try await stage.capturePanel(scene.panel, as: "shake-undo")
+            stage.close(scene.panel)
+        }
+    }
+
+    @Test func streamingScrolled() async throws {
+        guard Showcase.wants("streaming-scrolled") else { return }
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage) { _ in
+                // An answer that keeps coming, a step every second or so, until the scene closes.
+                AsyncThrowingStream { continuation in
+                    let task = Task {
+                        for (index, step) in Self.resolutionSteps.enumerated() {
+                            try Task.checkCancellation()
+                            continuation.yield(.text((index == 0 ? "" : "\n\n") + step))
+                            try await Task.sleep(for: .seconds(0.7))
+                        }
+                        try await Task.sleep(for: .seconds(600))
+                    }
+                    continuation.onTermination = { _ in task.cancel() }
+                }
+            }
+            scene.session.draft = "Explain how DNS resolution works, step by step."
+            scene.session.send()
+            await Showcase.settle(9)
+            // The reader scrolls back up to the start while the rest still comes.
+            let conversation = try #require(scene.panel.contentView?.showcaseDescendants(of: NSScrollView.self).first {
+                ($0.documentView?.frame.height ?? 0) > $0.contentView.bounds.height + 40
+            })
+            try Self.wheel(conversation, by: 4_000)
+            await Showcase.settle(1)
+            try await stage.capturePanel(scene.panel, as: "streaming-scrolled")
+            scene.session.stop()
+            stage.close(scene.panel)
+        }
+    }
+
+    /// A long answer, a step at a time.
+    private static let resolutionSteps = [
+        "**1. Your Mac checks its own cache.** Every answer it has looked up lately is kept for the record's TTL, so a site you visited a minute ago needs no lookup at all.",
+        "**2. It asks the resolver.** Usually your router or your internet provider, set by DHCP. The resolver keeps a cache of its own, shared by everyone who uses it.",
+        "**3. The resolver asks a root server.** There are thirteen named root servers, mirrored hundreds of times over. A root server doesn't know example.com, but it knows who runs .com.",
+        "**4. It asks the .com servers.** They know which name servers are authoritative for example.com, and hand those back.",
+        "**5. It asks example.com's own servers.** These hold the actual records: the A record with the IPv4 address, the AAAA record with the IPv6 one, MX records for mail, and so on.",
+        "**6. The answer travels back** to the resolver, which caches it, and to your Mac, which caches it too and opens the connection.",
+        "**7. The TTL decides how long it lasts.** A short TTL, say sixty seconds, lets a site move quickly; a long one, a day, saves lookups.",
+        "**8. DNSSEC can sign each step,** so a resolver can check that nobody changed the answer on the way.",
+        "**9. Encrypted DNS** (DNS over HTTPS or TLS) hides the questions from anyone watching the network, though the resolver still sees them.",
+        "**10. When something goes wrong,** the resolver answers NXDOMAIN for a name that doesn't exist, or SERVFAIL when it couldn't get an answer at all.",
+        "**11. Your Mac keeps its own list too:** /etc/hosts is read before any of this, which is how a name can be pointed at a test server.",
+        "**12. To see it happen,** run `dig example.com` in Terminal: the answer section has the records, and the last lines say which server answered and how long it took.",
+    ]
+
+    @Test func richCopy() async throws {
+        guard Showcase.wants("rich-copy") else { return }
+        let answer = """
+        A **cortado** is espresso cut with about the same amount of warm milk. Compared with a latte:
+
+        - **Milk:** about 1:1, with no foam
+        - **Size:** 120 ml, against 240 ml and up
+        - **Taste:** the coffee comes through
+
+        | Drink | Milk | Foam |
+        | --- | --- | --- |
+        | Cortado | a little | none |
+        | Latte | a lot | a layer |
+        """
+        for appearance in Showcase.appearances {
+            try ShowcaseStage(appearance).composePaste(of: answer, as: "rich-copy")
+        }
+    }
+
+    /// Types `character` into `window`'s first responder, in the test host alone: an event made here and sent to
+    /// the window, never the keyboard.
+    private static func press(_ character: Character, in window: NSWindow) {
+        let text = String(character)
+        guard let down = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, characters: text, charactersIgnoringModifiers: text, isARepeat: false, keyCode: 0
+        ) else { return }
+        window.sendEvent(down)
+    }
+
+    /// Turns the scroll wheel over `scroll`, as a reader does: up for a positive `distance`, in points.
+    private static func wheel(_ scroll: NSScrollView, by distance: Int32) throws {
+        var left = distance
+        while left != 0 {
+            let step = max(-80, min(80, left))
+            let turn = try #require(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: step, wheel2: 0, wheel3: 0))
+            scroll.scrollWheel(with: try #require(NSEvent(cgEvent: turn)))
+            left -= step
+        }
+    }
 
     // MARK: Scenes
 

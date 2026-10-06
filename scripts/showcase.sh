@@ -31,6 +31,13 @@
 #   decision-scope  Decision mode: six tasks from Notes, the switch under the input set to each line, and the note that says what it decides about
 #   decision-live  Decision mode: the Context card deciding as you type, a question kept from the input, the input's, and three presets answered on glass capsules
 #   decision-models  Settings › Decision Models: the three providers in the sidebar, and Ollama's pane turned on with Nimble and what to pull
+#   table-fit     a three-column table wrapped to the card, and, beside a capture of 1.12.0, as table-fit-before-after
+#   undo-rewrite  the chat's actions searched for "undo" after Make Shorter: Undo Rewrite
+#   try-again     an answer cut off by its connection, the banner's Try Again, and Ask Again first in the footer
+#   agent-question  Agent mode: Claude Code's question with its two choices wearing ⌘1 and ⌘2
+#   shake-undo    the empty panel right after a shake, the clock's capsule pink and saying Undo
+#   streaming-scrolled  a long answer still coming, scrolled up to its start, with Stop in the footer
+#   rich-copy     what a rich-text app pastes from Copy Answer, the Markdown before and the formatted text after
 #
 # Pictures go to docs/screenshots, as name.png (dark) and name-light.png, the names the README uses. Pictures
 # that need a real provider, an agent, or clicks come from scripts/screenshots.sh. Needs Screen Recording

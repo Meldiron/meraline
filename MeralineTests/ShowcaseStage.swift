@@ -137,8 +137,9 @@ final class ShowcaseStage {
 
     /// The panel as the screenshots show it: its whole window, the margins around the card included, over the
     /// gradient. It has the keyboard for the moment of the capture, without activating the test host.
-    func capturePanel(_ panel: NSWindow, as name: String) async throws {
-        panel.setFrameTopLeftPoint(topLeft)
+    func capturePanel(_ panel: NSWindow, as name: String, roomAbove: CGFloat = 0) async throws {
+        // Below the stage's top by `roomAbove`, for a panel of actions that opened upward past the card's top.
+        panel.setFrameTopLeftPoint(NSPoint(x: topLeft.x, y: topLeft.y - roomAbove))
         await Showcase.waitForIdle()
         panel.makeKey()
         await Showcase.settle(0.6)
@@ -238,8 +239,89 @@ final class ShowcaseStage {
         FileHandle.standardError.write(Data("Showcase: \(file.lastPathComponent)\n".utf8))
     }
 
+    /// A "before" picture and an "after" one side by side, each under its word, for release notes: `before` and
+    /// `after` name pictures already in the output folder in this appearance (a before is a real capture of the
+    /// old build, kept in docs/screenshots), and the pair is written as `name`. Both are drawn at their own
+    /// pixel size, top-aligned, on the gradient's middle color. Nothing happens when the before is missing in
+    /// this appearance.
+    func compose(before: String, after: String, as name: String) throws {
+        guard let output = Showcase.output else { return }
+        guard let old = CGImage.showcase(at: output.appending(path: "\(before)\(appearance.suffix).png")) else { return }
+        guard let new = CGImage.showcase(at: output.appending(path: "\(after)\(appearance.suffix).png")) else { throw ShowcaseError.windowNotFound }
+        try compose(before: old, after: new, as: name)
+    }
+
+    /// `before` and `after` side by side, each under its word, written as `name`.
+    func compose(before old: CGImage, after new: CGImage, as name: String) throws {
+        let scale = 2
+        let gap = 48 * scale, margin = 40 * scale, caption = 44 * scale
+        let width = margin + old.width + gap + new.width + margin
+        let height = margin + caption + max(old.height, new.height) + margin
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw ShowcaseError.notWritten }
+        context.setFillColor(appearance.gradient[1])
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let top = height - margin - caption
+        context.draw(old, in: CGRect(x: margin, y: top - old.height, width: old.width, height: old.height))
+        context.draw(new, in: CGRect(x: margin + old.width + gap, y: top - new.height, width: new.width, height: new.height))
+        let color = appearance == .light ? NSColor(white: 0.25, alpha: 1) : NSColor(white: 0.85, alpha: 1)
+        let font = NSFont.systemFont(ofSize: CGFloat(17 * scale), weight: .semibold)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        for (word, x) in [("Before", margin), ("After", margin + old.width + gap)] {
+            NSAttributedString(string: word, attributes: [.font: font, .foregroundColor: color]).draw(at: NSPoint(x: x + 4 * scale, y: top + 12 * scale))
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        guard let image = context.makeImage() else { throw ShowcaseError.notWritten }
+        try write(image, as: name)
+    }
+
+    /// What a rich-text app pastes from Copy Answer, before and after 1.13.0: the answer's Markdown as plain text,
+    /// and the same answer as the RTF beside it (`AnswerExport`), each in a text view on a card drawn offscreen,
+    /// side by side as `name`.
+    func composePaste(of markdown: String, as name: String) throws {
+        let width: CGFloat = 400
+        func card(_ text: NSAttributedString) throws -> CGImage {
+            let view = NSTextView(frame: NSRect(x: 0, y: 0, width: width - 40, height: 100))
+            view.isEditable = false
+            view.drawsBackground = false
+            view.textContainerInset = .zero
+            view.textStorage?.setAttributedString(text)
+            view.layoutManager?.ensureLayout(for: view.textContainer!)
+            let height = (view.layoutManager?.usedRect(for: view.textContainer!).height ?? 100).rounded(.up)
+            view.frame.size.height = height
+            let box = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height + 40))
+            box.wantsLayer = true
+            box.layer?.backgroundColor = (appearance == .light ? NSColor.white : NSColor(white: 0.12, alpha: 1)).cgColor
+            box.layer?.cornerRadius = 14
+            view.frame.origin = NSPoint(x: 20, y: 20)
+            box.addSubview(view)
+            let window = NSWindow(contentRect: NSRect(x: -30_000, y: 0, width: width, height: height + 40), styleMask: [.borderless], backing: .buffered, defer: false)
+            window.appearance = appearance.appearance
+            window.contentView = box
+            box.layoutSubtreeIfNeeded()
+            guard let rep = box.bitmapImageRepForCachingDisplay(in: box.bounds) else { throw ShowcaseError.notWritten }
+            box.cacheDisplay(in: box.bounds, to: rep)
+            guard let image = rep.cgImage else { throw ShowcaseError.notWritten }
+            return image
+        }
+        let color = appearance == .light ? NSColor.black : NSColor.white
+        let plain = NSAttributedString(string: markdown, attributes: [.font: NSFont(name: "Helvetica", size: 12) ?? .systemFont(ofSize: 12), .foregroundColor: color])
+        let rich = NSMutableAttributedString(attributedString: AnswerExport.attributed(markdown))
+        rich.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: rich.length))
+        try compose(before: try card(plain), after: try card(rich), as: name)
+    }
+
     enum ShowcaseError: Error {
         case windowNotFound, notWritten
+    }
+}
+
+extension CGImage {
+    /// The picture at `url`, or nil when there is none.
+    static func showcase(at url: URL) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
 }
 
