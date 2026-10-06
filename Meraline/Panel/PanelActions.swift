@@ -250,11 +250,11 @@ struct PanelContext {
     }
 
     /// The action a key press runs from anywhere in the window: a switch of mode (see `modeSwitches`), one of the
-    /// open chat's, or Stash Draft while there is no chat. The modes come first, as the presets come ahead of the
-    /// zoom: a digit they hold goes by its key's place, so ⌘ and the key where a Czech keyboard types + is ⌘1,
-    /// never Zoom In.
+    /// open chat's, or Stash Draft and New Chat while there is no chat. The modes come first, as the presets come
+    /// ahead of the zoom: a digit they hold goes by its key's place, so ⌘ and the key where a Czech keyboard types
+    /// + is ⌘1, never Zoom In.
     func action(forKeyCode keyCode: UInt16, characters: String?, modifiers: ActionShortcut.Modifiers) -> PanelAction? {
-        (promptChoices + modeSwitches + (chatMenu?.actions ?? [stashDraft].compactMap { $0 })).first { action in
+        (promptChoices + modeSwitches + (chatMenu?.actions ?? [stashDraft, newChat].compactMap { $0 })).first { action in
             action.shortcut?.matches(keyCode: keyCode, characters: characters, modifiers: modifiers) == true
         }
     }
@@ -763,8 +763,30 @@ struct PanelContext {
         }
     }
 
-    /// Stash Draft while there is a draft to stash, the recent chats, newest first, and Clear Recent Chats, which
-    /// asks first.
+    /// New Chat while there is no chat, so ⌘N pressed by habit does what it does in a chat: it clears what an
+    /// empty chat has typed and added and closes the Context card, the card's text going to Recent Chats first as
+    /// a stash, Live as it was (see `ChatSession.reset()`), since Esc with only the card's text closes the window
+    /// and leaves it, and there was no other way to be rid of it; a line in the input alone goes, as on Esc. Nil
+    /// while there is nothing to clear (see `ChatSession.canClearDraft`).
+    var newChat: PanelAction? {
+        guard session.canClearDraft else { return nil }
+        let session = session
+        let layout = layout
+        return PanelAction(
+            id: "newChat",
+            title: "New Chat",
+            subtitle: session.keepsDraftOnReset ? "Stash the draft in Recent Chats and start over" : "Clear what is typed and added",
+            icon: .symbol("square.and.pencil"),
+            shortcut: .command("n"),
+            keywords: ["clear", "empty", "start", "over", "draft"]
+        ) {
+            if session.reset() { layout.stashNotice += 1 }
+            focusInput()
+        }
+    }
+
+    /// Stash Draft and New Chat while there is a draft, the recent chats, newest first, and Clear Recent Chats,
+    /// which asks first.
     var historyMenu: ActionMenu {
         let session = session
         let layout = layout
@@ -803,7 +825,7 @@ struct PanelContext {
         return ActionMenu(
             title: "Recent Chats",
             sections: [
-                ActionSection(id: "stash", actions: [stashDraft].compactMap { $0 }),
+                ActionSection(id: "stash", actions: [stashDraft, newChat].compactMap { $0 }),
                 ActionSection(id: "chats", actions: chats),
                 ActionSection(id: "clear", actions: clear),
             ],

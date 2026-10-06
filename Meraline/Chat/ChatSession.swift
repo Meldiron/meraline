@@ -1279,11 +1279,12 @@ final class ChatSession {
     }
 
     /// Starts a new chat. The open one moves to Recent Chats, unless `keepingChat` is false or the chat is
-    /// anonymous. While Live decisions are on, the draft goes too (see `liveDraft`): with its chat, or in an empty
-    /// one as a stash of its own, so Esc or ⌘N pressed by habit loses none of it. Says whether it was stashed.
+    /// anonymous. While Live decisions are on, or the Context card holds text, the draft goes too (see
+    /// `keptDraft`): with its chat, or in an empty one as a stash of its own, so Esc or ⌘N pressed by habit loses
+    /// none of it. Says whether it was stashed.
     @discardableResult
     func reset(keepingChat: Bool = true) -> Bool {
-        reset(keepingChat: keepingChat, draft: keepingChat ? liveDraft : nil)
+        reset(keepingChat: keepingChat, draft: keepingChat ? keptDraft : nil)
     }
 
     /// Starts a new chat, `unsent` going to Recent Chats with the open one, or on its own when it has no answer to
@@ -1318,13 +1319,23 @@ final class ChatSession {
         return stashed
     }
 
-    /// What a new chat keeps of the open one's draft while Live decisions are on: what is typed and added, the
-    /// Context card's text, and the switch's questions and answers, which come back when it is reopened. Nil while
-    /// Live is off, in a game, in anonymous mode, and while there is nothing in it.
-    private var liveDraft: Draft? {
-        guard liveDecisions.isOn, !isPlaying, !isAnonymous else { return nil }
+    /// What a new chat keeps of the open one's draft while Live decisions are on, or the Context card holds text,
+    /// which is worth more than a line in the input: what is typed and added, the card's text, and the switch's
+    /// questions and answers, which come back when it is reopened. Nil with neither, in a game, in anonymous mode,
+    /// and while there is nothing in it.
+    private var keptDraft: Draft? {
+        guard !isPlaying, !isAnonymous, liveDecisions.isOn || typedState?.trimmed.isEmpty == false else { return nil }
         let draft = currentDraft
         return draft.isEmpty ? nil : draft
+    }
+
+    /// Whether a new chat would keep the draft (see `keptDraft`), for New Chat's words with no chat open.
+    var keepsDraftOnReset: Bool { keptDraft != nil }
+
+    /// Whether New Chat has something to clear with no chat open: the draft holds anything, the Context card's
+    /// text included (see `PanelContext.newChat`).
+    var canClearDraft: Bool {
+        turns.isEmpty && !isPlaying && !currentDraft.isEmpty
     }
 
     /// Deletes the open chat or game: it skips Recent Chats, and its workspace goes with it. A game's score
@@ -1425,7 +1436,7 @@ final class ChatSession {
             return
         }
         let typed = canStashDraft ? currentDraft : nil
-        reset(keepingChat: true, draft: typed == nil ? liveDraft : nil)
+        reset(keepingChat: true, draft: typed == nil ? keptDraft : nil)
         turns = chat.turns
         mode = chat.mode
         workspace = chat.workspace

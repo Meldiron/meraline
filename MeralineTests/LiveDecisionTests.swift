@@ -472,14 +472,19 @@ struct LiveDecisionTests {
         #expect(decider.asks.count == asked, "and its answers")
     }
 
-    @Test func onlyLiveWorkIsKeptAndNeverAnonymouslyOrWhenDeleted() async throws {
+    @Test func onlyLiveWorkOrTheCardsTextIsKeptAndNeverAnonymouslyOrWhenDeleted() async throws {
         let decider = ScriptedDecider()
         let (session, _) = Self.session(decider, live: false)
         session.writeState()
         session.typedState = "Send me the file now."
         session.draft = "Is it polite?"
 
-        // With Live off, a new chat clears the draft as it always has.
+        // With Live off, the Context card's text still keeps the draft: a new chat stashes it (see
+        // `StashDraftTests`), while a line in the input alone is cleared as it always has been.
+        #expect(session.reset())
+        #expect(session.history.count == 1 && session.history[0].isStash && session.history[0].draft?.typedState == "Send me the file now.")
+        session.forgetAll()
+        session.draft = "Is it polite?"
         #expect(!session.reset())
         #expect(session.history.isEmpty)
 

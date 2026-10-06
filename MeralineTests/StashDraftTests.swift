@@ -176,7 +176,7 @@ struct StashDraftTests {
         session.draft = "Later"
         let action = try #require(stash())
         #expect(action.id == "stashDraft")
-        #expect(context.historyMenu.actions.map(\.id) == ["stashDraft"])
+        #expect(context.historyMenu.actions.map(\.id) == ["stashDraft", "newChat"])
         #expect(context.action(forKeyCode: UInt16(kVK_ANSI_S), characters: "S", modifiers: [.shift, .command]) == nil, "⇧⌘S is the screenshot")
 
         context.run(action, in: .chat, fromShortcut: true)
@@ -187,5 +187,57 @@ struct StashDraftTests {
         #expect(row.subtitle == "Stashed draft")
         #expect(context.historyMenu.actions.map(\.id) == [row.id, "clearHistory"])
         #expect(stash() == nil, "nothing left to stash")
+    }
+
+    @Test func commandNClearsAnEmptyChatsDraftAndStashesTheContextCardsText() throws {
+        let session = Support.session(ScriptedModel())
+        let context = context(session)
+        let new = { context.action(forKeyCode: UInt16(kVK_ANSI_N), characters: "n", modifiers: .command) }
+        #expect(new() == nil, "nothing to clear")
+
+        // A line in the input alone goes, as it does on Esc.
+        session.draft = "Later"
+        var action = try #require(new())
+        #expect(action.id == "newChat" && action.subtitle == "Clear what is typed and added")
+        #expect(context.historyMenu.actions.map(\.id) == ["stashDraft", "newChat"])
+        context.run(action, in: .chat, fromShortcut: true)
+        #expect(session.draft.isEmpty && session.history.isEmpty && context.layout.stashNotice == 0)
+
+        // The Context card's text is worth keeping: the draft goes to Recent Chats as a stash, Live off or on.
+        session.writeState()
+        session.typedState = "Important notes"
+        session.draft = "Is this urgent?"
+        action = try #require(new())
+        #expect(action.subtitle == "Stash the draft in Recent Chats and start over")
+        context.run(action, in: .chat, fromShortcut: true)
+        #expect(session.typedState == nil && session.draft.isEmpty)
+        #expect(context.layout.stashNotice == 1)
+        let stash = try #require(session.history.first)
+        #expect(stash.isStash && stash.draft?.typedState == "Important notes" && stash.draft?.text == "Is this urgent?")
+        session.reopen(stash)
+        #expect(session.typedState == "Important notes" && session.draft == "Is this urgent?")
+        let stashes = session.history.count
+
+        // With nothing in the input, ⌘N still closes the card and stashes its text; anonymous mode clears without a stash.
+        session.draft = ""
+        context.run(try #require(new()), in: .chat, fromShortcut: true)
+        #expect(session.typedState == nil && session.history.count == stashes + 1 && context.layout.stashNotice == 2)
+        session.writeState()
+        session.typedState = "Secret"
+        session.isAnonymous = true
+        context.run(try #require(new()), in: .chat, fromShortcut: true)
+        #expect(session.typedState == nil && session.history.count == stashes + 1 && context.layout.stashNotice == 2)
+        #expect(new() == nil, "nothing left to clear")
+    }
+
+    @Test func aNewChatTakesTheContextCardsTextWithTheOpenChat() async throws {
+        let session = Support.session(ScriptedModel(["Paris."]))
+        await Support.play("Capital of France?", in: session)
+        session.writeState()
+        session.typedState = "Notes for the follow-up"
+        #expect(!session.reset(), "with the chat, not on its own")
+        let chat = try #require(session.history.first)
+        #expect(!chat.isStash && chat.draft?.typedState == "Notes for the follow-up")
+        #expect(session.typedState == nil)
     }
 }
