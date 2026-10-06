@@ -580,7 +580,10 @@ final class ChatSession {
                     provider: provider, settings: settings, instructions: instructions, stream: streamReplies
                 )
                 guard !Task.isCancelled else { return }
-                isImprovingContext = false
+                // The button spins until the text lands, or is found changed meanwhile: the changes are worked
+                // out off the main actor first, and a click, or a test, that took the reply for landed meanwhile
+                // ran ahead of it.
+                defer { isImprovingContext = false }
                 count(reply, improving: before, toward: questions, others: others, with: provider)
                 guard liveDecisions.isOn, let text = typedState else { return }
                 guard text == before else {
