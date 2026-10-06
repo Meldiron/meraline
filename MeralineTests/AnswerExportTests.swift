@@ -55,10 +55,13 @@ struct AnswerExportTests {
         let text = read.string
         #expect(text.hasPrefix("Coffee\n"))
         #expect(text.contains("A cortado is espresso cut with warm milk, about 1:1. See the guide and this."))
-        #expect(text.contains("•\tCortado: strong\n•\ta nested note\n•\tLatte: mild"))
-        #expect(text.contains("1.\tFirst\n2.\tSecond"))
+        #expect(text.contains("•\tCortado: strong\n•\ta nested note\n•\tLatte: mild\n\n1.\tFirst\n2.\tSecond"), "the lists stand apart, as in the Markdown")
         #expect(text.contains("let shots = 1 < 2 && \"a\" > \"b\""))
         #expect(text.contains("Drink\tMilk\nCortado\ta little\nLatte\ta lot"), "a table as tab-separated rows")
+        let row = (text as NSString).range(of: "Cortado\ta little")
+        let style = read.attribute(.paragraphStyle, at: row.location, effectiveRange: nil) as? NSParagraphStyle
+        #expect(style?.tabStops.count == 2, "a tab stop a column, at its widest cell, so the columns line up")
+        #expect((style?.tabStops.first?.location ?? 0) > 40)
         #expect(text.contains("<script>alert(\"x\")</script> & done."))
 
         func font(at word: String) -> NSFont? {

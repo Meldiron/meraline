@@ -162,7 +162,8 @@ nonisolated enum AnswerExport {
 
     private static func append(_ blocks: [MarkdownBlock], to out: NSMutableAttributedString, indent: CGFloat) {
         for (index, block) in blocks.enumerated() {
-            if index > 0 { out.append(NSAttributedString(string: "\n")) }
+            // A blank line between blocks, as the Markdown has, so paragraphs, lists, and tables stand apart.
+            if index > 0 { out.append(NSAttributedString(string: "\n\n", attributes: [.font: font(size: bodySize)])) }
             switch block {
             case .paragraph(let text):
                 out.append(inline(text, size: bodySize, indent: indent))
@@ -172,7 +173,11 @@ nonisolated enum AnswerExport {
             case .list(let items):
                 var numbers: [Int: Int] = [:]
                 for (place, item) in items.enumerated() {
-                    if place > 0 { out.append(NSAttributedString(string: "\n")) }
+                    if place > 0 {
+                        // A list of the other kind right after this one, which the blocks read as one list, stands apart.
+                        let newList = item.depth == 0 && Self.isNumbered(item) != Self.isNumbered(items[place - 1]) && items[place - 1].depth == 0
+                        out.append(NSAttributedString(string: newList ? "\n\n" : "\n", attributes: [.font: font(size: bodySize)]))
+                    }
                     let marker: String
                     switch item.marker {
                     case .bullet: marker = "•"
@@ -198,18 +203,39 @@ nonisolated enum AnswerExport {
                 style.firstLineHeadIndent = indent
                 out.append(NSAttributedString(string: code.code, attributes: [.font: NSFont(name: "Menlo", size: bodySize - 1) ?? .monospacedSystemFont(ofSize: bodySize - 1, weight: .regular), .paragraphStyle: style]))
             case .table(let table):
+                // Tab-separated rows, with a tab stop at each column's widest cell, so the columns line up.
                 let rows = [table.header] + table.rows
+                let columns = rows.map(\.count).max() ?? 0
+                var stops: [NSTextTab] = []
+                var edge = indent
+                for column in 0..<columns {
+                    let widest = rows.compactMap { column < $0.count ? inline($0[column], size: bodySize, bold: true, indent: 0).size().width : nil }.max() ?? 0
+                    edge += widest.rounded(.up) + 16
+                    stops.append(NSTextTab(textAlignment: .left, location: edge))
+                }
+                let style = NSMutableParagraphStyle()
+                style.headIndent = indent
+                style.firstLineHeadIndent = indent
+                style.tabStops = stops
                 for (place, row) in rows.enumerated() {
                     if place > 0 { out.append(NSAttributedString(string: "\n")) }
+                    let line = NSMutableAttributedString()
                     for (column, cell) in row.enumerated() {
-                        if column > 0 { out.append(NSAttributedString(string: "\t", attributes: [.font: font(size: bodySize)])) }
-                        out.append(inline(cell, size: bodySize, bold: place == 0, indent: indent))
+                        if column > 0 { line.append(NSAttributedString(string: "\t", attributes: [.font: font(size: bodySize)])) }
+                        line.append(inline(cell, size: bodySize, bold: place == 0, indent: 0))
                     }
+                    line.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: line.length))
+                    out.append(line)
                 }
             case .rule:
                 out.append(NSAttributedString(string: String(repeating: "—", count: 12), attributes: [.font: font(size: bodySize), .foregroundColor: NSColor.gray]))
             }
         }
+    }
+
+    private static func isNumbered(_ item: MarkdownBlock.ListItem) -> Bool {
+        if case .number = item.marker { return true }
+        return false
     }
 
     /// A block's text with its inline Markdown as attributes.
