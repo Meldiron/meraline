@@ -25,6 +25,8 @@ nonisolated enum StreamOutput: Equatable, Sendable {
     case decision(Decision)
     /// What it decided about each word or line so far, whole each time (see `DecisionBatch`).
     case decisions(DecisionBatch)
+    /// What it decided about each of Decision's presets asked at once, so far, whole each time (see `PresetDecisions`).
+    case presetDecisions(PresetDecisions)
 }
 
 /// What a provider's payload says an answer took, and whether it adds to earlier reports of the same answer or

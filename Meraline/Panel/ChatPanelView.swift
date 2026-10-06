@@ -263,7 +263,10 @@ struct ChatPanelView: View {
                         let presets = presets(for: kind)
                         PromptPresets(
                             presets: presets, draft: session.draft, isShown: !hasConversation && preferences.mode == kind,
-                            sends: !session.hasNoContext, decidesLive: kind == .decision
+                            sends: !session.hasNoContext, decidesLive: kind == .decision,
+                            // Decision's row ends in the circle that asks every preset at once.
+                            askAll: kind == .decision ? { session.askPresets(presets) } : nil,
+                            canAskAll: kind == .decision && session.canAskPresets(among: presets)
                         ) { preset, prepares in
                             // A preset put in with nothing to work on, or asked live, opens the card for its
                             // text, which takes the keyboard; otherwise the input keeps it, unless the question went.
@@ -755,7 +758,9 @@ private struct TurnView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
             }
-            if let batch = turn.decisions {
+            if let round = turn.presetDecisions {
+                PresetDecisionsCard(round: round, unsureBelow: unsureBelow, isAnswering: isAnswering)
+            } else if let batch = turn.decisions {
                 BulkDecisionCard(batch: batch, unsureBelow: unsureBelow, isAnswering: isAnswering, openGroups: openDecisionGroups, toggle: toggleDecisionGroup)
             } else if let decision = turn.decision {
                 DecisionCard(decision: decision, unsureBelow: unsureBelow)
@@ -781,7 +786,8 @@ private struct TurnView: View {
             if let prompt = turn.pendingPrompt {
                 PromptCard(prompt: prompt, agent: agent, answer: { answer(prompt.id, $0) }, explain: explain, choice: promptChoice)
                     .id(prompt.id)
-            } else if isAnswering && (turn.answer.isEmpty || turn.activity != nil) {
+            } else if isAnswering && turn.presetDecisions == nil && (turn.answer.isEmpty || turn.activity != nil) {
+                // A round of presets shows its own waiting, a row a question.
                 ActivityRow(activity: turn.activity)
             }
             let settled = turn.prompts.filter { !$0.isPending }

@@ -21,6 +21,9 @@ nonisolated struct DecisionRequest: Equatable, Sendable {
     /// Each word or line the question is about, in order, or none for the whole text.
     var scope = DecisionScope.whole
     var items: [String] = []
+    /// Decision's presets asked at once, in place of `question` and `answers` (see `PresetDecisions`): every
+    /// question of the round with no decision yet goes, named by its preset, as the live decisions' do.
+    var presets: PresetDecisions?
 
     /// The one question's name in the request and in the reply, about the whole text.
     static let questionID = "decision"
@@ -115,8 +118,9 @@ nonisolated struct DecisionRequest: Equatable, Sendable {
 /// The System One endpoint, `POST /v1/systemone`, at TypeSafe, at OpenRouter, which serves Jev and other labs'
 /// decision models over the same contract, or at Ollama on this Mac, which serves Nimble and Tev1 over it too: a
 /// state and named questions in, and for each a typed answer with probabilities out, in one JSON body a few
-/// hundred milliseconds later, never a stream. Meraline asks one question a request and reads its answer into a
-/// `Decision`, with what the reply says it took, and cost when it says, for the usage ledger.
+/// hundred milliseconds later, never a stream. Meraline asks one question a request, or several at once for the
+/// live decisions and for Decision's presets, and reads each answer into a `Decision`, with what the reply says it
+/// took, and cost when it says, for the usage ledger.
 nonisolated enum DecisionClient {
     private static let session = URLSession(configuration: .ephemeral)
 
@@ -128,14 +132,27 @@ nonisolated enum DecisionClient {
     )
 
     /// One reply about the whole text, or, about each word or line, one for every hundred items, or as many as the
-    /// provider takes (`Provider.questionsPerRequest`), the batch so far after each so the card fills as they come.
+    /// provider takes (`Provider.questionsPerRequest`), the batch so far after each so the card fills as they come;
+    /// for Decision's presets asked at once, one for every batch of their questions, the round so far after each
+    /// (see `PresetDecisions`).
     static func stream(_ request: ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     let decision = request.decision ?? probe
                     let model = model(of: request.settings, provider: request.provider)
-                    if decision.items.isEmpty {
+                    if let presets = decision.presets {
+                        var round = presets
+                        for batch in batches(of: round.undecided, for: request.provider) {
+                            try Task.checkCancellation()
+                            let body = DecisionRequest.body(model: model, state: decision.state, questions: batch)
+                            let data = try await post(body, about: decision.state, settings: request.settings, provider: request.provider)
+                            let reply = try decodeLive(data, for: batch, from: request.provider)
+                            round.take(reply.decisions)
+                            continuation.yield(.usage(reply.usage, adds: true))
+                            continuation.yield(.presetDecisions(round))
+                        }
+                    } else if decision.items.isEmpty {
                         let data = try await post(decision.body(model: model), about: decision.state, settings: request.settings, provider: request.provider)
                         let reply = try decode(data, for: decision.answers, from: request.provider)
                         continuation.yield(.usage(reply.usage, adds: false))

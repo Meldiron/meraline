@@ -8,7 +8,9 @@ import SwiftUI
 /// again. A Shift-click never sends: it puts the text in the input to add to, or, in Decision mode (`decidesLive`),
 /// has the Context card decide live with the preset, so while Shift is down the capsule under the pointer shows
 /// a bolt, or the card's keyboard, and turns pink. The preset whose text starts the input wears the active pin's
-/// pink too. When the names don't fit beside the buttons on the left, only the icons show, and past that the row
+/// pink too. Decision's row ends, by the gear, in an icon-only glass circle that asks every preset at once
+/// (`askAll`, see `ChatSession.askPresets(_:)`), faded like a context button with nothing to add until there is
+/// text to decide about (`canAskAll`). When the names don't fit beside the buttons on the left, only the icons show, and past that the row
 /// scrolls. Here presets are for a chat's first question: once the chat starts they sink into the card one after
 /// another, to rise again for the next chat, and the chat's actions (⌘K) offer them for its answer instead. They stay in the view
 /// tree all along, faded and disabled, so nothing is inserted or removed while the window is hidden (see
@@ -23,6 +25,10 @@ struct PromptPresets: View {
     let sends: Bool
     /// Decision mode, where a Shift-click has the Context card decide live with the preset.
     let decidesLive: Bool
+    /// The circle at the end of the row that asks every preset at once, Decision's; nil for the other rows.
+    var askAll: (() -> Void)?
+    /// Whether that circle can ask now: text to decide about, a decision model ready, and a preset with a question.
+    var canAskAll = false
     /// A click on a preset, or a Shift-click (`prepares`).
     let apply: (PromptPreset, _ prepares: Bool) -> Void
 
@@ -45,36 +51,45 @@ struct PromptPresets: View {
     var body: some View {
         let applied = PromptPreset.applied(in: draft, among: presets)?.id
         let showsTitles = titledWidth <= room
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(Array(presets.enumerated()), id: \.element.id) { index, preset in
-                    // From the gear outward.
-                    bubble(preset, isApplied: preset.id == applied, showsTitle: showsTitles, order: presets.count - 1 - index)
+        // Before the circle, the row ends `shadowRoom` short of it, as it does by the buttons on the left, so the
+        // scroll view never lies over the circle and takes its clicks; without one it has the room its shadow
+        // reaches by the gear.
+        let trailingRoom = askAll == nil ? Self.shadowRoomTrailing : Self.shadowRoom
+        HStack(spacing: Self.shadowRoom) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(Array(presets.enumerated()), id: \.element.id) { index, preset in
+                        // From the gear outward, after the circle when there is one.
+                        bubble(preset, isApplied: preset.id == applied, showsTitle: showsTitles, order: presets.count - index - (askAll == nil ? 1 : 0))
+                    }
                 }
+                .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+                .padding(Self.shadowRoom)
+                .padding(.trailing, trailingRoom - Self.shadowRoom)
+                .frame(minWidth: room + Self.shadowRoom + trailingRoom, alignment: .trailing)
             }
-            .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
-            .padding(Self.shadowRoom)
-            .padding(.trailing, Self.shadowRoomTrailing - Self.shadowRoom)
-            .frame(minWidth: room + Self.shadowRoom + Self.shadowRoomTrailing, alignment: .trailing)
-        }
-        .scrollIndicators(.never)
-        .scrollBounceBehavior(.basedOnSize)
-        // A sunk row, another mode's, takes no click and no scroll.
-        .allowsHitTesting(isShown)
-        .accessibilityHidden(!isShown)
-        .frame(height: ContextButtons.size + Self.shadowRoom * 2)
-        .padding(-Self.shadowRoom)
-        .padding(.trailing, Self.shadowRoom - Self.shadowRoomTrailing)
-        .frame(maxWidth: .infinity)
-        .onGeometryChange(for: CGFloat.self, of: \.size.width) { room = $0 }
-        .background {
-            // The row with its names, never drawn, to tell whether they fit.
-            HStack(spacing: 8) {
-                ForEach(presets) { PresetLabel(preset: $0, symbol: $0.shownSymbol, showsTitle: true, isPink: false) }
+            .scrollIndicators(.never)
+            .scrollBounceBehavior(.basedOnSize)
+            // A sunk row, another mode's, takes no click and no scroll.
+            .allowsHitTesting(isShown)
+            .accessibilityHidden(!isShown)
+            .frame(height: ContextButtons.size + Self.shadowRoom * 2)
+            .padding(-Self.shadowRoom)
+            .padding(.trailing, Self.shadowRoom - trailingRoom)
+            .frame(maxWidth: .infinity)
+            .onGeometryChange(for: CGFloat.self, of: \.size.width) { room = $0 }
+            .background {
+                // The row with its names, never drawn, to tell whether they fit.
+                HStack(spacing: 8) {
+                    ForEach(presets) { PresetLabel(preset: $0, symbol: $0.shownSymbol, showsTitle: true, isPink: false) }
+                }
+                .fixedSize()
+                .hidden()
+                .onGeometryChange(for: CGFloat.self, of: \.size.width) { titledWidth = $0 }
             }
-            .fixedSize()
-            .hidden()
-            .onGeometryChange(for: CGFloat.self, of: \.size.width) { titledWidth = $0 }
+            if let askAll {
+                askAllCircle(askAll)
+            }
         }
         .animation(.smooth(duration: 0.2), value: applied)
         .animation(.smooth(duration: 0.25), value: showsTitles)
@@ -125,6 +140,36 @@ struct PromptPresets: View {
             value: isShown
         )
         .disabled(!isShown)
+        .accessibilityHidden(!isShown)
+    }
+
+    /// The circle by the gear that asks every preset at once: a pink symbol on neutral glass while it can, and
+    /// faded to a ghost of itself, like a context button with nothing to add, while there is no text to decide
+    /// about. It sinks into the card and rises with the capsules, first of them, being nearest the gear.
+    private func askAllCircle(_ askAll: @escaping () -> Void) -> some View {
+        GlassEffectContainer {
+            Button(action: askAll) {
+                Image(systemName: "checkmark.rectangle.stack")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(canAskAll ? AnyShapeStyle(Color.meralinePink) : AnyShapeStyle(.tertiary))
+                    .frame(width: ContextButtons.size, height: ContextButtons.size)
+                    .glassEffect(canAskAll ? .regular.interactive() : .regular, in: .circle)
+                    .contentShape(.circle)
+                    .opacity(canAskAll ? 1 : ContextButtons.unavailableOpacity)
+            }
+            .buttonStyle(.plain)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+        .animation(.smooth(duration: 0.2), value: canAskAll)
+        .disabled(!canAskAll || !isShown)
+        .help(canAskAll ? "Ask every preset at once about the text" : "Ask every preset at once, once there is text to decide about")
+        .accessibilityLabel("Ask All Presets")
+        .accessibilityValue(canAskAll ? "" : "Nothing to decide about")
+        .accessibilityHint("Asks every preset about the text, in one go.")
+        .opacity(isShown ? 1 : 0)
+        .scaleEffect(isShown ? 1 : 0.7, anchor: .bottom)
+        .offset(y: isShown ? 0 : Self.sinking)
+        .animation(isShown ? .spring(duration: 0.45, bounce: 0.3).delay(0.08) : .smooth(duration: 0.22), value: isShown)
         .accessibilityHidden(!isShown)
     }
 

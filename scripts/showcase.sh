@@ -31,6 +31,7 @@
 #   decision-scope  Decision mode: six tasks from Notes, the switch under the input set to each line, and the note that says what it decides about
 #   decision-live  Decision mode: the Context card deciding as you type, a question kept from the input, the input's, and three presets answered on glass capsules
 #   decision-models  Settings › Decision Models: the three providers in the sidebar, and Ollama's pane turned on with Nimble and what to pull
+#   preset-decisions  every preset of Decision mode asked at once about a text from Mail, each answer on one card
 #   table-fit     a three-column table wrapped to the card, and, beside a capture of 1.12.0, as table-fit-before-after
 #   undo-rewrite  the chat's actions searched for "undo" after Make Shorter: Undo Rewrite
 #   try-again     an answer cut off by its connection, the banner's Try Again, and Ask Again first in the footer

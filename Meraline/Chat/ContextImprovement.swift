@@ -110,7 +110,7 @@ nonisolated enum ContextImprovement {
                 usage = (usage ?? .zero).merging(took, adding: adds)
             case .prompt(_, let responder?):
                 responder(.deny)
-            case .prompt, .presented, .decision, .decisions:
+            case .prompt, .presented, .decision, .decisions, .presetDecisions:
                 break
             }
         }

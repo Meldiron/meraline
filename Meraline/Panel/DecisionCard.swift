@@ -1000,3 +1000,113 @@ struct BulkDecisionCard: View {
         return item.decision.isUnsure(below: unsureBelow) ? "Not sure, leaning \(item.decision.chosen.label), \(sure)" : "\(item.decision.chosen.label), \(sure)"
     }
 }
+
+/// What Jev decided about each of Decision's presets asked at once, in the answer's place (see
+/// `PresetDecisions`): a row for each preset, its verdict's symbol on a small glass disc ringed by how sure Jev
+/// is, tinted as `DecisionCard` tints it (a check on green for Yes, a cross on red for No, a question mark on plain
+/// glass for Not Sure, a check tinted by how sure for one of your own answers), its title, then the answer and
+/// how sure, or dots on a plain disc while its answer is on its way. The check, the cross, and the words carry
+/// the meaning; the tints are only a help.
+struct PresetDecisionsCard: View {
+    let round: PresetDecisions
+    /// Under this confidence a decision says Not Sure (see `Preferences.unsureBelow`).
+    let unsureBelow: Double
+    let isAnswering: Bool
+
+    private static let discSize: CGFloat = 28
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(round.questions) { question in
+                row(question)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .animation(.smooth(duration: 0.25), value: round)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(round.summary(unsureBelow: unsureBelow))
+    }
+
+    private func row(_ question: PresetDecisions.Question) -> some View {
+        let decision = question.decision
+        let verdict = decision?.verdict(unsureBelow: unsureBelow)
+        return HStack(spacing: 12) {
+            disc(decision, verdict: verdict)
+            Text(question.title)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            if let decision, let verdict {
+                HStack(spacing: 6) {
+                    Text(verdict == .unsure ? "Not sure" : decision.chosen.label)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                    Text(verdict == .unsure ? "leaning \(decision.chosen.label) · \(Decision.percent(decision.confidence))" : Decision.percent(decision.confidence))
+                        .font(.system(size: 12))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .transition(.opacity)
+            } else if isAnswering {
+                Text("Deciding…")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+                    .transition(.opacity)
+            } else {
+                Text("Not decided")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .textSelection(.enabled)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(question.title)
+        .accessibilityValue(decision?.summary(unsureBelow: unsureBelow) ?? (isAnswering ? "Deciding" : "Not decided"))
+    }
+
+    /// The disc: the symbol on tinted glass, ringed by how sure Jev is, or dots on plain glass while the answer is
+    /// on its way.
+    private func disc(_ decision: Decision?, verdict: Decision.Verdict?) -> some View {
+        let tint = verdict.flatMap { tint(of: $0, confidence: decision?.confidence ?? 0) }
+        return ZStack {
+            Circle()
+                .stroke(.primary.opacity(0.08), lineWidth: 2)
+            if let decision {
+                Circle()
+                    .trim(from: 0, to: decision.confidence)
+                    .stroke(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            Image(systemName: verdict.map(symbol(of:)) ?? "ellipsis")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(decision == nil ? .tertiary : .primary))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: Self.discSize - 8, height: Self.discSize - 8)
+                .glassEffect(tint.map { .regular.tint($0.opacity(0.3)) } ?? .regular, in: .circle)
+        }
+        .frame(width: Self.discSize, height: Self.discSize)
+        .accessibilityHidden(true)
+    }
+
+    private func symbol(of verdict: Decision.Verdict) -> String {
+        switch verdict {
+        case .yes, .chosen: "checkmark"
+        case .no: "xmark"
+        case .unsure: "questionmark"
+        }
+    }
+
+    /// Green for Yes and red for No, as `DecisionCard` has them; for one of your own answers, the colour of how
+    /// sure Jev is; nothing while it is Not Sure.
+    private func tint(of verdict: Decision.Verdict, confidence: Double) -> Color? {
+        switch verdict {
+        case .yes: Color(nsColor: .addedText)
+        case .no: Color(nsColor: .removedText)
+        case .chosen: confidenceColor(confidence)
+        case .unsure: nil
+        }
+    }
+}

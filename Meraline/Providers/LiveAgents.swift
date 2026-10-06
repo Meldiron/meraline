@@ -247,7 +247,7 @@ nonisolated struct AnswerTracker: Sendable {
         case .text(let text):
             answer = startsOver ? text : answer + text
             startsOver = false
-        case .prompt, .presented, .usage, .decision, .decisions:
+        case .prompt, .presented, .usage, .decision, .decisions, .presetDecisions:
             break
         }
     }

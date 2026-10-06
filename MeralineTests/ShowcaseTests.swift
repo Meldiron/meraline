@@ -331,6 +331,26 @@ struct ShowcaseTests {
         }
     }
 
+    /// Every preset of Decision mode asked at once from the circle at the end of their row, each answer on one card.
+    @Test func presetDecisions() async throws {
+        guard Showcase.wants("preset-decisions") else { return }
+        let text = "hi all, can we move the launch meeting to thursday? the slides aren't ready and legal still has to sign off on the pricing page, sorry for the late notice"
+        let yes = Decision(options: [.init(label: "Yes", probability: 0.86), .init(label: "No", probability: 0.14)], isYesNo: true, confidence: 0.72)
+        let no = Decision(options: [.init(label: "Yes", probability: 0.04), .init(label: "No", probability: 0.96)], isYesNo: true, confidence: 0.92)
+        let neutral = Decision(options: [.init(label: "Friendly", probability: 0.31), .init(label: "Neutral", probability: 0.63), .init(label: "Angry", probability: 0.06)], confidence: 0.7)
+        let high = Decision(options: [.init(label: "Low", probability: 0.08), .init(label: "Medium", probability: 0.34), .init(label: "High", probability: 0.58)], isOrdered: true, score: 1.5, confidence: 0.55)
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.decisionPanel(on: stage, decisions: [yes, no, neutral, high])
+            scene.session.bring(try #require(SelectedText(text, appName: "Mail", appURL: URL(fileURLWithPath: "/System/Applications/Mail.app"))))
+            scene.session.askPresets(PromptPreset.decisionDefaults)
+            await GameTestSupport.settle(scene.session)
+            await Showcase.settle(1.5)
+            try await stage.capturePanel(scene.panel, as: "preset-decisions")
+            stage.close(scene.panel)
+        }
+    }
+
     @Test func decisionLevels() async throws {
         guard Showcase.wants("decision-levels") else { return }
         let text = "Checkout has been failing for every customer in Europe since 9:40, and the payment provider's status page says nothing. Support has 40 tickets already."

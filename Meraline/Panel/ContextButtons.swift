@@ -22,6 +22,10 @@ struct ContextButtons: View {
     static let shadowRoom: CGFloat = 24
     /// How much the row adds above the card, beyond the window's usual margin.
     static let roomAbove: CGFloat = inset + size + inset - PanelController.margin
+    /// How much of a circle with nothing to add shows (the circle at the end of the presets too, `PromptPresets`).
+    /// The row's shadow comes from what it draws, so the circle's shadow fades with it and it lies flat and gray
+    /// beside the ones that would add.
+    static let unavailableOpacity = 0.4
 
     /// What a button would do if clicked.
     enum Status: Equatable {
@@ -251,10 +255,6 @@ private struct ContextButton<Icon: View>: View {
     let action: () -> Void
     @ViewBuilder let icon: Icon
 
-    /// How much of a circle with nothing to add shows. The row's shadow comes from what it draws, so the
-    /// circle's shadow fades with it and it lies flat and gray beside the ones that would add.
-    static var unavailableOpacity: Double { 0.4 }
-
     var body: some View {
         Button(action: action) {
             icon
@@ -263,7 +263,7 @@ private struct ContextButton<Icon: View>: View {
                 .frame(width: ContextButtons.size, height: ContextButtons.size)
                 .glassEffect(glass, in: .circle)
                 .contentShape(.circle)
-                .opacity(status == .unavailable ? Self.unavailableOpacity : 1)
+                .opacity(status == .unavailable ? ContextButtons.unavailableOpacity : 1)
         }
         .buttonStyle(.plain)
         .disabled(status == .unavailable)

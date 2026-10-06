@@ -9,8 +9,9 @@ final class ScriptedModel {
     var replies: [String]
     /// What each reply says it took, in order, for a model that reports its usage.
     var usage: [TokenUsage]
-    /// What each question in Decision mode is answered with, in order (see `Decision`), and what each question
-    /// about every word or line is answered with (see `DecisionBatch`).
+    /// What each question in Decision mode is answered with, in order (see `Decision`), Decision's presets asked at
+    /// once taking one each (see `PresetDecisions`), and what each question about every word or line is answered
+    /// with (see `DecisionBatch`).
     var decisions: [Decision]
     var batches: [DecisionBatch]
     private(set) var requests: [ChatRequest] = []
@@ -25,6 +26,18 @@ final class ScriptedModel {
     func stream(_ request: ChatRequest) -> AsyncThrowingStream<StreamOutput, Error> {
         requests.append(request)
         let took = usage.isEmpty ? nil : usage.removeFirst()
+        if let presets = request.decision?.presets, !decisions.isEmpty {
+            // Every question of the round answered in one reply, as many as there are answers left.
+            var round = presets
+            var answers: [DecisionQuestion.ID: Decision] = [:]
+            for question in round.undecided where !decisions.isEmpty { answers[question.id] = decisions.removeFirst() }
+            round.take(answers)
+            return AsyncThrowingStream { continuation in
+                if let took { continuation.yield(.usage(took, adds: true)) }
+                continuation.yield(.presetDecisions(round))
+                continuation.finish()
+            }
+        }
         if let decision = request.decision, !decision.items.isEmpty, !batches.isEmpty {
             let batch = batches.removeFirst()
             return AsyncThrowingStream { continuation in

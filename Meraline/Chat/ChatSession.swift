@@ -54,9 +54,14 @@ final class ChatSession {
         /// What Jev decided about each word or line, for a question asked about each (see `DecisionBatch`), filled
         /// in as the batches come; `answer` then sums it up.
         var decisions: DecisionBatch?
+        /// What Jev decided about each of Decision's presets, asked at once (see `PresetDecisions`): the round, with
+        /// no decision yet, from the moment the question goes, so the card shows what is asked, then filled in as
+        /// the replies come; `answer` then sums it up.
+        var presetDecisions: PresetDecisions?
 
-        /// The answer is a decision, about the text or each of its words or lines, not words of a model's.
-        var isDecision: Bool { decision != nil || decisions != nil }
+        /// The answer is a decision, about the text, each of its words or lines, or each preset, not words of a
+        /// model's.
+        var isDecision: Bool { decision != nil || decisions != nil || presetDecisions != nil }
 
         /// The ask the agent is waiting on, if any.
         var pendingPrompt: AgentPrompt? { prompts.last(where: \.isPending) }
@@ -214,6 +219,8 @@ final class ChatSession {
     enum FailureRetry: Equatable {
         case askAgain
         case send
+        /// Ask every preset again, the round that brought no answer (see `askPresets(_:)`).
+        case askPresets(PresetDecisions)
     }
     private(set) var failureRetry: FailureRetry?
     /// A friendly line from a game: its invitation, why a move came back, or that the round is over.
@@ -701,6 +708,65 @@ final class ChatSession {
         stream(request, for: turn.id)
     }
 
+    // MARK: Every preset at once
+
+    /// Whether the circle at the end of Decision's presets can ask them now (see `askPresets(_:)`): an empty chat,
+    /// where the presets are, in Decision mode with a decision model ready, no answer coming, text to decide
+    /// about, no picture or file waiting on a switch of mode, and a preset with a question.
+    func canAskPresets(among presets: [PromptPreset]) -> Bool {
+        canAsk(PresetDecisions(presets: presets, fallback: defaultAnswers))
+    }
+
+    private func canAsk(_ round: PresetDecisions) -> Bool {
+        turns.isEmpty && isDeciding && !isStreaming && hasDecisionState && fileNotice == nil && pictureNotice == nil
+            && preferences.activeProvider?.kind == .decision && !round.isEmpty
+    }
+
+    /// The circle at the end of Decision's presets (see `PromptPresets`): every preset with a question is asked at
+    /// once about the chat's texts and the draft's, in one turn, whose question is the presets' titles, and one
+    /// request carrying every question (see `PresetDecisions`, `makePresetsRequest(_:about:of:)`), each answer on
+    /// the card as it comes. The texts go with the turn as a question's do; whatever is typed in the input stays
+    /// there, for a follow-up about the same texts.
+    func askPresets(_ presets: [PromptPreset]) {
+        ask(PresetDecisions(presets: presets, fallback: defaultAnswers))
+    }
+
+    private func ask(_ round: PresetDecisions) {
+        guard canAsk(round), let provider = preferences.activeProvider else { return }
+        let selections = draftSelections + (typedSelection.map { [$0] } ?? [])
+        guard fits(Turn(question: round.headline, images: [], selections: selections)) else { return }
+        let request = makePresetsRequest(round, about: selections, of: provider)
+        draftSelections = []
+        typedState = nil
+        explainedScope = nil
+        failure = nil
+        var turn = Turn(question: round.headline, images: [], selections: selections)
+        turn.presetDecisions = round
+        turn.provider = provider
+        turn.estimatedInput = Self.estimatedTokens(in: request)
+        turns.append(turn)
+        isStreaming = true
+        let isFirst = turns.count == 1
+        usage.record(as: provider.kind) { tally in
+            tally.questions += 1
+            if isFirst { tally.chats += 1 }
+            tally.providers[provider.rawValue, default: 0] += 1
+            tally.selections += selections.filter { !$0.isFromClipboard }.count
+            tally.clipboards += selections.filter(\.isFromClipboard).count
+        }
+        Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))) every preset, \(round.questions.count) question(s), turn \(turns.count), \(selections.count) text(s)")
+        stream(request, for: turn.id)
+    }
+
+    /// The request Decision's presets make at once (see `PresetDecisions`): the chat's texts so far and
+    /// `selections` as the state, as `makeDecisionRequest` has them, and every question of the round.
+    func makePresetsRequest(_ round: PresetDecisions, about selections: [SelectedText], of provider: Provider) -> ChatRequest {
+        var request = makeRequest(asking: SelectedText.message(round.headline, about: selections), images: [], of: provider)
+        let context = turns.filter(\.isComplete).flatMap(\.selections) + selections
+        request.decision = DecisionRequest(state: context, question: round.headline, answers: .yesNo, presets: round)
+        return request
+    }
+
     /// Gets the provider in use ready for the next question, as the window opens or the mode or provider changes:
     /// Apple's model loads, and Claude Code or Codex starts in the chat's workspace (see `LiveAgents`). Nothing
     /// starts while an answer streams, or in the test host.
@@ -712,9 +778,11 @@ final class ChatSession {
         LiveAgents.shared.prewarm(makeRequest(asking: "…", images: [], of: provider))
     }
 
-    /// Whether Ask Again can ask the last question once more: a chat, not a game, whose last answer is done.
+    /// Whether Ask Again can ask the last question once more: a chat, not a game, whose last answer is done; a
+    /// round of presets only of a decision model.
     var canAskAgain: Bool {
-        !isStreaming && !isPlaying && turns.last?.isComplete == true && preferences.activeProvider != nil
+        guard !isStreaming, !isPlaying, turns.last?.isComplete == true, let provider = preferences.activeProvider else { return false }
+        return turns.last?.presetDecisions == nil || provider.kind == .decision
     }
 
     /// Whether the failure on the banner is one asking again might mend, which Try Again does: not a game's,
@@ -724,6 +792,7 @@ final class ChatSession {
         switch failureRetry {
         case .askAgain: return canAskAgain
         case .send: return !draft.trimmed.isEmpty
+        case .askPresets(let round): return canAsk(round)
         }
     }
 
@@ -734,6 +803,7 @@ final class ChatSession {
         switch failureRetry {
         case .askAgain: askAgain()
         case .send: send()
+        case .askPresets(let round): ask(round)
         }
     }
 
@@ -743,11 +813,19 @@ final class ChatSession {
         guard canAskAgain, let provider = preferences.activeProvider, let last = turns.popLast() else { return }
         replacedTurn = last
         isRewriting = false
-        let request = provider.kind == .decision
-            ? makeDecisionRequest(asking: last.question, about: last.selections, of: provider)
-            : makeRequest(asking: SelectedText.message(last.question, about: last.selections), images: last.images, files: last.files, of: provider)
+        // A round of presets is asked again whole, about the same texts.
+        let round = last.presetDecisions?.cleared
+        let request: ChatRequest
+        if let round {
+            request = makePresetsRequest(round, about: last.selections, of: provider)
+        } else if provider.kind == .decision {
+            request = makeDecisionRequest(asking: last.question, about: last.selections, of: provider)
+        } else {
+            request = makeRequest(asking: SelectedText.message(last.question, about: last.selections), images: last.images, files: last.files, of: provider)
+        }
         failure = nil
         var turn = Turn(question: last.question, images: last.images, files: last.files, selections: last.selections)
+        turn.presetDecisions = round
         turn.provider = provider
         turn.estimatedInput = Self.estimatedTokens(in: request)
         turns.append(turn)
@@ -991,8 +1069,8 @@ final class ChatSession {
         let key = UsageTally.ModelTally.key(provider: provider, model: model)
         let price = usage.price(for: provider, model: model)
         let turnCount = turns.count
-        // Every decision Jev made: one about the text, or one a word or line.
-        let decided = turn.decisions.map { $0.items.map(\.decision) } ?? turn.decision.map { [$0] } ?? []
+        // Every decision Jev made: one about the text, one a word or line, or one a preset.
+        let decided = turn.presetDecisions?.decided ?? turn.decisions.map { $0.items.map(\.decision) } ?? turn.decision.map { [$0] } ?? []
         let unsure = decided.filter { $0.isUnsure(below: preferences.unsureBelow) }.count
         usage.record(at: now, as: provider.kind) { tally in
             switch end {
@@ -1867,6 +1945,10 @@ final class ChatSession {
             turns[last].decisions = batch
             turns[last].answer = batch.summary(unsureBelow: preferences.unsureBelow)
             turns[last].activity = nil
+        case .presetDecisions(let round):
+            turns[last].presetDecisions = round
+            turns[last].answer = round.summary(unsureBelow: preferences.unsureBelow)
+            turns[last].activity = nil
         case .presented(let paths):
             // Read as Meraline's MCP server read it, so these are the files the agent was told it handed over.
             guard let workspace else { return }
@@ -2012,13 +2094,14 @@ final class ChatSession {
         // The question comes back to the input when no answer came, unless Ask Again asked it, which puts the
         // answer it was to replace back instead; Try Again then sends it or asks again accordingly.
         let cameBack = turns[last].answer.isEmpty && replaced == nil
+        let presets = turns[last].presetDecisions
         if turns[last].answer.isEmpty {
             takeBackQuestion(restoring: replaced)
         } else {
             turns[last].isComplete = true
         }
         fail(with: error.localizedDescription, needsSettings: Self.needsSettings(error))
-        failureRetry = cameBack ? .send : .askAgain
+        failureRetry = cameBack ? presets.map { .askPresets($0.cleared) } ?? .send : .askAgain
     }
 
     /// Looks for what the finished answer at `index` changed in the text its question was about, or, for a
@@ -2106,7 +2189,8 @@ final class ChatSession {
     }
 
     private func restoreDraft(from turn: Turn) {
-        draft = turn.question
+        // The presets' titles are no question of yours: the input keeps what it had.
+        if turn.presetDecisions == nil { draft = turn.question }
         draftImages = turn.images
         draftFiles = turn.files
         draftSelections = turn.selections
