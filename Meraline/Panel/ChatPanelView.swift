@@ -534,6 +534,7 @@ struct ChatPanelView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .onGeometryChange(for: CGFloat.self, of: \.size.height) { conversationHeight = $0 }
                 .environment(\.answerZoom, layout.answerZoom.scale)
+                .background(OverlayScrollers())
             }
             // Unmeasured, as a chat's first question goes, the conversation is as tall as its content, so it comes
             // in at its size and the card grows to it with its animation instead of jumping once it is measured;

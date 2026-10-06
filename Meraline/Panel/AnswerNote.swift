@@ -505,6 +505,7 @@ private struct AnswerNoteView: View {
                     .environment(\.answerZoom, layout.zoom.scale)
                     .environment(\.answerWorkspace, layout.stack.front?.workspace)
                     .opacity(layout.contentOpacity)
+                    .background(OverlayScrollers())
             }
             .scrollPosition($scrollPosition)
             .frame(height: layout.fitsAnswer ? min(answerHeight, maximumHeight) : nil)

@@ -34,6 +34,7 @@ When a version has an entry here, the Release workflow uses it as the release no
 - **Try Again after a failed answer.** The error's banner has a Try Again button: it asks the question again when the answer was cut off, and sends it again when it came back to the input. After an answer fails partway, Ask Again is the footer's first action, with Copy Answer still in the actions.
 - **A shake can be undone.** Shaking the window still forgets Recent Chats without asking, but the clock's capsule says “Forgotten · Undo” for five seconds, and a click on it brings every chat back as it was. One drag shakes at most once, too; before, a wiggle that went on fired twice.
 - **Copy Answer and Insert Answer paste formatted text into apps that take it.** The answer goes to the clipboard as its Markdown, as before, and beside it as HTML and rich text, so Mail, Notes, Pages, and web editors get bold, lists, code, and tables as such instead of the asterisks and dashes. Plain editors still get the Markdown.
+- With “Show scroll bars: Always” in System Settings, the conversation no longer flashes a scroll bar and re-wraps its text each time the card shrinks. Its scroll bar lies over the text, as Spotlight's does, and shows while scrolling.
 
 ## v1.12.0 - 2026-10-05
 

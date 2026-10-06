@@ -74,6 +74,7 @@ struct ConversationScrollTests {
         }
         await settle { conversation != nil }
         let scroll = try #require(conversation, "a long answer makes the conversation scroll")
+        #expect(scroll.scrollerStyle == .overlay, "whatever Show scroll bars says: a track beside the text made it re-wrap as the card shrank")
         func offset() -> CGFloat { scroll.contentView.bounds.minY }
         func height() -> CGFloat { scroll.documentView?.frame.height ?? 0 }
         /// At the answer's end: scrolled as far as following it goes, which stops at the padding under the last line.
