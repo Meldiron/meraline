@@ -261,12 +261,15 @@ struct ChatPanelView: View {
                 ZStack(alignment: .trailing) {
                     ForEach(ProviderKind.allCases) { kind in
                         let presets = presets(for: kind)
-                        PromptPresets(presets: presets, draft: session.draft, isShown: !hasConversation && preferences.mode == kind) { preset, sends in
-                            // A preset put in with nothing to work on opens the card for its text, which takes
-                            // the keyboard; otherwise the input keeps it.
-                            if session.apply(preset, among: presets, sending: sends) {
+                        PromptPresets(
+                            presets: presets, draft: session.draft, isShown: !hasConversation && preferences.mode == kind,
+                            sends: !session.hasNoContext, decidesLive: kind == .decision
+                        ) { preset, prepares in
+                            // A preset put in with nothing to work on, or asked live, opens the card for its
+                            // text, which takes the keyboard; otherwise the input keeps it, unless the question went.
+                            if prepares ? session.prepare(preset, among: presets) : session.apply(preset, among: presets) {
                                 focusState()
-                            } else if !sends {
+                            } else if !session.isStreaming {
                                 isInputFocused = true
                             }
                         }

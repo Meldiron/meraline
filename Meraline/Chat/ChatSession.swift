@@ -425,6 +425,10 @@ final class ChatSession {
     /// then, or a colon typed at the end of the question, opens the card for writing the text.
     var hasNothingToWorkOn: Bool { draftSelections.isEmpty && draftFiles.isEmpty && draftImages.isEmpty }
 
+    /// Whether the draft holds no context at all: nothing to work on, and no text on the Context card either. A
+    /// click on a preset then puts it in the input instead of asking it (see `apply(_:among:)`).
+    var hasNoContext: Bool { hasNothingToWorkOn && typedState?.trimmed.isEmpty != false }
+
     /// Opens the card as the question comes to end in a colon, in LLM and Agent modes (a decision's colon names
     /// its answers), with nothing in the draft to work on. The keyboard stays in the input, where the colon was
     /// just typed; Tab moves to the card. Only the colon's arrival opens it, so a card closed by its cross stays

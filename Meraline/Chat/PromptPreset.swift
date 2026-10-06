@@ -1,7 +1,9 @@
 import AppKit
 
-/// A prompt that waits above an empty chat as a glass capsule with an icon (see `PromptPresets`): a click puts its
-/// text in the input, a Shift-click sends it at once. Each mode has a list of its own, which Settings › Prompt
+/// A prompt that waits above an empty chat as a glass capsule with an icon (see `PromptPresets`): a click asks it
+/// at once about the text, file, or picture in the draft, or puts its text in the input while there is none; a
+/// Shift-click never sends, and in Decision mode has the Context card decide live with it (see
+/// `ChatSession.prepare(_:among:)`). Each mode has a list of its own, which Settings › Prompt
 /// edits, adds to, and deletes from, and a change of mode swaps the rows above the card. Above the card they are
 /// for a chat's first question; once an answer is ready, the chat's actions (⌘K) offer them for the answer
 /// instead, the first nine on ⌘1…⌘9 (see `ChatSession.run(_:)`). Only a changed list is kept, in UserDefaults,
@@ -153,21 +155,48 @@ nonisolated struct PromptPreset: Codable, Hashable, Identifiable, Sendable {
 }
 
 extension ChatSession {
-    /// A click on a preset's capsule above the card: its text goes in the input (see
-    /// `PromptPreset.draft(_:applying:among:toggling:)`), and with Shift the question goes at once, with whatever
-    /// else the draft holds. A preset put in with nothing in the draft for it to work on, no text, file, or
-    /// picture, opens the card for writing the text by hand (`writeState()`), or finds it open already; whether it
-    /// did, for the card to take the keyboard. A preset taken out again, or sent, leaves the keyboard where it is.
+    /// A click on a preset's capsule above the card. With something in the draft for it to work on, a text, a
+    /// file, a picture, or text on the Context card (see `hasNoContext`), the question goes at once: the preset's
+    /// text ahead of whatever is typed (see `PromptPreset.draft(_:applying:among:toggling:)`), another preset's
+    /// giving way, with everything the draft holds. With nothing, its text goes in the input, and the card opens
+    /// for writing the text by hand (`writeState()`), or is found open already; a second click takes the text out
+    /// again. Says whether the card should take the keyboard; a preset sent, or taken out, leaves it where it is.
     @discardableResult
-    func apply(_ preset: PromptPreset, among presets: [PromptPreset], sending: Bool) -> Bool {
+    func apply(_ preset: PromptPreset, among presets: [PromptPreset]) -> Bool {
         guard !isStreaming, !isPlaying else { return false }
-        let takesOut = !sending && PromptPreset.applied(in: draft, among: presets)?.id == preset.id
-        draft = PromptPreset.draft(draft, applying: preset, among: presets, toggling: !sending)
-        Log.panel.info("Preset \(sending ? "sent" : takesOut ? "taken out of the input" : "put in the input")")
-        if sending {
+        guard hasNoContext else {
+            draft = PromptPreset.draft(draft, applying: preset, among: presets, toggling: false)
+            Log.panel.info("Preset sent")
             send()
             return false
         }
+        return put(preset, among: presets)
+    }
+
+    /// A Shift-click on a preset's capsule, which never sends. In Decision mode the Context card decides live with
+    /// the preset from now on: Live goes on if it was off, the preset is asked (see `LiveDecisions`), and the card
+    /// opens for the text, or is found open. In LLM and Agent modes the preset's text goes in the input to add
+    /// to, as a click puts it with nothing to work on, whatever the draft holds. Says whether the card should take
+    /// the keyboard.
+    @discardableResult
+    func prepare(_ preset: PromptPreset, among presets: [PromptPreset]) -> Bool {
+        guard !isStreaming, !isPlaying else { return false }
+        guard isDeciding else { return put(preset, among: presets) }
+        if !liveDecisions.isOn { liveDecisions.toggle() }
+        liveDecisions.enabledPresets.insert(preset.id)
+        writeState()
+        refreshLiveDecisions(atOnce: true)
+        Log.panel.info("Preset asked live")
+        return typedState != nil
+    }
+
+    /// The preset's text in the input, ahead of what is typed, or out again when it was there. Put in with nothing
+    /// to work on, it opens the card for the text, or finds it open; whether it did, for the card to take the
+    /// keyboard.
+    private func put(_ preset: PromptPreset, among presets: [PromptPreset]) -> Bool {
+        let takesOut = PromptPreset.applied(in: draft, among: presets)?.id == preset.id
+        draft = PromptPreset.draft(draft, applying: preset, among: presets)
+        Log.panel.info("Preset \(takesOut ? "taken out of the input" : "put in the input")")
         guard !takesOut, hasNothingToWorkOn else { return false }
         writeState()
         return typedState != nil

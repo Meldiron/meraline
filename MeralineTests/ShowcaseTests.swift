@@ -190,7 +190,8 @@ struct ShowcaseTests {
             let stage = ShowcaseStage(appearance)
             let scene = try Self.panel(on: stage)
             scene.session.bring(try #require(SelectedText(text, appName: "Mail", appURL: URL(fileURLWithPath: "/System/Applications/Mail.app"))))
-            scene.session.apply(presets[0], among: presets, sending: false)
+            // As after a Shift-click: with the text to work on there, a click would ask at once.
+            scene.session.prepare(presets[0], among: presets)
             await Showcase.settle(1.5)
             // With the keyboard, as after a click: the cursor after the preset, not all of it selected.
             await Showcase.waitForIdle()
@@ -485,7 +486,7 @@ struct ShowcaseTests {
             await Showcase.waitForIdle()
             scene.panel.makeKey()
             await Showcase.settle(0.3)
-            if scene.session.apply(presets[0], among: presets, sending: false) { scene.controller.layout.stateFocusRequest += 1 }
+            if scene.session.apply(presets[0], among: presets) { scene.controller.layout.stateFocusRequest += 1 }
             scene.session.typedState = "hi all, their going to move the launch meeting to thursday because the the slides isnt ready yet, sorry for the late notice"
             await Showcase.settle(1.5)
             #expect(Self.moveCursorToEnd(ofCardIn: scene.panel), "the card has the keyboard")

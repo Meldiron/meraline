@@ -78,7 +78,7 @@ struct OneLineInputTests {
         session.stashDraft()
         try await Task.sleep(for: .milliseconds(300))
         let presets = PromptPreset.defaults(in: .english)
-        session.apply(presets[0], among: presets, sending: false)
+        session.apply(presets[0], among: presets)
         try await Task.sleep(for: .milliseconds(300))
 
         let editor = try #require(panel.firstResponder as? NSTextView)

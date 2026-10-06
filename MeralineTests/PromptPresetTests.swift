@@ -4,8 +4,8 @@ import Synchronization
 import Testing
 @testable import Meraline
 
-/// The presets above an empty chat: what a click puts in the input, what a Shift-click sends, how Settings keeps
-/// them, and that they come and go with a chat in the hidden panel without hanging it.
+/// The presets above an empty chat: what a click puts in the input or asks at once, what a Shift-click prepares,
+/// how Settings keeps them, and that they come and go with a chat in the hidden panel without hanging it.
 @MainActor
 struct PromptPresetTests {
     private typealias Support = GameTestSupport
@@ -56,7 +56,7 @@ struct PromptPresetTests {
         #expect(PromptPreset.applied(in: translated, among: presets) == translate)
     }
 
-    @Test func aSecondClickTakesThePresetOutAndAShiftClickKeepsIt() {
+    @Test func aSecondClickTakesThePresetOutUnlessItIsSent() {
         let fixed = PromptPreset.draft("bonjour", applying: fix, among: presets)
         #expect(PromptPreset.draft(fixed, applying: fix, among: presets) == "bonjour")
         #expect(PromptPreset.draft(PromptPreset.draft("", applying: fix, among: presets), applying: fix, among: presets).isEmpty)
@@ -83,16 +83,16 @@ struct PromptPresetTests {
 
     // MARK: The chat
 
-    @Test func aClickFillsTheInputAndAShiftClickSendsWithTheSelection() async throws {
+    @Test func aClickFillsTheInputWithoutTextAndAsksAtOnceWithTheSelection() async throws {
         let model = ScriptedModel(["Hello, how are you?"])
         let session = Support.session(model)
-        session.apply(fix, among: presets, sending: false)
+        session.apply(fix, among: presets)
         #expect(session.draft == "\(fix.text) ")
         #expect(session.turns.isEmpty)
         #expect(session.typedState == "", "the card opens for the text to work on")
 
         session.bring(try #require(SelectedText("helo how r u", appName: "Mail")))
-        session.apply(translate, among: presets, sending: true)
+        session.apply(translate, among: presets)
         await Support.settle(session)
         #expect(session.draft.isEmpty)
         #expect(session.typedState == nil, "the card, left empty, goes with the question and adds nothing")
@@ -104,34 +104,106 @@ struct PromptPresetTests {
         #expect(message.hasSuffix(translate.text))
     }
 
-    @Test func aPresetOpensTheCardForItsTextUnlessTheDraftHasSomethingToWorkOn() throws {
+    @Test func aPresetOpensTheCardForItsTextWithNothingToWorkOn() throws {
         let session = Support.session(ScriptedModel())
-        #expect(session.apply(fix, among: presets, sending: false), "put in with nothing to work on, it opens the card, which takes the keyboard")
+        #expect(session.apply(fix, among: presets), "put in with nothing to work on, it opens the card, which takes the keyboard")
         #expect(session.typedState == "")
-        session.typedState = "their going"
-        #expect(session.apply(translate, among: presets, sending: false), "another preset finds the card open and hands it the keyboard again")
-        #expect(session.typedState == "their going")
-        #expect(!session.apply(translate, among: presets, sending: false), "taken out again, it leaves the keyboard where it is")
-        #expect(session.typedState == "their going", "and the card stays")
+        #expect(session.apply(translate, among: presets), "another preset finds the card open, still empty, and hands it the keyboard again")
+        #expect(session.typedState == "")
+        #expect(session.turns.isEmpty, "nothing was sent: the card is empty")
+        #expect(!session.apply(translate, among: presets), "taken out again, it leaves the keyboard where it is")
+        #expect(session.typedState == "", "and the card stays")
         #expect(PromptPreset.applied(in: session.draft, among: presets) == nil)
+    }
 
-        session.reset()
-        #expect(session.typedState == nil)
+    /// A text selected or copied, a picture, or text written on the Context card is what a preset works on, so a
+    /// click asks at once instead of putting the preset in the input.
+    @Test func aClickAsksAtOnceWithSomethingToWorkOn() async throws {
+        let model = ScriptedModel(["Fixed.", "Fixed.", "Fixed."])
+        let session = Support.session(model)
         session.bring(try #require(SelectedText("helo how r u", appName: "Mail")))
-        #expect(!session.apply(fix, among: presets, sending: false), "a selection is the text to work on")
-        #expect(session.typedState == nil)
-        #expect(session.draft == "\(fix.text) ")
+        #expect(!session.hasNoContext)
+        #expect(!session.apply(fix, among: presets), "a selection is the text to work on, so the question goes")
+        await Support.settle(session)
+        #expect(session.turns.map(\.question) == [fix.text])
+        #expect(session.turns[0].selections.map(\.sourceLabel) == ["Mail"])
+        #expect(session.draft.isEmpty && session.typedState == nil)
 
         session.reset()
         session.bring(Support.image())
-        #expect(!session.apply(fix, among: presets, sending: false), "as is a picture")
+        #expect(!session.apply(fix, among: presets), "as is a picture")
+        await Support.settle(session)
+        #expect(session.turns.count == 1 && session.turns[0].images.count == 1)
+
+        // Text on the Context card too: the card a click opened, written in, and the same preset clicked again
+        // is sent, not taken out.
+        session.reset()
+        #expect(session.hasNoContext)
+        #expect(session.apply(fix, among: presets))
+        session.typedState = "helo how r u"
+        #expect(!session.hasNoContext)
+        #expect(!session.apply(fix, among: presets))
+        await Support.settle(session)
+        #expect(session.turns.count == 1)
+        #expect(session.turns[0].question == fix.text)
+        #expect(session.turns[0].selections.map(\.sourceLabel) == ["Context"])
         #expect(session.typedState == nil)
+    }
+
+    /// A Shift-click never sends: in LLM and Agent modes the preset goes in the input to add to, whatever the draft
+    /// holds, and in Decision mode the Context card decides live with the preset and takes the keyboard.
+    @Test func aShiftClickPutsThePresetInOrDecidesLiveWithIt() async throws {
+        let session = Support.session(ScriptedModel())
+        let mail = try #require(SelectedText("Production is down", appName: "Mail"))
+        session.bring(mail)
+        #expect(!session.prepare(fix, among: presets), "with the text to work on there, the input keeps the keyboard")
+        #expect(session.draft == "\(fix.text) ")
+        #expect(session.turns.isEmpty && session.typedState == nil)
+        #expect(!session.prepare(fix, among: presets), "and once more takes it out")
+        #expect(session.draft.isEmpty)
+        session.removeSelection(mail.id)
+        #expect(session.prepare(fix, among: presets), "with nothing to work on, the card opens as for a click")
+        #expect(session.typedState == "")
+
+        // Decision mode: Live on with the preset, the card open for the text, nothing in the input.
+        let preferences = Support.preferences()
+        preferences[.typeSafe] = ProviderSettings(model: "jev-latest", baseURL: Provider.typeSafe.defaultBaseURL, apiKey: "sk-test", isEnabled: true)
+        preferences.mode = .decision
+        let asked = AskedLive()
+        let model = ScriptedModel()
+        let deciding = ChatSession(preferences: preferences, usage: UsageLedger(file: nil), stream: { model.stream($0) }) { questions, _, _, _ in
+            asked.ids.append(questions.map(\.id))
+            return DecisionClient.LiveReply(decisions: Dictionary(uniqueKeysWithValues: questions.map { ($0.id, LiveDecisionTests.yes) }), usage: .zero)
+        }
+        deciding.liveDecisions.debounce = 0.04
+        deciding.liveDecisions.maxWait = 0.12
+        let decisions = PromptPreset.decisionDefaults
+        #expect(!deciding.liveDecisions.isOn)
+        #expect(deciding.prepare(decisions[0], among: decisions), "the card opens and takes the keyboard")
+        #expect(deciding.typedState == "")
+        #expect(deciding.liveDecisions.isOn)
+        #expect(deciding.liveDecisions.enabledPresets == ["urgent"])
+        #expect(deciding.draft.isEmpty, "nothing goes in the input")
+        #expect(deciding.turns.isEmpty)
+        #expect(deciding.prepare(decisions[2], among: decisions), "another preset joins, and Live stays on")
+        #expect(deciding.liveDecisions.enabledPresets == ["urgent", "tone"])
+        #expect(deciding.prepare(decisions[0], among: decisions), "once more leaves it on")
+        #expect(deciding.liveDecisions.enabledPresets == ["urgent", "tone"])
+        deciding.typedState = "Production is down"
+        try await Task.sleep(for: .milliseconds(250))
+        #expect(asked.ids.last == ["preset.urgent", "preset.tone"], "the presets are asked about the text as it is typed")
+    }
+
+    @MainActor
+    private final class AskedLive {
+        var ids: [[String]] = []
     }
 
     @Test func aGameTakesNoPreset() {
         let session = Support.session(ScriptedModel())
         session.startGame(.rhymeDuel)
-        #expect(!session.apply(fix, among: presets, sending: false))
+        #expect(!session.apply(fix, among: presets))
+        #expect(!session.prepare(fix, among: presets))
         #expect(session.draft.isEmpty)
         #expect(session.typedState == nil)
     }
@@ -228,7 +300,7 @@ struct PromptPresetTests {
         done.withLock { $0 = true }
     }
 
-    @Test func thePresetsComeAndGoWithAChatWithoutHangingTheHiddenPanel() async {
+    @Test func thePresetsComeAndGoWithAChatWithoutHangingTheHiddenPanel() async throws {
         let defaults = Self.throwaway()
         defaults.set(true, forKey: ShortcutSetup.chosenKey) // the chat, not the shortcut picker
         let preferences = Support.preferences()
@@ -243,7 +315,8 @@ struct PromptPresetTests {
         #expect(!controller.isVisible)
         settle("the panel is made") {}
 
-        settle("a preset is sent") { session.apply(fix, among: presets, sending: true) }
+        session.bring(try #require(SelectedText("their going", appName: "Mail")))
+        settle("a preset is sent") { session.apply(fix, among: presets) }
         #expect(!controller.isVisible, "sent")
         await Support.settle(session)
         settle("the answer is in") {}
