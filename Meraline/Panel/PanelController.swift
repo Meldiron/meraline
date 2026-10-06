@@ -42,12 +42,55 @@ final class FloatingPanel: EditingPanel {
         onClose?()
     }
 
+    /// When the panel last got a click or a key press, or was shown, on the system's uptime clock (see
+    /// `KeyboardLoss`): input since then went somewhere else.
+    var lastInputAt: TimeInterval = 0
+
     override func sendEvent(_ event: NSEvent) {
+        if KeyboardLoss.inputTypes.contains(event.type) { lastInputAt = max(lastInputAt, event.timestamp) }
         if event.type == .magnify, let onMagnify {
             onMagnify(event)
         } else {
             super.sendEvent(event)
         }
+    }
+}
+
+/// Whether the window should close when it loses the keyboard (see `PanelController.windowDidResignKey`). It
+/// should when the person sent the keyboard elsewhere: a click or a key press that went outside the window since
+/// it was shown or last got one (⌘Tab, a click in another app or on the menu bar, Spotlight), a switch to
+/// another Space, or one of Meraline's own windows taking it (Settings, a torn-off note, Sparkle's). It should
+/// not when nothing was pressed: an app that came forward by itself, a helper window of the system's, or an
+/// editor taking its window back a moment after the panel opened, closed the panel while the person was reading
+/// or typing, which looked random. The window takes the keyboard back then, and says so in the log.
+nonisolated enum KeyboardLoss {
+    /// The events that count as the person doing something: a click or a key press, never a move or a scroll,
+    /// which take no keyboard.
+    static let inputTypes: Set<NSEvent.EventType> = [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]
+    /// The same, for the system's count of the last event of each kind.
+    static let inputEventTypes: [CGEventType] = [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]
+
+    enum Verdict: Equatable, Sendable {
+        case close(String)
+        case keep
+    }
+
+    /// `ownWindowIsKey`: another window of Meraline's took the keyboard. `onActiveSpace`: the window is on the
+    /// Space in front. `lastInputAt`: when the system last saw a click or a key press, on the uptime clock, or
+    /// nil for none. `lastPanelInputAt`: the later of when the panel was shown and when it last got one.
+    static func verdict(ownWindowIsKey: Bool, onActiveSpace: Bool, lastInputAt: TimeInterval?, lastPanelInputAt: TimeInterval) -> Verdict {
+        if ownWindowIsKey { return .close("another window of Meraline's took the keyboard") }
+        if !onActiveSpace { return .close("the window is on another Space") }
+        if let lastInputAt, lastInputAt > lastPanelInputAt + 0.01 { return .close("a click or a key press went elsewhere") }
+        return .keep
+    }
+
+    /// When the system last saw a click or a key press, on the uptime clock, from the window server's own count,
+    /// which needs no permission.
+    static func lastInputAt(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> TimeInterval? {
+        let ago = inputEventTypes.map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }.min()
+        guard let ago, ago.isFinite, ago >= 0 else { return nil }
+        return now - ago
     }
 }
 
@@ -174,7 +217,7 @@ final class PanelController: NSObject {
     static let marginBelow: CGFloat = 48
     private static var windowWidth: CGFloat { width + margin * 2 }
 
-    private let panel: FloatingPanel
+    let panel: FloatingPanel
     private let session: ChatSession
     private let preferences: Preferences
     private let whatsNew: WhatsNew
@@ -390,6 +433,7 @@ final class PanelController: NSObject {
             closes += 1
             layout.isShown = true
             panel.makeKeyAndOrderFront(nil)
+            panel.lastInputAt = ProcessInfo.processInfo.systemUptime
             requestFocus()
             installKeyMonitor()
             sources.windowOpened()
@@ -412,6 +456,7 @@ final class PanelController: NSObject {
         place(on: screen)
         // The content fades in as the card rises into place; with Reduce Motion it only fades.
         panel.makeKeyAndOrderFront(nil)
+        panel.lastInputAt = ProcessInfo.processInfo.systemUptime
         layout.isShown = true
         requestFocus()
         installKeyMonitor()
@@ -702,9 +747,32 @@ final class PanelController: NSObject {
 }
 
 extension PanelController: NSWindowDelegate {
+    /// The window lost the keyboard. A panel of actions goes either way. The window closes when the person sent
+    /// the keyboard elsewhere, and takes it back when nothing was pressed (see `KeyboardLoss`): an app coming
+    /// forward by itself, or an editor taking its window back right after the panel opened, closed it while
+    /// someone was reading, which looked random. Which window took the keyboard is known a moment later, once
+    /// it has it.
     func windowDidResignKey(_ notification: Notification) {
         layout.actionPanel = nil
-        if !preferences.isPinned { close() }
+        guard !preferences.isPinned else { return }
+        Task { @MainActor [weak self] in
+            guard let self, panel.isVisible, !isClosing, !panel.isKeyWindow else { return }
+            let front = NSWorkspace.shared.frontmostApplication?.localizedName ?? "no app"
+            let verdict = KeyboardLoss.verdict(
+                ownWindowIsKey: NSApp.keyWindow.map { $0 !== panel } ?? false,
+                onActiveSpace: panel.isOnActiveSpace,
+                lastInputAt: KeyboardLoss.lastInputAt(),
+                lastPanelInputAt: panel.lastInputAt
+            )
+            switch verdict {
+            case .close(let reason):
+                Log.panel.info("Window closed: lost the keyboard, \(reason) (in front: \(front))")
+                close()
+            case .keep:
+                Log.panel.info("Window kept: lost the keyboard with nothing pressed, taking it back (in front: \(front))")
+                panel.makeKeyAndOrderFront(nil)
+            }
+        }
     }
 
     func windowDidChangeScreen(_ notification: Notification) {
