@@ -4,37 +4,78 @@ Notable changes in each Meraline release, newest first.
 
 When a version has an entry here, the Release workflow uses it as the release notes on GitHub and in the in-app update window. A version without an entry gets the list of commits since the previous tag instead. Headings are `## vX.Y.Z - YYYY-MM-DD`.
 
-## Unreleased
+## v1.13.0 - 2026-10-06
+
+A pass through the app as a tester found a hang, a few bugs on keyboards where the digits take Shift, and places where the window got in the way of reading. This release fixes what it found.
+
+### Reading answers
+
+- **You can scroll up while an answer is still coming.** The conversation follows a growing answer only while you are at its end. Scroll up to read from the start and it stays where you put it; before, every new word pulled you back down, and so did the follow-ups when they arrived. Scroll back to the end, or ask something, and it follows again.
+
+![A long answer about DNS still coming, Stop in the footer, scrolled up to its first steps](https://raw.githubusercontent.com/Meldiron/meraline/v1.13.0/docs/screenshots/streaming-scrolled-light.png)
+
+- **Fast answers no longer fall behind the model.** Words that arrive within a twentieth of a second go on screen together, instead of the whole answer being laid out again for each one. A long answer from a fast model used to finish on screen many seconds after it had arrived.
+- **Tables fit the window.** A table's columns give way to the room the card has, the widest first, so a table of three or four columns wraps its cells instead of scrolling sideways with its last column cut off. A table too wide even for that still scrolls.
+
+![Before and after: the same cortado-and-latte table cut off at its last column in 1.12.0, and wrapped to the card now](https://raw.githubusercontent.com/Meldiron/meraline/v1.13.0/docs/screenshots/table-fit-before-after-light.png)
+
+- With “Show scroll bars: Always” in System Settings, the conversation no longer flashes a scroll bar and re-wraps its text each time the card shrinks. Its scroll bar lies over the text, as Spotlight's does, and shows while scrolling.
+
+### Answers
+
+- **Undo Rewrite.** A rewrite, or a preset run on the answer, can be taken back from the chat's actions: the answer it replaced comes back under the same question. Each undo takes back the rewrite before it. Handy when ⌘1 ran Fix Grammar on an answer you only meant to zoom.
+
+![The chat's actions searched for undo after Make Shorter: Undo Rewrite, bring back the answer it replaced](https://raw.githubusercontent.com/Meldiron/meraline/v1.13.0/docs/screenshots/undo-rewrite-light.png)
+
+- **Try Again after a failed answer.** The error's banner has a Try Again button: it asks the question again when the answer was cut off, and sends it again when it came back to the input. After an answer fails partway, Ask Again is the footer's first action, with Copy Answer still in the actions.
+- An answer whose connection closes partway now says so (“The connection closed before the answer finished.”) and keeps what arrived. Before, the cut-off text passed for the whole answer.
+
+![An answer cut off mid-sentence, the banner saying the connection closed before it finished with a Try Again button, and Ask Again first in the footer](https://raw.githubusercontent.com/Meldiron/meraline/v1.13.0/docs/screenshots/try-again-light.png)
+
+- **Copy Answer and Insert Answer paste formatted text into apps that take it.** The answer goes to the clipboard as its Markdown, as before, and beside it as HTML and rich text, so Mail, Notes, Pages, and web editors get bold, lists, code, and tables as such instead of the asterisks and dashes. Plain editors still get the Markdown.
+
+![Before and after: what a rich-text app pasted, the Markdown with its asterisks and dashes, and now the same answer with bold, bullets, and a table](https://raw.githubusercontent.com/Meldiron/meraline/v1.13.0/docs/screenshots/rich-copy-light.png)
+
+- No follow-ups are suggested under an answer that is your own text changed, such as after Fix Grammar or Translate. They took the text for a subject: under a corrected note about a parcel, “Who is receiving the package?”.
 
 ### Agents
 
 - **⌘1 to ⌘9 answer an agent's question.** When Claude Code asks a question with choices, the keys pick them, as a click does, and the choices show their keycaps. Allow and Deny already took Return.
 
+![Claude Code asking which release a changelog entry is for, its two choices wearing ⌘1 and ⌘2](https://raw.githubusercontent.com/Meldiron/meraline/v1.13.0/docs/screenshots/agent-question-light.png)
+
 ### Games
 
 - **Word Football gives the model a second try.** When the model's word breaks the chain or was played already, it is told what was wrong and asked once more before the foul is called; only the word that counted shows. Against Apple's on-device model, most matches used to end after one move.
+- A round's result shows once when a game ends. It stood in the transcript and again in the Play Again tray right under it; the tray now leads with the game's name.
+
+### Recent chats
+
+- **A shake can be undone.** Shaking the window still forgets Recent Chats without asking, but the clock's capsule under the input turns pink and says Undo for five seconds, and a click on it brings every chat back as it was. One drag shakes at most once, too; before, a wiggle that went on fired twice.
+
+![The empty panel right after a shake, the clock's capsule under the input pink and saying Undo](https://raw.githubusercontent.com/Meldiron/meraline/v1.13.0/docs/screenshots/shake-undo-light.png)
+
+### Keyboards where the digits take Shift
+
+On a Czech, Slovak, or AZERTY keyboard the number row types letters, and the digits take Shift.
+
+- ⌘1, ⌘2, and ⌘3 switch between LLM, Agent, and Decision there. They go by the key's place now; before, only ⇧⌘2 worked.
+- ⌘0 puts answers back to actual size there. It goes by the key's place now, as ⌘1 to ⌘9 do.
+- Zoom In shows the key that works on your keyboard. On a Czech or Slovak one the key that types + is the 1 key, which runs the first preset once an answer is ready, so Zoom In says ⌘= there.
+
+### Settings › Usage
+
+- The chart shows a bar's numbers when the pointer is over it. They sat above the chart, where only their bottom edge showed.
+- The chart labels every few bars again. Every bar had a label, so a month's days ran together.
+- The Hour chart no longer counts every five minutes twice, and the Day chart's bars are clock hours, so the bar for now sits over the hour it is. Both ran backwards from the current minute, which cut the counted five minutes in two.
+
+![Before and after: Settings › Usage over a month in 1.12.0, its days' numbers run together under the chart and the hover numbers cut off at the top, and the chart now with a label every five days](https://raw.githubusercontent.com/Meldiron/meraline/v1.13.0/docs/screenshots/usage-before-after.png)
 
 ### Fixes
 
 - **Show What Changed no longer freezes Meraline under VoiceOver.** With VoiceOver or any other accessibility tool reading the window, showing what an answer changed sent macOS 27 into a loop that never ended, and Meraline had to be force quit.
-- ⌘0 puts answers back to actual size on keyboards where 0 takes Shift, such as Czech and AZERTY ones. It goes by the key's place now, as ⌘1 to ⌘9 do.
-- ⌘1, ⌘2, and ⌘3 switch between LLM, Agent, and Decision on keyboards where the digits take Shift, such as Czech and AZERTY ones. They go by the key's place now; before, only ⇧⌘2 worked there.
-- **You can scroll up while an answer is still coming.** The conversation follows a growing answer only while you are at its end. Scroll up to read from the start and it stays where you put it; before, every new word pulled you back down, and so did the follow-ups when they arrived. Scroll back to the end, or ask something, and it follows again.
-- **Fast answers no longer fall behind the model.** Words that arrive within a twentieth of a second go on screen together, instead of the whole answer being laid out again for each one. A long answer from a fast model used to finish on screen many seconds after it had arrived.
-- An answer whose connection closes partway now says so (“The connection closed before the answer finished.”) and keeps what arrived. Before, the cut-off text passed for the whole answer.
-- Settings › Usage shows a bar's numbers when the pointer is over it. They sat above the chart, where only their bottom edge showed.
-- Settings › Usage labels its chart every few bars again. Every bar had a label, so a month's days ran together.
-- The Hour chart in Settings › Usage no longer counts every five minutes twice, and the Day chart's bars are clock hours, so the bar for now sits over the hour it is. Both ran backwards from the current minute, which cut the counted five minutes in two.
-- A round's result shows once when a game ends. It stood in the transcript and again in the Play Again tray right under it; the tray now leads with the game's name.
-- No follow-ups are suggested under an answer that is your own text changed, such as after Fix Grammar or Translate. They took the text for a subject: under a corrected note about a parcel, “Who is receiving the package?”.
 - The title of a panel of actions stays at the left when a search finds nothing, instead of jumping to the middle.
-- **Tables fit the window.** A table's columns give way to the room the card has, the widest first, so a table of three or four columns wraps its cells instead of scrolling sideways with its last column cut off. A table too wide even for that still scrolls.
-- **Undo Rewrite.** A rewrite, or a preset run on the answer, can be taken back from the chat's actions: the answer it replaced comes back under the same question. Each undo takes back the rewrite before it. Handy when ⌘1 ran Fix Grammar on an answer you only meant to zoom.
-- Zoom In shows the key that works on your keyboard. On a Czech or Slovak one the key that types + is the 1 key, which runs the first preset once an answer is ready, so Zoom In says ⌘= there.
-- **Try Again after a failed answer.** The error's banner has a Try Again button: it asks the question again when the answer was cut off, and sends it again when it came back to the input. After an answer fails partway, Ask Again is the footer's first action, with Copy Answer still in the actions.
-- **A shake can be undone.** Shaking the window still forgets Recent Chats without asking, but the clock's capsule says “Forgotten · Undo” for five seconds, and a click on it brings every chat back as it was. One drag shakes at most once, too; before, a wiggle that went on fired twice.
-- **Copy Answer and Insert Answer paste formatted text into apps that take it.** The answer goes to the clipboard as its Markdown, as before, and beside it as HTML and rich text, so Mail, Notes, Pages, and web editors get bold, lists, code, and tables as such instead of the asterisks and dashes. Plain editors still get the Markdown.
-- With “Show scroll bars: Always” in System Settings, the conversation no longer flashes a scroll bar and re-wraps its text each time the card shrinks. Its scroll bar lies over the text, as Spotlight's does, and shows while scrolling.
+- A `meraline://` URL's text comes without control characters, which a URL can carry and no keyboard types.
 
 ## v1.12.0 - 2026-10-05
 
