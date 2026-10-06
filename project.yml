@@ -88,7 +88,9 @@ targets:
         SUPublicEDKey: $(MERALINE_SPARKLE_PUBLIC_KEY)
         SUEnableAutomaticChecks: true
         SUAutomaticallyUpdate: true
-        SUScheduledCheckInterval: 86400
+        # Sparkle's own schedule goes no lower than an hour, so it stays there as a floor; Meraline checks every
+        # 15 minutes itself (Updater.checkInterval), on a timer and as the window opens after a sleep.
+        SUScheduledCheckInterval: 3600
 
   MeralineTests:
     type: bundle.unit-test

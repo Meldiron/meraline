@@ -403,6 +403,8 @@ final class PanelController: NSObject {
         // A chat whose time ran out while the Mac slept goes before the window shows it.
         session.expireChats()
         session.prewarm()
+        // An update that came out since the last check, a quarter of an hour or a night's sleep ago, goes on its capsule now.
+        updater.checkIfDue()
         SelectionAccess.shared.refresh()
         let screen = Self.screenUnderPointer
         layout.maximumConversationHeight = max(220, screen.visibleFrame.height * 0.6)

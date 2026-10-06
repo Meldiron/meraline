@@ -4,6 +4,10 @@ Notable changes in each Meraline release, newest first.
 
 When a version has an entry here, the Release workflow uses it as the release notes on GitHub and in the in-app update window. A version without an entry gets the list of commits since the previous tag instead. Headings are `## vX.Y.Z - YYYY-MM-DD`.
 
+## Unreleased
+
+- **Updates are found within a quarter of an hour.** Meraline checks for updates every 15 minutes instead of once a day, and when you open the window after the Mac slept through a check, so the Update Available capsule is under the window by the time you press ⌥ Space. Before, Settings › Software Update could say “Last checked 15 hours ago” while a release waited.
+
 ## v1.13.0 - 2026-10-06
 
 A pass through the app as a tester found a hang, a few bugs on keyboards where the digits take Shift, and places where the window got in the way of reading. This release fixes what it found.

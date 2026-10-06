@@ -8,6 +8,11 @@ import Sparkle
 /// Updates download and install silently by default (SUAutomaticallyUpdate). What Sparkle finds or
 /// stages is exposed as `state`, so the menu bar item and the Software Update pane can offer it,
 /// and the notes of an update are kept so the panel's What's New can show them after it is installed.
+///
+/// Meraline checks every `checkInterval` (15 minutes): a timer of its own while it runs, and the window's opening
+/// for a Mac that slept through it, both through `checkIfDue`, so an update is on its capsule when ⌥ Space shows
+/// the window. Sparkle's own schedule (`SUScheduledCheckInterval` in project.yml) goes no lower than an hour, so
+/// it stays at that, a floor under Meraline's.
 @Observable
 final class Updater: NSObject {
     struct Update: Equatable {
@@ -91,7 +96,7 @@ final class Updater: NSObject {
 
     /// For pictures of Settings › Software Update: an updater set up as a release build's is, checking and
     /// installing by itself, though the test host never starts Sparkle.
-    func pretendAvailable(lastCheck: Date) {
+    func pretendAvailable(lastCheck: Date?) {
         pretendsAvailable = true
         canCheckForUpdates = true
         self.lastCheck = lastCheck
@@ -200,6 +205,45 @@ final class Updater: NSObject {
             }
         ]
         Log.updates.info("Updater started on the \(preferences.updateChannel.rawValue) channel")
+        keepChecking()
+    }
+
+    /// How old a check is before another runs, from the timer or the window's opening: a quarter of an hour, under
+    /// Sparkle's floor of an hour for a schedule of its own, which is why Meraline keeps the schedule itself.
+    static let checkInterval: TimeInterval = 15 * 60
+
+    /// Whether a check should run: the updater runs, checks by itself, and is free to, and there was no check yet
+    /// or the last is `checkInterval` old. Sparkle stamps the date as a check starts, so a Mac that is offline is
+    /// asked again after the interval, not at every tick or opening.
+    func isCheckDue(at now: Date = .now) -> Bool {
+        guard isAvailable, checksAutomatically, canCheckForUpdates else { return false }
+        guard let lastCheck else { return true }
+        return now.timeIntervalSince(lastCheck) >= Self.checkInterval
+    }
+
+    /// Checks in the background when a check is due: every `checkInterval` while Meraline runs, and as the window
+    /// opens, for a Mac that slept through the timer, so an update that came out meanwhile shows on its capsule
+    /// now. Nothing opens: the update downloads and stages, or waits on the capsule, as one of Sparkle's own
+    /// scheduled checks does. Says whether it checked.
+    @discardableResult
+    func checkIfDue(at now: Date = .now) -> Bool {
+        guard isCheckDue(at: now) else { return false }
+        let age = lastCheck.map { "\(Int(now.timeIntervalSince($0) / 60)) min ago" } ?? "never"
+        Log.updates.info("Checking for updates in the background; last check \(age)")
+        controller?.updater.checkForUpdatesInBackground()
+        return true
+    }
+
+    /// Asks `checkIfDue` every `checkInterval` while Meraline runs. The continuous clock counts the Mac's sleep,
+    /// so a tick slept through comes as it wakes.
+    private func keepChecking() {
+        Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Self.checkInterval))
+                guard let self else { return }
+                checkIfDue()
+            }
+        }
     }
 
     /// Opens Sparkle's window: a check when nothing is known, the found update otherwise.
