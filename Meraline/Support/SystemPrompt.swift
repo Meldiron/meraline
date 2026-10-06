@@ -1,9 +1,9 @@
 import Foundation
 
 /// The instructions Meraline sends a model, each of which Settings › Prompt can change: one for the LLMs, one for
-/// the agents, one for each game, and the one Why? asks Claude Code with. A decision model takes no prompt, so
-/// Decision mode has none. Only a changed prompt is kept, in UserDefaults, so a prompt left alone follows its
-/// default when a later version changes it.
+/// the agents, one for each game, the one Why? asks Claude Code with, and the one Improve on the Context card
+/// edits a text with. A decision model takes no prompt, so Decision mode has none. Only a changed prompt is kept,
+/// in UserDefaults, so a prompt left alone follows its default when a later version changes it.
 nonisolated enum SystemPrompt: Hashable, Identifiable, Sendable {
     /// Sent with every question to a mode's providers.
     case chat(ProviderKind)
@@ -11,8 +11,10 @@ nonisolated enum SystemPrompt: Hashable, Identifiable, Sendable {
     case game(Game)
     /// Why? on an agent's ask (see `ToolReason`).
     case toolReason
+    /// Improve on the Context card, in Decision mode (see `ContextImprovement`).
+    case improvement
 
-    static let allCases: [SystemPrompt] = ProviderKind.prompted.map(chat) + Game.allCases.map(game) + [.toolReason]
+    static let allCases: [SystemPrompt] = ProviderKind.prompted.map(chat) + Game.allCases.map(game) + [.toolReason, .improvement]
 
     static let llm = """
     You answer quick questions asked from a small floating window. Lead with the answer. \
@@ -39,6 +41,7 @@ nonisolated enum SystemPrompt: Hashable, Identifiable, Sendable {
         case .chat(.decision): ""
         case .game(let game): game.rules.systemPrompt
         case .toolReason: ToolReason.systemPrompt
+        case .improvement: ContextImprovement.systemPrompt
         }
     }
 
@@ -48,6 +51,7 @@ nonisolated enum SystemPrompt: Hashable, Identifiable, Sendable {
         case .chat(let kind): "systemPrompt.\(kind.rawValue)"
         case .game(let game): "systemPrompt.\(game.rawValue)"
         case .toolReason: "systemPrompt.toolReason"
+        case .improvement: "systemPrompt.improvement"
         }
     }
 
@@ -56,8 +60,10 @@ nonisolated enum SystemPrompt: Hashable, Identifiable, Sendable {
         case .chat(let kind): kind.pluralTitle
         case .game(let game): game.title
         case .toolReason: "Why?"
+        case .improvement: "Improve"
         }
     }
+
 
     /// The key the one prompt had before each mode got its own. A change kept there carries over to both.
     static let legacyKey = "systemPrompt"

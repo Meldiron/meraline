@@ -336,7 +336,9 @@ struct DecisionScopeNote: View {
 /// text of its own, quoted in the conversation as Context, like a selection, and ⌘Return sends from it (see
 /// `PanelController`). Whoever opens it gives it the keyboard (see `PanelLayout.stateFocusRequest`). In Decision
 /// mode its header has a Live switch (`LiveSwitch`): on, the card decides as you type, and the answers show on
-/// glass capsules under the text (`LiveDecisionStrip`, see `LiveDecisions`).
+/// glass capsules under the text (`LiveDecisionStrip`, see `LiveDecisions`), with Improve beside the switch
+/// (`ImproveButton`), which has an LLM edit the text a little toward them (see `ChatSession.improveContext()`),
+/// and under the capsules a note of what it changed, with Undo, or why it changed nothing (`improvement`).
 struct TypedStateCard: View {
     @Binding var text: String
     /// Decision mode, where the text is what Jev decides about; in the other modes it goes with the question.
@@ -354,6 +356,11 @@ struct TypedStateCard: View {
     var keepLive: () -> Void = {}
     var toggleKept: (UUID) -> Void = { _ in }
     var removeKept: (UUID) -> Void = { _ in }
+    /// Improve, while Live is on: whether it can take the text, whether its request is on its way, and the note
+    /// under the capsules; nil shows no button.
+    var improvement: ImproveStatus?
+    var improve: () -> Void = {}
+    var undoImprovement: () -> Void = {}
     let remove: () -> Void
 
     @State private var textHeight: CGFloat = 0
@@ -378,6 +385,9 @@ struct TypedStateCard: View {
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
                 if isDeciding, let live {
+                    if live.isOn, let improvement {
+                        ImproveButton(status: improvement, improve: improve)
+                    }
                     LiveSwitch(isOn: live.isOn, isWorking: live.isWorking, toggle: toggleLive)
                 }
                 CardButton(symbol: "xmark", label: "Leave out the context", action: remove)
@@ -426,6 +436,30 @@ struct TypedStateCard: View {
             if isDeciding, let live, live.isOn {
                 LiveDecisionStrip(live: live, unsureBelow: unsureBelow, togglePreset: togglePreset, keep: keepLive, toggleKept: toggleKept, removeKept: removeKept)
                     .padding(.top, 2)
+                // What Improve changed, with Undo, or why it changed nothing: animated on its own, so a change
+                // of the button's state as you type never animates the editor's height with it.
+                VStack(alignment: .leading, spacing: 0) {
+                    if let improvement, let note = improvement.note {
+                        HStack(spacing: 8) {
+                            Text(note)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if improvement.canUndo {
+                                Button("Undo", action: undoImprovement)
+                                    .buttonStyle(.plain)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.primary)
+                                    .help("Put the text back as it was before Improve")
+                                    .accessibilityLabel("Undo the improvement")
+                            }
+                        }
+                        .font(.system(size: 11))
+                        .padding(.horizontal, 2)
+                        .transition(.opacity)
+                    }
+                }
+                .animation(.smooth(duration: 0.2), value: improvement?.note)
             }
         }
         .padding(.leading, 14)
@@ -442,8 +476,72 @@ struct TypedStateCard: View {
     }
 }
 
+/// What Improve on the Context card shows (see `ChatSession.improveContext()`): whether a click can take the text
+/// now, whether a request is on its way, the provider that edits, for the help, and the note under the capsules
+/// once an improvement landed, with Undo, or brought nothing.
+struct ImproveStatus: Equatable {
+    var isAvailable: Bool
+    var isWorking: Bool
+    var providerName: String?
+    var note: String?
+    var canUndo: Bool
+}
+
+/// Improve, beside the Live switch in the Context card's header: a wand and the word on glass like the switch's,
+/// faded like an unavailable context button while there is no text, no question on, or no LLM to edit with, and
+/// a small spinner in the wand's place while its request is on its way. A click has the LLM edit the text a
+/// little toward the answers the live decisions should give; another click takes it further.
+private struct ImproveButton: View {
+    let status: ImproveStatus
+    let improve: () -> Void
+
+    var body: some View {
+        let foreground = status.isAvailable ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary)
+        Button(action: improve) {
+            HStack(spacing: 4) {
+                ZStack {
+                    Image(systemName: "wand.and.sparkles")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(foreground)
+                        .opacity(status.isWorking ? 0 : 1)
+                    ProgressView()
+                        .controlSize(.mini)
+                        .scaleEffect(0.7)
+                        .opacity(status.isWorking ? 1 : 0)
+                        .accessibilityHidden(true)
+                }
+                .frame(width: 11, height: 11)
+                .animation(.smooth(duration: 0.2), value: status.isWorking)
+                Text("Improve")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(foreground)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 20)
+            .glassEffect(status.isAvailable ? .regular.interactive() : .regular, in: .capsule)
+            .contentShape(.capsule)
+            .opacity(status.isAvailable ? 1 : 0.4)
+        }
+        .buttonStyle(.plain)
+        .disabled(!status.isAvailable)
+        .animation(.smooth(duration: 0.2), value: status.isAvailable)
+
+        .help(help)
+        .accessibilityLabel("Improve the text")
+        .accessibilityValue(status.isWorking ? "Improving" : status.isAvailable ? "Ready" : "Unavailable")
+    }
+
+    private var help: String {
+        if status.isWorking { return "Improving the text…" }
+        guard let provider = status.providerName else { return "Connect an LLM in Settings to improve the text" }
+        guard status.isAvailable else { return "Write some text and turn on a question, and \(provider) can edit the text toward its answer" }
+        return "\(provider) edits the text a little toward the answers: Yes on each question, the highest level, or the answer it has from a list of your own. Click again to take it further."
+    }
+}
+
 /// The Live switch in the Context card's header, in Decision mode: a bolt and the word, which turn pink and
 /// semibold while the card decides as you type (see `LiveDecisions`), like the mode toggle's chosen segment.
+
 /// Glass like the cross beside it. While answers are on their way a small spinner takes the bolt's place: the
 /// capsules under the text all change at once, so the one loader stands for them and they keep their last answer
 /// as it is meanwhile.

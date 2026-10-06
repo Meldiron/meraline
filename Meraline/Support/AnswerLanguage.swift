@@ -65,6 +65,10 @@ nonisolated enum AnswerLanguage: String, CaseIterable, Identifiable, Sendable {
             """
         case .toolReason:
             self == .english ? nil : "Write the sentence in \(name)."
+        case .improvement:
+            // The text keeps its own language, whatever answers are in; the prompt says so.
+            nil
         }
+
     }
 }

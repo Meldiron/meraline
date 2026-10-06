@@ -167,11 +167,25 @@ final class ChatSession {
     /// opens the card, and empty from then until something is typed. It goes with the question as a text of its
     /// own (`SelectedText.typed`).
     var typedState: String? {
-        didSet { if typedState != oldValue { refreshLiveDecisions() } }
+        didSet {
+            guard typedState != oldValue else { return }
+            refreshLiveDecisions()
+            // A change of the text, by hand or by Improve, puts away what the last Improve had to say; the card
+            // closing forgets its improvements, Undo and all.
+            improvementFailure = nil
+            if typedState == nil { forgetContextImprovements() }
+        }
     }
     /// The decisions the Context card makes as you type, in Decision mode, while its Live switch is on (see
     /// `LiveDecisions`); `refreshLiveDecisions()` tells it what to ask.
     let liveDecisions: LiveDecisions
+    /// Whether Improve's request is on its way (see `improveContext()`).
+    private(set) var isImprovingContext = false
+    /// What Improve edited on the Context card, oldest first, for Undo while the improved text stands.
+    private(set) var contextImprovements: [ImprovedContext] = []
+    /// Why the last Improve brought nothing, until the text changes.
+    private(set) var improvementFailure: String?
+    @ObservationIgnored private var improvementTask: Task<Void, Never>?
     /// The scope the switch under the input was last set to in this chat, for the note that says what it decides
     /// about (see `DecisionScopeNote`): set by a click on the switch (`chooseScope(_:)`), the whole text too when
     /// it was switched back to, and nil until then, once the question goes, and in a new chat, so the note never
@@ -493,6 +507,136 @@ final class ChatSession {
         liveDecisions.removeKept(id)
         refreshLiveDecisions(atOnce: true)
     }
+
+    // MARK: Improving the context
+
+    /// The text the Context card held before Improve edited it, what it became, and the edits in numbers (see
+    /// `improveContext()`), kept with the open chat for Undo while the improved text stands.
+    struct ImprovedContext: Equatable {
+        let before: String
+        let after: String
+        let changes: TextChanges?
+    }
+
+    /// The provider Improve edits with: the LLMs' default, or the agents', since a decision model writes nothing.
+    var improvementProvider: Provider? {
+        preferences.defaultProvider(for: .llm) ?? preferences.defaultProvider(for: .agent)
+    }
+
+    /// Whether Improve can take the Context card's text: the card decides live (`liveAsk`), there is text on it,
+    /// a question is on to improve toward, an LLM is ready to edit, and no improvement is on its way.
+    var canImproveContext: Bool {
+        guard let ask = liveAsk, !isImprovingContext, improvementProvider != nil else { return false }
+        return ask.questions.contains(where: \.isOn) && typedState?.trimmed.isEmpty == false
+    }
+
+    /// Improve on the Context card: the LLM reads the text, the questions on with the answers they have, and the
+    /// answer each should get (`ContextImprovement.goal(of:answered:)`), and edits the text a little toward them
+    /// (`ContextImprovement.improve`), so a click or two more takes it further; it adds a sentence only once
+    /// nothing in the text can be improved. The edited text takes the card's, which asks the live decisions again
+    /// at once, and the text before it waits for Undo (`undoContextImprovement()`). A text edited by hand meanwhile
+    /// is left as it is, and so is one the model gave back unchanged, with a note under the capsules either way.
+    func improveContext() {
+        guard canImproveContext, let ask = liveAsk, let before = typedState, let provider = improvementProvider else { return }
+        let questions = ask.questions.filter(\.isOn)
+        let answers = liveDecisions.answers.mapValues(\.decision)
+        let others = ask.state.filter { !$0.isTyped }
+        let settings = preferences[provider]
+        let instructions = preferences.instructions(for: .improvement)
+        isImprovingContext = true
+        improvementFailure = nil
+        Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))) to improve the Context card's text toward \(questions.count) question(s)")
+        improvementTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let reply = try await ContextImprovement.improve(
+                    before, beside: others, toward: questions, answered: answers,
+                    provider: provider, settings: settings, instructions: instructions, stream: streamReplies
+                )
+                guard !Task.isCancelled else { return }
+                isImprovingContext = false
+                count(reply, improving: before, toward: questions, others: others, with: provider)
+                guard liveDecisions.isOn, let text = typedState else { return }
+                guard text == before else {
+                    improvementFailure = "The text changed meanwhile, so it was left as it is."
+                    return
+                }
+                guard reply.text != before.trimmed else {
+                    improvementFailure = "\(provider.name) found nothing to improve and left the text as it is."
+                    Log.chat.info("The Context card's text came back as it was")
+                    return
+                }
+                let changes = await Task.detached(priority: .userInitiated) { TextChanges.find(in: reply.text, against: [before]) }.value
+                guard !Task.isCancelled, typedState == before else { return }
+                contextImprovements.append(ImprovedContext(before: before, after: reply.text, changes: changes))
+                typedState = reply.text
+                refreshLiveDecisions(atOnce: true)
+                Log.chat.info("The Context card's text was improved, \(changes.map { "\($0.count) edit(s)" } ?? "largely")")
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                isImprovingContext = false
+                improvementFailure = error.localizedDescription
+                Log.chat.error("Improving the Context card's text failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Whether Undo can put back the text Improve edited: the improved text still stands on the card. Another
+    /// undo takes back the improvement before it.
+    var canUndoContextImprovement: Bool {
+        guard let last = contextImprovements.last else { return false }
+        return typedState == last.after
+    }
+
+    /// Puts back the text the last improvement edited, which asks the live decisions about it again at once.
+    func undoContextImprovement() {
+        guard canUndoContextImprovement, let undone = contextImprovements.popLast() else { return }
+        typedState = undone.before
+        refreshLiveDecisions(atOnce: true)
+        Log.chat.info("The Context card's improvement was undone")
+    }
+
+    /// The note under the capsules: why the last Improve brought nothing, until the text changes, or else what the
+    /// last improvement changed, in numbers, while its text stands; a reply that kept too little of the text for
+    /// numbers (see `TextChanges.minimumSimilarity`) says so, since the model was asked for small changes.
+    var improvementNote: String? {
+        if let improvementFailure { return improvementFailure }
+        guard canUndoContextImprovement, let last = contextImprovements.last else { return nil }
+        return last.changes.map { "Improved: \($0.stats)" } ?? "Improved: most of the text changed"
+    }
+
+
+    /// The card closed: an improvement on its way is dropped, and there is nothing to undo.
+    private func forgetContextImprovements() {
+        improvementTask?.cancel()
+        improvementTask = nil
+        isImprovingContext = false
+        contextImprovements = []
+        improvementFailure = nil
+    }
+
+    /// Counts an improvement in the ledger, under the LLM that edited: the request and what it took, estimated
+    /// from what went and came when the provider reports no tokens.
+    private func count(_ reply: ContextImprovement.Reply, improving text: String, toward questions: [LiveQuestion], others: [SelectedText], with provider: Provider) {
+        let model = reply.usage?.model ?? preferences[provider].model
+        let key = UsageTally.ModelTally.key(provider: provider, model: model)
+        let price = usage.price(for: provider, model: model)
+        let reported = reply.usage?.hasTokens == true
+        var took = reply.usage ?? TokenUsage()
+        if !reported {
+            took.input = UsageTally.estimatedTokens(in: ContextImprovement.question(text: text, others: others, questions: questions, answers: [:]))
+            took.output = UsageTally.estimatedTokens(in: reply.text)
+        }
+        usage.record(as: provider.kind) { tally in
+            tally.contextImprovements += 1
+            tally.providers[provider.rawValue, default: 0] += 1
+            if provider.isCommandLine { tally.agentRuns += 1 }
+            tally.count(answer: took, reported: reported, for: key, price: price)
+        }
+    }
+
 
     /// The answers a question that names none picks from: Settings' answers, or Yes and No when they can't be
     /// read (see `DecisionAnswers`).

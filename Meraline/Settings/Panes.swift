@@ -192,14 +192,16 @@ struct PromptPane: View {
                     Text("Not sure below")
                     Text("How sure the model must be for its answer to show. Under it, the answer says Not Sure, with the answer it leans to. For Yes and No, 50% is a winner under 75%.")
                 }
+                disclosure(for: .improvement, symbol: "wand.and.sparkles")
             } header: {
                 Text("Decisions")
             } footer: {
                 Text(DecisionAnswers.parse(preferences.decisionAnswers) == nil
                     ? "Write at least two answers with / between them, or < for levels in order. Until then a question picks Yes or No."
-                    : "The model picks one of these when a question names no answers of its own after its question mark: “Which team should handle this? Billing / Technical / Sales”, or “How urgent is this? Low < Medium < High” for levels in order. A decision model takes no instructions, so there is no prompt to edit: it reads the text you add and the question, nothing else.")
+                    : "The model picks one of these when a question names no answers of its own after its question mark: “Which team should handle this? Billing / Technical / Sales”, or “How urgent is this? Low < Medium < High” for levels in order. A decision model takes no instructions: it reads the text you add and the question, nothing else. Improve’s go to the LLM that edits the Context card’s text toward the live decisions, a little at a time: Yes on each question, the highest level, and from a list of answers the one the text has.")
                     .fixedSize(horizontal: false, vertical: true)
             }
+
 
             // Ids of their own: under the prompts' ids, the same modes, the form drew one section's rows and
             // footer in another's place.

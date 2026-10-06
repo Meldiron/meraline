@@ -282,6 +282,10 @@ struct UsagePane: View {
             if insights.tally.liveDecisions > 0 {
                 row("As you typed", UsageInsights.compact(insights.tally.liveDecisions), "of them, made live on the Context card")
             }
+            if insights.tally.contextImprovements > 0 {
+                row("Improved", UsageInsights.compact(insights.tally.contextImprovements), "times an LLM edited the Context card’s text toward them")
+            }
+
         }
     }
 

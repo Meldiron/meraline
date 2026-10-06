@@ -56,6 +56,15 @@ struct ChatPanelView: View {
 
     /// A game has its footer from the start; its transcript waits for the first move.
     private var hasConversation: Bool { !session.turns.isEmpty || session.isPlaying }
+    /// Improve on the Context card, in Decision mode while Live is on (see `ChatSession.improveContext()`).
+    private var improveStatus: ImproveStatus? {
+        guard session.isDeciding, session.liveDecisions.isOn else { return nil }
+        return ImproveStatus(
+            isAvailable: session.canImproveContext, isWorking: session.isImprovingContext, providerName: session.improvementProvider?.name,
+            note: session.improvementNote, canUndo: session.canUndoContextImprovement
+        )
+    }
+
     /// The follow-ups under the last answer, or the capsule that says they are coming, show while the input is empty:
     /// typing or asking puts them away.
     private var showsFollowUps: Bool {
@@ -121,7 +130,8 @@ struct ChatPanelView: View {
                     TypedStateCard(
                         text: typedState, isDeciding: session.isDeciding, live: session.liveDecisions, unsureBelow: preferences.unsureBelow,
                         isFocused: $isStateFocused, toggleLive: session.toggleLiveDecisions, togglePreset: session.toggleLivePreset(_:),
-                        keepLive: session.keepLiveQuestion, toggleKept: session.toggleLiveQuestion(_:), removeKept: session.removeLiveQuestion(_:)
+                        keepLive: session.keepLiveQuestion, toggleKept: session.toggleLiveQuestion(_:), removeKept: session.removeLiveQuestion(_:),
+                        improvement: improveStatus, improve: session.improveContext, undoImprovement: session.undoContextImprovement
                     ) {
                         session.removeTypedState()
                         isInputFocused = true
