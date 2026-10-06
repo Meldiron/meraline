@@ -198,7 +198,7 @@ struct PromptPane: View {
             } footer: {
                 Text(DecisionAnswers.parse(preferences.decisionAnswers) == nil
                     ? "Write at least two answers with / between them, or < for levels in order. Until then a question picks Yes or No."
-                    : "The model picks one of these when a question names no answers of its own after its question mark: “Which team should handle this? Billing / Technical / Sales”, or “How urgent is this? Low < Medium < High” for levels in order. A decision model takes no instructions: it reads the text you add and the question, nothing else. Improve’s go to the LLM that edits the Context card’s text toward the live decisions, a little at a time: Yes on each question, the highest level, and from a list of answers the one the text has.")
+                    : "The model picks one of these when a question names no answers of its own after its question mark: “Which team should handle this? Billing / Technical / Sales”, or “How urgent is this? Low < Medium < High” for levels in order. A decision model takes no instructions: it reads the text you add and the question, nothing else. Improve’s go to the LLM that changes the Context card’s text toward the live decisions: Yes on each question, the highest level, and from a list of answers the one the text has. How much it may change goes with each request: small edits first, parts rewritten once those stop helping, then the whole text.")
                     .fixedSize(horizontal: false, vertical: true)
             }
 

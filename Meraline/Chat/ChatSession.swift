@@ -527,6 +527,10 @@ final class ChatSession {
         let before: String
         let after: String
         let changes: TextChanges?
+        /// How much the model was allowed to change (see `ContextImprovement.Stage`).
+        let stage: ContextImprovement.Stage
+        /// The answers it was asked with, about `before`, for `nextImprovementStage`.
+        let answers: [LiveQuestion.ID: Decision]
     }
 
     /// The provider Improve edits with: the LLMs' default, or the agents', since a decision model writes nothing.
@@ -541,27 +545,38 @@ final class ChatSession {
         return ask.questions.contains(where: \.isOn) && typedState?.trimmed.isEmpty == false
     }
 
+    /// The stage the next click on Improve starts at (see `ContextImprovement.nextStage`): small edits, unless the
+    /// last improvement still stands and the live decisions about its text show it didn't make the answers surer,
+    /// which takes the next stage, up to the whole text; the stage it landed at again while it is helping, and
+    /// small edits once every answer is what it should be.
+    var nextImprovementStage: ContextImprovement.Stage {
+        guard canUndoContextImprovement, let last = contextImprovements.last, let ask = liveAsk else { return .edit }
+        return ContextImprovement.nextStage(after: last.stage, questions: ask.questions.filter(\.isOn), before: last.answers, after: liveDecisions.settledAnswers)
+    }
+
     /// Improve on the Context card: the LLM reads the text, the questions on with the answers they have, and the
-    /// answer each should get (`ContextImprovement.goal(of:answered:)`), and edits the text a little toward them
-    /// (`ContextImprovement.improve`), so a click or two more takes it further; it adds a sentence only once
-    /// nothing in the text can be improved. The edited text takes the card's, which asks the live decisions again
-    /// at once, and the text before it waits for Undo (`undoContextImprovement()`). A text edited by hand meanwhile
-    /// is left as it is, and so is one the model gave back unchanged, with a note under the capsules either way.
+    /// answer each should get (`ContextImprovement.goal(of:answered:)`), and changes the text toward them as much
+    /// as the click's stage allows (`ContextImprovement.improve`, from `nextImprovementStage`): small edits first,
+    /// and in the same click the next stage while the text comes back as it was, so only a text that even a whole
+    /// rewrite gives back as it was is left with a note. The changed text takes the card's, which asks the live
+    /// decisions again at once, and the text before it waits for Undo (`undoContextImprovement()`). A text edited
+    /// by hand meanwhile is left as it is, with a note under the capsules.
     func improveContext() {
         guard canImproveContext, let ask = liveAsk, let before = typedState, let provider = improvementProvider else { return }
         let questions = ask.questions.filter(\.isOn)
-        let answers = liveDecisions.answers.mapValues(\.decision)
+        let answers = liveDecisions.settledAnswers
+        let stage = nextImprovementStage
         let others = ask.state.filter { !$0.isTyped }
         let settings = preferences[provider]
         let instructions = preferences.instructions(for: .improvement)
         isImprovingContext = true
         improvementFailure = nil
-        Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))) to improve the Context card's text toward \(questions.count) question(s)")
+        Log.chat.info("Asking \(provider.name) (\(modelName(for: provider))) to improve the Context card's text toward \(questions.count) question(s), from \(stage)")
         improvementTask = Task { [weak self] in
             guard let self else { return }
             do {
                 let reply = try await ContextImprovement.improve(
-                    before, beside: others, toward: questions, answered: answers,
+                    before, beside: others, toward: questions, answered: answers, from: stage,
                     provider: provider, settings: settings, instructions: instructions, stream: streamReplies
                 )
                 guard !Task.isCancelled else { return }
@@ -573,16 +588,16 @@ final class ChatSession {
                     return
                 }
                 guard reply.text != before.trimmed else {
-                    improvementFailure = "\(provider.name) found nothing to improve and left the text as it is."
-                    Log.chat.info("The Context card's text came back as it was")
+                    improvementFailure = "\(provider.name) left the text as it is, even asked to rewrite it whole."
+                    Log.chat.info("The Context card's text came back as it was, through \(reply.requests) request(s)")
                     return
                 }
                 let changes = await Task.detached(priority: .userInitiated) { TextChanges.find(in: reply.text, against: [before]) }.value
                 guard !Task.isCancelled, typedState == before else { return }
-                contextImprovements.append(ImprovedContext(before: before, after: reply.text, changes: changes))
+                contextImprovements.append(ImprovedContext(before: before, after: reply.text, changes: changes, stage: reply.stage, answers: answers))
                 typedState = reply.text
                 refreshLiveDecisions(atOnce: true)
-                Log.chat.info("The Context card's text was improved, \(changes.map { "\($0.count) edit(s)" } ?? "largely")")
+                Log.chat.info("The Context card's text was improved at \(reply.stage), \(changes.map { "\($0.count) edit(s)" } ?? "largely")")
             } catch is CancellationError {
                 return
             } catch {
@@ -610,12 +625,14 @@ final class ChatSession {
     }
 
     /// The note under the capsules: why the last Improve brought nothing, until the text changes, or else what the
-    /// last improvement changed, in numbers, while its text stands; a reply that kept too little of the text for
-    /// numbers (see `TextChanges.minimumSimilarity`) says so, since the model was asked for small changes.
+    /// last improvement did, by its stage, and in numbers, while its text stands: “Improved: 5% changed · 2 edits”,
+    /// “Rewrote parts: 38% changed · 9 edits”; a reply that kept too little of the text for numbers (see
+    /// `TextChanges.minimumSimilarity`) says so, which is the whole text rewritten at its stage.
     var improvementNote: String? {
         if let improvementFailure { return improvementFailure }
         guard canUndoContextImprovement, let last = contextImprovements.last else { return nil }
-        return last.changes.map { "Improved: \($0.stats)" } ?? "Improved: most of the text changed"
+        if let changes = last.changes { return "\(last.stage.done): \(changes.stats)" }
+        return last.stage == .whole ? "Rewrote the whole text" : "\(last.stage.done): most of the text changed"
     }
 
 
@@ -628,8 +645,8 @@ final class ChatSession {
         improvementFailure = nil
     }
 
-    /// Counts an improvement in the ledger, under the LLM that edited: the request and what it took, estimated
-    /// from what went and came when the provider reports no tokens.
+    /// Counts an improvement in the ledger, under the LLM that edited: the click and what its requests took,
+    /// estimated from what went and came when the provider reports no tokens.
     private func count(_ reply: ContextImprovement.Reply, improving text: String, toward questions: [LiveQuestion], others: [SelectedText], with provider: Provider) {
         let model = reply.usage?.model ?? preferences[provider].model
         let key = UsageTally.ModelTally.key(provider: provider, model: model)
@@ -637,7 +654,7 @@ final class ChatSession {
         let reported = reply.usage?.hasTokens == true
         var took = reply.usage ?? TokenUsage()
         if !reported {
-            took.input = UsageTally.estimatedTokens(in: ContextImprovement.question(text: text, others: others, questions: questions, answers: [:]))
+            took.input = UsageTally.estimatedTokens(in: ContextImprovement.question(text: text, others: others, questions: questions, answers: [:])) * reply.requests
             took.output = UsageTally.estimatedTokens(in: reply.text)
         }
         usage.record(as: provider.kind) { tally in

@@ -24,6 +24,8 @@ struct LiveDecisionTests {
         private(set) var asks: [Ask] = []
         /// What a question is answered with, by its wording; Yes for any other.
         var answers: [String: Decision] = [:]
+        /// What every question is answered with about a text, by the texts joined with newlines, ahead of `answers`.
+        var answersByText: [String: Decision] = [:]
         var delay: Duration = .zero
         var error: Error?
         var usage = TokenUsage()
@@ -33,7 +35,8 @@ struct LiveDecisionTests {
             if delay > .zero { try await Task.sleep(for: delay) }
             if let error { throw error }
             var decisions: [String: Decision] = [:]
-            for question in questions { decisions[question.id] = answers[question.question] ?? LiveDecisionTests.yes }
+            let about = state.map(\.text).joined(separator: "\n")
+            for question in questions { decisions[question.id] = answersByText[about] ?? answers[question.question] ?? LiveDecisionTests.yes }
             return DecisionClient.LiveReply(decisions: decisions, usage: usage)
         }
     }

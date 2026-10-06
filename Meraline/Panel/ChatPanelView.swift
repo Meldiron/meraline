@@ -61,7 +61,7 @@ struct ChatPanelView: View {
         guard session.isDeciding, session.liveDecisions.isOn else { return nil }
         return ImproveStatus(
             isAvailable: session.canImproveContext, isWorking: session.isImprovingContext, providerName: session.improvementProvider?.name,
-            note: session.improvementNote, canUndo: session.canUndoContextImprovement
+            note: session.improvementNote, canUndo: session.canUndoContextImprovement, nextStage: session.nextImprovementStage
         )
     }
 

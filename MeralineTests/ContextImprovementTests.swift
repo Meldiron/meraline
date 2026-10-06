@@ -5,9 +5,11 @@ import Testing
 @testable import Meraline
 
 /// Improve on the Context card, in Decision mode while Live is on (`ContextImprovement`, `ChatSession.improveContext()`):
-/// the answer each question's text should get, what the LLM reads, its reply read as the text alone, when the
-/// button can take the text, the text replaced and the live decisions asked again, Undo, a text edited meanwhile
-/// or given back as it was, a failure, and the count in the ledger.
+/// the answer each question's text should get, what the LLM reads and how much its stage lets it change, the
+/// next stage in the same click while the text comes back as it was and on the next click once the decisions
+/// show no gain, its reply read as the text alone, when the button can take the text, the text replaced and the
+/// live decisions asked again, Undo, a text edited meanwhile or given back as it was, a failure, and the count in
+/// the ledger.
 @MainActor
 struct ContextImprovementTests {
     private typealias Support = GameTestSupport
@@ -51,10 +53,44 @@ struct ContextImprovementTests {
         #expect(asked.contains("2. What is the tone of this text? (Tone)\n   Answers: Friendly / Neutral / Angry\n   Now: Friendly 20%, Neutral 70%, Angry 10% (70% confident)\n   Should be: Neutral"))
         #expect(asked.contains("3. How high a priority is this? (Priority)\n   Answers, in order: Low < Medium < High\n   Now: not decided yet\n   Should be: High"))
         #expect(asked.hasSuffix("Reply with the edited text only."))
+        #expect(asked.contains("90% confident or more. " + ContextImprovement.Stage.edit.instruction), "small edits unless the stage says more")
 
         let alone = ContextImprovement.question(text: "Hi", others: [], questions: [Self.question("Flirt?")], answers: [:])
         #expect(!alone.contains("cannot change"))
         #expect(alone.contains("1. Flirt?\n   Answers"), "a title that is the question isn't repeated")
+
+        let parts = ContextImprovement.question(text: "Hi", others: [], questions: [Self.question("Flirt?")], answers: [:], stage: .parts)
+        #expect(parts.contains(ContextImprovement.Stage.parts.instruction) && !parts.contains(ContextImprovement.Stage.edit.instruction))
+        let whole = ContextImprovement.question(text: "Hi", others: [], questions: [Self.question("Flirt?")], answers: [:], stage: .whole)
+        #expect(whole.contains(ContextImprovement.Stage.whole.instruction))
+    }
+
+    /// A yes-or-no decision at `share` for Yes, with Jev's confidence for two answers.
+    private static func yes(_ share: Double) -> Decision {
+        Decision(options: [.init(label: "Yes", probability: share), .init(label: "No", probability: 1 - share)], isYesNo: true, confidence: 2 * share - 1)
+    }
+
+    @Test func theNextClickStaysAtAStageWhileItHelpsAndGoesDeeperOnceItDoesnt() {
+        let flirt = Self.question("Flirt?")
+        let tone = Self.question("Tone?", answers: Self.tones, id: "tone")
+        let next = ContextImprovement.nextStage(after:questions:before:after:)
+        #expect(next(.edit, [flirt], [flirt.id: Self.yes(0.65)], [flirt.id: Self.yes(0.66)]) == .parts, "a point is no help")
+        #expect(next(.edit, [flirt], [flirt.id: Self.yes(0.65)], [flirt.id: Self.yes(0.67)]) == .edit, "two points are")
+        #expect(next(.parts, [flirt], [flirt.id: Self.yes(0.65)], [flirt.id: Self.yes(0.60)]) == .whole, "and losing ground is none")
+        #expect(next(.whole, [flirt], [flirt.id: Self.yes(0.65)], [flirt.id: Self.yes(0.65)]) == .whole, "nothing past the whole text")
+        #expect(next(.parts, [flirt], [flirt.id: Self.yes(0.65)], [:]) == .parts, "not decided yet about the new text")
+        #expect(next(.parts, [flirt], [:], [flirt.id: Self.yes(0.65)]) == .parts, "nor about the old one")
+        #expect(next(.parts, [], [:], [:]) == .parts, "no question on")
+        #expect(next(.whole, [flirt], [flirt.id: Self.yes(0.65)], [flirt.id: Self.yes(0.96)]) == .edit, "92% confident: reached, so a click only polishes")
+        let no = Decision(options: [.init(label: "Yes", probability: 0.02), .init(label: "No", probability: 0.98)], isYesNo: true, confidence: 0.96)
+        #expect(next(.parts, [flirt], [flirt.id: Self.yes(0.65)], [flirt.id: no]) == .whole, "sure of the wrong answer is not reached")
+
+        // Several questions average their gains, and all of them have to be reached for polishing.
+        let before = [flirt.id: Self.yes(0.65), tone.id: Self.neutral]
+        #expect(next(.edit, [flirt, tone], before, [flirt.id: Self.yes(0.70), tone.id: Self.neutral]) == .edit, "Yes up five points, Neutral as it was: two and a half on average")
+        let angrier = Decision(options: [.init(label: "Friendly", probability: 0.1), .init(label: "Neutral", probability: 0.6), .init(label: "Angry", probability: 0.3)], confidence: 0.4)
+        #expect(next(.edit, [flirt, tone], before, [flirt.id: Self.yes(0.70), tone.id: angrier]) == .parts, "Neutral down ten, so a loss on average")
+        #expect(next(.parts, [flirt, tone], before, [flirt.id: Self.yes(0.96), tone.id: Self.neutral]) == .parts, "Tone isn't 90% sure yet, so no polishing, and the gain keeps the stage")
     }
 
     @Test func theReplyIsReadAsTheTextAlone() {
@@ -87,6 +123,7 @@ struct ContextImprovementTests {
         )
         #expect(reply.text == "Hi there.", "words after a tool take the place of those before it")
         #expect(reply.usage == TokenUsage(input: 40, output: 5))
+        #expect(reply.stage == .edit && reply.requests == 1)
         let request = try #require(requests.first)
         #expect(request.systemPrompt == ContextImprovement.systemPrompt)
         #expect(!request.settings.allowsWebSearch && !request.settings.allowsMCP && request.workspace == nil)
@@ -97,6 +134,42 @@ struct ContextImprovementTests {
                 AsyncThrowingStream { $0.finish() }
             })
         }
+    }
+
+    @Test func aClickAsksTheNextStageWhileTheTextComesBackAsItWas() async throws {
+        typealias Stage = ContextImprovement.Stage
+        let settings = ProviderSettings(model: "m", baseURL: "http://127.0.0.1:9", apiKey: "", isEnabled: true)
+        func improve(replies: [String], from stage: Stage = .edit) async throws -> (reply: ContextImprovement.Reply, asked: [String]) {
+            var replies = replies
+            var asked: [String] = []
+            let reply = try await ContextImprovement.improve(
+                "Hi.", beside: [], toward: [Self.question("Flirt?")], answered: [:], from: stage, provider: .custom, settings: settings,
+                stream: { request in
+                    asked.append(request.messages[0].text)
+                    let text = replies.removeFirst()
+                    return AsyncThrowingStream { continuation in
+                        continuation.yield(.text(text))
+                        continuation.yield(.usage(TokenUsage(input: 40, output: 5), adds: false))
+                        continuation.finish()
+                    }
+                }
+            )
+            return (reply, asked)
+        }
+
+        let escalated = try await improve(replies: ["Hi.", "\"Hi.\"", "Hi there."])
+        #expect(escalated.reply == ContextImprovement.Reply(text: "Hi there.", stage: .whole, requests: 3, usage: TokenUsage(input: 120, output: 15)), "the text as it was, then quoted, then changed; the requests' tokens add up")
+        #expect(escalated.asked.count == 3)
+        #expect(escalated.asked[0].contains(Stage.edit.instruction) && escalated.asked[1].contains(Stage.parts.instruction) && escalated.asked[2].contains(Stage.whole.instruction))
+
+        let given = try await improve(replies: ["Hi.", "Hi.", "Hi."])
+        #expect(given.reply.text == "Hi." && given.reply.stage == .whole && given.reply.requests == 3, "even a whole rewrite gave it back")
+
+        let deeper = try await improve(replies: ["Hi.", "Hi there."], from: .parts)
+        #expect(deeper.reply.stage == .whole && deeper.reply.requests == 2 && deeper.asked[0].contains(Stage.parts.instruction), "from where the next click starts")
+
+        let atOnce = try await improve(replies: ["Hi there."], from: .whole)
+        #expect(atOnce.reply.stage == .whole && atOnce.reply.requests == 1)
     }
 
     // MARK: On the card
@@ -265,9 +338,56 @@ struct ContextImprovementTests {
         session.improveContext()
         await Self.settle(session)
         #expect(session.typedState == "Hi there, lovely to meet you. ")
-        #expect(session.improvementNote == "Custom found nothing to improve and left the text as it is.")
+        #expect(session.improvementNote == "Custom left the text as it is, even asked to rewrite it whole.")
         #expect(session.contextImprovements.isEmpty)
-        #expect(session.usage.summary(.day).contextImprovements == 2, "the requests still count")
+        #expect(session.usage.summary(.day).contextImprovements == 2, "the clicks still count")
+    }
+
+    @Test func aClickAfterAnImprovementThatDidntHelpStartsAStageDeeper() async throws {
+        typealias Stage = ContextImprovement.Stage
+        let decider = LiveDecisionTests.ScriptedDecider()
+        decider.answersByText["Hi there."] = Self.yes(0.65)
+        decider.answersByText["Hi there, nice to meet you."] = Self.yes(0.66)
+        decider.answersByText["Hi there, so lovely to meet you, gorgeous."] = Self.yes(0.8)
+        decider.answersByText["Darling, you light up my day. Coffee, just us?"] = Self.yes(0.98)
+        let model = ScriptedModel([
+            "Hi there, nice to meet you.", "Hi there, so lovely to meet you, gorgeous.",
+            "Darling, you light up my day. Coffee, just us?", "Darling, you light up my whole day. Coffee, just us?",
+        ])
+        let session = Self.session(model, decider: decider).session
+        session.writeState()
+        session.typedState = "Hi there."
+        session.draft = "Is this flirting?"
+        await Self.settle(session)
+        #expect(session.nextImprovementStage == .edit)
+
+        // Small edits land, but Yes moves a point: the next click rewrites parts.
+        session.improveContext()
+        await Self.settle(session)
+        #expect(model.requests.last?.messages[0].text.contains(Stage.edit.instruction) == true)
+        #expect(session.typedState == "Hi there, nice to meet you." && session.improvementNote?.hasPrefix("Improved: ") == true)
+        #expect(session.nextImprovementStage == .parts)
+
+        // Rewriting parts helps, so the next click rewrites parts again.
+        session.improveContext()
+        await Self.settle(session)
+        #expect(model.requests.last?.messages[0].text.contains(Stage.parts.instruction) == true)
+        #expect(session.improvementNote?.hasPrefix("Rewrote parts: ") == true, Comment(rawValue: session.improvementNote ?? ""))
+        #expect(session.nextImprovementStage == .parts)
+
+        // Once the answer is what it should be, a click only polishes.
+        session.improveContext()
+        await Self.settle(session)
+        #expect(session.typedState == "Darling, you light up my day. Coffee, just us?")
+        #expect(session.nextImprovementStage == .edit)
+        #expect(session.contextImprovements.map(\.stage) == [.edit, .parts, .parts])
+
+        // Undo takes the stage back with the text, and an edit by hand starts over with small edits.
+        session.undoContextImprovement()
+        await Self.settle(session)
+        #expect(session.typedState == "Hi there, so lovely to meet you, gorgeous." && session.nextImprovementStage == .parts, "80% is a gain on 66%, and not 90% confident yet")
+        session.typedState = "Hi there, so lovely to meet you, gorgeous!"
+        #expect(session.nextImprovementStage == .edit)
     }
 
     @Test func aFailureShowsUntilTheTextChanges() async throws {

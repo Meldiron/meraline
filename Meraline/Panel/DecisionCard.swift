@@ -477,20 +477,23 @@ struct TypedStateCard: View {
 }
 
 /// What Improve on the Context card shows (see `ChatSession.improveContext()`): whether a click can take the text
-/// now, whether a request is on its way, the provider that edits, for the help, and the note under the capsules
-/// once an improvement landed, with Undo, or brought nothing.
+/// now, whether a request is on its way, the provider that edits, for the help, the note under the capsules
+/// once an improvement landed, with Undo, or brought nothing, and how much the next click changes, for the help
+/// (see `ChatSession.nextImprovementStage`).
 struct ImproveStatus: Equatable {
     var isAvailable: Bool
     var isWorking: Bool
     var providerName: String?
     var note: String?
     var canUndo: Bool
+    var nextStage: ContextImprovement.Stage = .edit
 }
 
 /// Improve, beside the Live switch in the Context card's header: a wand and the word on glass like the switch's,
 /// faded like an unavailable context button while there is no text, no question on, or no LLM to edit with, and
-/// a small spinner in the wand's place while its request is on its way. A click has the LLM edit the text a
-/// little toward the answers the live decisions should give; another click takes it further.
+/// a small spinner in the wand's place while its requests are on their way. A click has the LLM change the text
+/// toward the answers the live decisions should give, a little at first; another click takes it further, and
+/// rewrites parts, then the whole text, once edits stop helping, which the help says.
 private struct ImproveButton: View {
     let status: ImproveStatus
     let improve: () -> Void
@@ -535,7 +538,7 @@ private struct ImproveButton: View {
         if status.isWorking { return "Improving the text…" }
         guard let provider = status.providerName else { return "Connect an LLM in Settings to improve the text" }
         guard status.isAvailable else { return "Write some text and turn on a question, and \(provider) can edit the text toward its answer" }
-        return "\(provider) edits the text a little toward the answers: Yes on each question, the highest level, or the answer it has from a list of your own. Click again to take it further."
+        return "\(provider) \(status.nextStage.promise) toward the answers: Yes on each question, the highest level, or the answer it has from a list of your own. Click again to take it further; once edits stop helping, it rewrites parts, then the whole text."
     }
 }
 

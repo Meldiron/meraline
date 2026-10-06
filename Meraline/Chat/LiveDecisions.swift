@@ -181,6 +181,12 @@ final class LiveDecisions {
     /// one loader stands for them.
     var isWorking: Bool { !pending.isEmpty }
 
+    /// The answers about the current texts, by question: the latest to each, less those a newer answer is on its
+    /// way for (see `ContextImprovement.nextStage`).
+    var settledAnswers: [LiveQuestion.ID: Decision] {
+        answers.filter { !pending.contains($0.key) }.mapValues(\.decision)
+    }
+
     /// Whether nothing is asked: no question in the input, none kept, and no preset on.
     var asksNothing: Bool { !questions.contains(where: \.isOn) }
 
