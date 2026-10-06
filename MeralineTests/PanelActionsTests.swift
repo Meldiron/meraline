@@ -138,7 +138,7 @@ struct PanelActionsTests {
     }
 
     @Test func commandRRestartsAGameGoingOnAndPlaysAgainOnceItIsOver() async throws {
-        let model = ScriptedModel(["OK: apple", "OK: egg"])
+        let model = ScriptedModel(["OK: apple", "OK: apple"])
         let session = Support.session(model)
         #expect(!ids(context(session).chatMenu).contains("restartGame"), "no game to restart")
         session.startGame(.wordFootball)

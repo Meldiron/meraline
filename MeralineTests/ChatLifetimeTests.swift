@@ -40,7 +40,7 @@ struct ChatLifetimeTests {
     }
 
     @Test func aGameStartsItsTimeWithItsFirstMove() async throws {
-        let session = GameTestSupport.session(ScriptedModel(["OK: salmon"]))
+        let session = GameTestSupport.session(ScriptedModel(["OK: salmon", "OK: salmon"]))
         session.startGame(.wordFootball)
         #expect(session.expiresAt == nil, "nothing to lose before anyone moves")
         session.expireChats(now: .now.addingTimeInterval(ChatSession.chatLifetime * 2))

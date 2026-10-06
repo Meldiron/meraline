@@ -122,6 +122,62 @@ struct GameRulesTests {
         #expect(aside.hasPrefix("This puzzle’s theme: \(last). "), "the one theme the chat hasn't had")
     }
 
+    /// The small on-device model fouled on its first word in most kickoffs (elephant → apple), which ended the
+    /// match after one move. A foul gets the model one more try, asked what was wrong and what the word must
+    /// start with; the transcript shows only the word that counted.
+    @Test func wordFootballGivesAFoulOneMoreTry() async throws {
+        // Foul, then fair: the match goes on from the fair word, after one extra request.
+        let model = ScriptedModel(["OK: apple", "tiger", "OK: eagle"])
+        let session = Support.session(model)
+        session.startGame(.wordFootball)
+        await Support.play("elephant", in: session)
+        #expect(model.requests.count == 2, "the foul and the second try")
+        let retry = try #require(session.turns.last)
+        #expect(retry.cue?.hasPrefix(WordFootball.retryPrefix) == true)
+        #expect(retry.cue?.contains("“apple” doesn’t start with “T”") == true)
+        #expect(retry.cue?.contains("starts with “T”") == true)
+        #expect(retry.reply == "OK: tiger")
+        #expect(session.turns.dropLast().last?.reply == "OK: apple", "the foul stays in the conversation the model reads")
+        #expect(session.isYourMove)
+        #expect(session.gameState?.status == "1 of 16 words")
+        let chain = Game.wordFootball.rules.lines(for: session.turns).map(\.text)
+        #expect(chain == ["elephant → tiger"], "the word that broke the rules never shows")
+        #expect(Game.wordFootball.rules.transcript(of: session.turns) == "elephant → tiger")
+        // And the chain goes on from the fair word.
+        await Support.play("rose", in: session)
+        #expect(model.requests.count == 3)
+        #expect(session.turns.last?.reply == "OK: eagle")
+        #expect(session.gameState?.status == "3 of 16 words")
+        #expect(Game.wordFootball.rules.lines(for: session.turns).map(\.text) == ["elephant → tiger → rose → eagle"])
+
+        // Foul twice: the foul stands, as before.
+        let twice = ScriptedModel(["OK: apple", "banana"])
+        let lost = Support.session(twice)
+        lost.startGame(.wordFootball)
+        await Support.play("elephant", in: lost)
+        #expect(twice.requests.count == 2)
+        #expect(lost.rematch?.versus.tally == "You 1 – 0 Model")
+        #expect(Game.wordFootball.rules.lines(for: lost.turns).map(\.text) == ["elephant → banana", "Foul! “banana” doesn’t start with “T”. You win!"], "the foul that stands ends the chain, as before")
+
+        // A word played already gets the same second try.
+        let again = ScriptedModel(["OK: tiger", "OK: tiger", "tent"])
+        let repeated = Support.session(again)
+        repeated.startGame(.wordFootball)
+        await Support.play("elephant", in: repeated)
+        await Support.play("rat", in: repeated)
+        #expect(again.requests.count == 3)
+        #expect(repeated.turns.last?.cue?.contains("“tiger” was played already") == true)
+        #expect(Game.wordFootball.rules.lines(for: repeated.turns).map(\.text) == ["elephant → tiger → rat → tent"])
+
+        // A fair first word costs no extra request.
+        let fair = ScriptedModel(["OK: tiger"])
+        let clean = Support.session(fair)
+        clean.startGame(.wordFootball)
+        await Support.play("elephant", in: clean)
+        #expect(fair.requests.count == 1)
+        #expect(clean.isYourMove)
+    }
+
     @Test func wordFootballKicksOffFromAFreshWordAndNudgesTheModelsWords() throws {
         #expect(Set(WordFootball.kickoffs).count == WordFootball.kickoffs.count, "no kickoff twice")
         #expect(WordFootball.kickoffs.allSatisfy { $0 == WordFootball.cleanWord($0) && $0.count >= 2 })
@@ -229,7 +285,8 @@ struct GamePlayTests {
     }
 
     @Test func wordFootballCallsTheModelsFouls() async throws {
-        let model = ScriptedModel(["OK: apple", "NO: that isn’t a word", "OK: salmon"])
+        // The model's salmon fouls, and its second try is the same word, so the foul stands.
+        let model = ScriptedModel(["OK: apple", "NO: that isn’t a word", "OK: salmon", "OK: salmon"])
         let session = Support.session(model)
         session.startGame(.wordFootball)
         #expect(session.gameState?.opening?.button == WordFootball.randomButton)
@@ -257,7 +314,7 @@ struct GamePlayTests {
     }
 
     @Test func wordFootballCanKickOffFromARandomWord() async throws {
-        let model = ScriptedModel(["OK: salmon"])
+        let model = ScriptedModel(["OK: salmon", "OK: salmon"])
         let session = Support.session(model)
         session.startGame(.wordFootball)
         session.send()

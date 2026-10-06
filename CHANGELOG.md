@@ -10,6 +10,10 @@ When a version has an entry here, the Release workflow uses it as the release no
 
 - **⌘1 to ⌘9 answer an agent's question.** When Claude Code asks a question with choices, the keys pick them, as a click does, and the choices show their keycaps. Allow and Deny already took Return.
 
+### Games
+
+- **Word Football gives the model a second try.** When the model's word breaks the chain or was played already, it is told what was wrong and asked once more before the foul is called; only the word that counted shows. Against Apple's on-device model, most matches used to end after one move.
+
 ### Fixes
 
 - **Show What Changed no longer freezes Meraline under VoiceOver.** With VoiceOver or any other accessibility tool reading the window, showing what an answer changed sent macOS 27 into a loop that never ended, and Meraline had to be force quit.

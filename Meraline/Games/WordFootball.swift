@@ -23,6 +23,15 @@ nonisolated enum WordFootball: GameRules {
     /// What goes with a kickoff of yours.
     static let yourKickoff = "The user kicks off with the word below."
     private static let cues: Set<String> = [opening, rematchCue, yourKickoff]
+    /// How the model is asked once more after a word of its that broke the chain or was played already (see
+    /// `judge`): the cue names what was wrong and the letter the word must start with. Asked the same letter
+    /// again, the small on-device model found a fair word in most matches where its first was a foul.
+    static let retryPrefix = "That word doesn’t count: "
+    static func retryCue(for word: String, startingWith letter: Character, repeated: Bool) -> String {
+        let fault = repeated ? "“\(word)” was played already" : "“\(word)” doesn’t start with “\(letter.uppercased())”"
+        return "\(retryPrefix)\(fault). Play one other real English word that starts with “\(letter.uppercased())” and hasn’t been played in this match, and nothing else."
+    }
+    private static func isRetry(_ turn: ChatSession.Turn) -> Bool { turn.cue?.hasPrefix(retryPrefix) == true }
 
     static let randomButton = "Random Word"
 
@@ -43,6 +52,9 @@ nonisolated enum WordFootball: GameRules {
     struct Match {
         var words: [(text: String, byYou: Bool)] = []
         var ending: GameOutcome?
+        /// A word of the model's that broke the rules, waiting for the model's second try: the foul that stands
+        /// unless the next turn, asked with `retry`, plays a fair word.
+        var pendingFoul: (outcome: GameOutcome, retry: String)?
 
         /// Words played after the kickoff.
         var played: Int { max(words.count - 1, 0) }
@@ -68,6 +80,11 @@ nonisolated enum WordFootball: GameRules {
                 match.ending = outcome
                 break
             }
+            // A foul waits for the model's second try; anything else after it lets the foul stand.
+            if let pending = match.pendingFoul, !isRetry(turn) {
+                match.ending = pending.outcome
+                break
+            }
             if !turn.question.isEmpty { match.words.append((turn.question, true)) }
             guard let reply = turn.reply else { continue }
             let word = GameText.verdict(of: reply).rest
@@ -77,17 +94,30 @@ nonisolated enum WordFootball: GameRules {
             }
             let needed = match.nextLetter
             let repeated = match.words.contains { GameText.key($0.text) == GameText.key(word) }
-            match.words.append((word, false))
+            let foul: GameOutcome?
             if let needed, firstLetter(of: word) != needed {
-                match.ending = GameOutcome(text: "Foul! “\(word)” doesn’t start with “\(needed.uppercased())”. You win!", youWon: true)
+                foul = GameOutcome(text: "Foul! “\(word)” doesn’t start with “\(needed.uppercased())”. You win!", youWon: true)
+            } else if repeated {
+                foul = GameOutcome(text: "Foul! “\(word)” was played already. You win!", youWon: true)
+            } else {
+                foul = nil
+            }
+            guard let foul else {
+                match.pendingFoul = nil
+                match.words.append((word, false))
+                continue
+            }
+            // The second try fouled too, so the foul stands, the word that broke the rules ending the chain the
+            // transcript shows; a first foul gets one more try, and only the try's word joins the chain.
+            if isRetry(turn) || needed == nil {
+                match.pendingFoul = nil
+                match.words.append((word, false))
+                match.ending = foul
                 break
             }
-            if repeated {
-                match.ending = GameOutcome(text: "Foul! “\(word)” was played already. You win!", youWon: true)
-                break
-            }
+            match.pendingFoul = (foul, retryCue(for: word, startingWith: needed!, repeated: repeated))
         }
-        if match.ending == nil, match.played >= limit {
+        if match.ending == nil, match.pendingFoul == nil, match.played >= limit {
             match.ending = GameOutcome(text: "Full time: \(limit) words and no fouls. A draw.", youWon: nil)
         }
         return match
@@ -154,6 +184,7 @@ nonisolated enum WordFootball: GameRules {
         let match = review(current)
         let status = "\(match.played) of \(limit) words"
         if current.last?.isComplete == false { return GameState(phase: .waiting, status: status) }
+        if let pending = match.pendingFoul { return GameState(phase: .modelMoves(cue: pending.retry), status: status) }
         if let ending = match.ending {
             return GameState(
                 phase: .over(outcome: ending, next: GameOpening(placeholder: "Kick off again, or press Return for a random word…", button: randomButton)),
@@ -183,6 +214,9 @@ nonisolated enum WordFootball: GameRules {
         return .ask(word)
     }
 
+    /// The model's reply, kept as "OK: " and its word. A word that breaks the chain or was played already gets
+    /// the model one more try (`GameReply.retry`), unless this reply is that try; the small on-device model
+    /// fouled on its first word in most kickoffs, which ended the match after one move.
     static func judge(_ reply: String, in turns: [ChatSession.Turn]) -> GameReply {
         guard let last = turns.last else { return .refuse("Press Return to ask again.") }
         if last.cue.map(modelKickoffs.contains) == true {
@@ -190,11 +224,23 @@ nonisolated enum WordFootball: GameRules {
             return word.count < 2 ? .refuse("The model fluffed the kickoff. Press Return to try again.") : .accept(word)
         }
         let (accepted, rest) = GameText.verdict(of: reply)
-        if accepted == false {
+        if accepted == false, !isRetry(last) {
             return .refuse(rest.isEmpty ? "The ref says “\(last.question)” isn’t a word. Try another." : "The ref says no: \(GameText.sentence(rest))")
         }
         let word = cleanWord(rest)
-        return .accept("OK: \(word.isEmpty || GameText.isGivingUp(word) ? "PASS" : word)")
+        let kept = "OK: \(word.isEmpty || GameText.isGivingUp(word) ? "PASS" : word)"
+        guard !isRetry(last), !word.isEmpty, !GameText.isGivingUp(word) else { return .accept(kept) }
+        // The match as it stands before this reply: the last turn's word of yours counts, its reply not yet.
+        var played = turns.since(cues) ?? []
+        if !played.isEmpty { played[played.count - 1].answer = "" }
+        let match = review(played)
+        if let needed = match.nextLetter, firstLetter(of: word) != needed {
+            return .retry(kept, cue: retryCue(for: word, startingWith: needed, repeated: false))
+        }
+        if let needed = match.nextLetter, match.words.contains(where: { GameText.key($0.text) == GameText.key(word) }) {
+            return .retry(kept, cue: retryCue(for: word, startingWith: needed, repeated: true))
+        }
+        return .accept(kept)
     }
 
     static func lines(for turns: [ChatSession.Turn]) -> [GameLine] {

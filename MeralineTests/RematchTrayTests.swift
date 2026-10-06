@@ -17,7 +17,8 @@ struct RematchTrayTests {
         #expect(versus.tally == "You 2 – 1 Model · 1 draw")
     }
 
-    /// Word Football, won by the model's foul: "salmon" doesn't start with the E of your kickoff, "apple".
+    /// Word Football, won by the model's foul: "salmon" doesn't start with the E of your kickoff, "apple", and the
+    /// model's second try is the same word.
     private func wonMatch(_ model: ScriptedModel) async -> ChatSession {
         let session = Support.session(model)
         session.startGame(.wordFootball)
@@ -26,7 +27,7 @@ struct RematchTrayTests {
     }
 
     @Test func playAgainFollowsARoundAndTheGame() async {
-        let model = ScriptedModel(["OK: salmon"])
+        let model = ScriptedModel(["OK: salmon", "OK: salmon"])
         let session = await wonMatch(model)
         let over = session.rematch
         #expect(over?.game == .wordFootball)
@@ -56,7 +57,7 @@ struct RematchTrayTests {
     }
 
     @Test func theTrayCanBePutAwayAndTheTallyStays() async {
-        let session = await wonMatch(ScriptedModel(["OK: salmon"]))
+        let session = await wonMatch(ScriptedModel(["OK: salmon", "OK: salmon"]))
         session.reset()
         session.putAwayRematch()
         #expect(session.rematch == nil)
@@ -64,7 +65,7 @@ struct RematchTrayTests {
     }
 
     @Test func reopeningAGameCountsNothingTwice() async throws {
-        let session = await wonMatch(ScriptedModel(["OK: salmon"]))
+        let session = await wonMatch(ScriptedModel(["OK: salmon", "OK: salmon"]))
         session.reset()
         let past = try #require(session.history.first)
         session.reopen(past.id)
@@ -74,7 +75,7 @@ struct RematchTrayTests {
     }
 
     @Test func aChatHidesTheTrayUntilItEnds() async {
-        let model = ScriptedModel(["OK: salmon", "Paris."])
+        let model = ScriptedModel(["OK: salmon", "OK: salmon", "Paris."])
         let session = await wonMatch(model)
         session.reset()
         session.draft = "What is the capital of France?"

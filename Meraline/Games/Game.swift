@@ -162,6 +162,10 @@ nonisolated enum GameReply: Equatable, Sendable {
     case accept(String)
     /// The reply sends the move back: the turn goes, what was typed returns to the input, and a nudge says why.
     case refuse(String)
+    /// The reply stands, tidied up, but the model is asked once more, with `cue`, before it counts: a move that
+    /// broke the rules gets a second try. The turn is kept as the model's, so the conversation sent back matches
+    /// what a live agent remembers, and the game's rules read the turn that follows as the move that counts.
+    case retry(String, cue: String)
 }
 
 nonisolated struct GameOutcome: Equatable, Sendable {

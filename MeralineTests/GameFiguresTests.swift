@@ -82,7 +82,11 @@ struct GameFiguresTests {
         let round = [kitchen] + five + [Support.turn("mine 6", reply: "OK")]
         #expect(Game.categories.figures(ofRoundEndingIn: round).counts == [.opened: 1, .named: 6], "the category is no thing named")
 
-        let match = [Support.turn("banana", cue: WordFootball.yourKickoff, reply: "OK: apple"), Support.turn("egg", reply: "OK: salmon")]
+        // The model's salmon fouls twice, so the foul stands and the chain ends on it.
+        let match = [
+            Support.turn("banana", cue: WordFootball.yourKickoff, reply: "OK: apple"), Support.turn("egg", reply: "OK: salmon"),
+            Support.turn(cue: WordFootball.retryCue(for: "salmon", startingWith: "g", repeated: false), reply: "OK: salmon"),
+        ]
         let figures = Game.wordFootball.figures(ofRoundEndingIn: match)
         #expect(figures.counts == [.words: 2, .chain: 3] && figures.bests == [.chain: 3], "three words after the kickoff")
     }

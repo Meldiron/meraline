@@ -1933,6 +1933,11 @@ final class ChatSession {
             Log.chat.info("\(game.title): the model's reply sent the move back")
             takeBackLastTurn()
             nudge = message
+        case .retry(let reply, let cue):
+            turns[last].answer = reply
+            turns[last].isComplete = true
+            Log.chat.info("\(game.title): the model's move broke the rules; asking once more, turn \(turns.count)")
+            askModel(cue, in: game)
         }
     }
 
