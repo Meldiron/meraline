@@ -96,16 +96,20 @@ struct UsageChartTests {
     }
 
     /// A month's thirty days once all had their number under them, run together as "2324252627282930": the axis
-    /// drew a label for every bar, whichever ones it was told to mark.
+    /// drew a label for every bar, whichever ones it was told to mark. The month's labels are counted, since they
+    /// are numbers alone; an hour's and a day's read "11:44 PM" and "11 PM" where the clock has AM and PM, and
+    /// the strip would count each of those twice.
     @Test func onlyTheTicksAreLabeled() async throws {
         // With tokens counted, so the token scale's labels are as wide as they get and the strip stops short of them.
         let ledger = UsageLedger(file: nil)
         ledger.record(at: now.addingTimeInterval(-60)) { $0.count(answer: TokenUsage(input: 4_000, output: 900), reported: true, for: "anthropic/claude") }
-        for window in [UsageWindow.month, .hour, .day] {
+        let bars = UsageBar.bars(of: ledger.series(.month, now: now), in: .month)
+        let ticks = bars.filter(\.isTick).count
+        #expect(ticks == 7 && bars.count == 30)
+        #expect(labels(under: try await draw(bars, selected: nil)) == ticks, "\(ticks) of \(bars.count) bars are ticks")
+        for window in [UsageWindow.hour, .day] {
             let bars = UsageBar.bars(of: ledger.series(window, now: now), in: window)
-            let ticks = bars.filter(\.isTick).count
-            #expect(ticks < bars.count)
-            #expect(labels(under: try await draw(bars, selected: nil)) == ticks, "\(window): \(ticks) of \(bars.count) bars are ticks")
+            #expect(bars.filter(\.isTick).count < bars.count, "\(window) thins its labels too")
         }
     }
 }
