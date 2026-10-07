@@ -41,7 +41,8 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
     /// the one it recommends, Jared Palmer's Kev in its three sizes (`kev` is the 4B), Laya, a router that picks
     /// its English or multilingual model by the text, and Mapika's Decider. Ollaya speaks System One as Jev does
     /// (`crates/ollaya-api/src/decide.rs`): a state of any JSON, instructions of any JSON, a set's criteria with
-    /// null descriptions, and levels as an array, as Meraline sends them, and answers in Jev's shapes.
+    /// null descriptions, and levels as an array, as Meraline sends them, and answers in Jev's shapes; Kev's 0.8B
+    /// answered every request of Meraline's on 2026-10-07, about 0.3 s a question on an M1 Pro's CPU.
     static let ollayaModels = ["winnow:e4b", "kev:0.8b", "kev", "kev:9b", "laya", "decider", "decider:0.8b"]
 
     var isCommandLine: Bool { Self.commandLineTools.contains(self) }
@@ -65,16 +66,19 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
     var runsOnThisMac: Bool { isOnDevice || self == .ollama || self == .ollamaDecision || self == .ollaya }
 
     /// The most questions one System One request carries, when a decision is about each word or line (see
-    /// `DecisionScope`): Jev, OpenRouter, and Ollaya, which takes 256, a hundred. Ollama's models read every
-    /// question of the request in each prompt, and a prompt takes at most 2,050 tokens (the `num_ctx` they ship
-    /// with, which a request can't raise), so they get eight, which fits lines of sixty words and takes about as
-    /// long an item as a bigger batch would.
-    var questionsPerRequest: Int { self == .ollamaDecision ? 8 : DecisionScope.batchSize }
+    /// `DecisionScope`): Jev and OpenRouter a hundred. Ollama's models read every question of the request in each
+    /// prompt, and a prompt takes at most 2,050 tokens (the `num_ctx` they ship with, which a request can't raise),
+    /// so they get eight, which fits lines of sixty words and takes about as long an item as a bigger batch would.
+    /// Ollaya takes 256 questions a request, but its Kev reads the whole state again for each one, so a request's
+    /// time grows with its batch squared (six lines took 3 s on an M1 Pro's CPU, twelve of a longer text minutes),
+    /// and it gets eight too.
+    var questionsPerRequest: Int { self == .ollamaDecision || self == .ollaya ? 8 : DecisionScope.batchSize }
 
     /// Whether a request about each word or line carries only its batch's items in the state, and the texts only
-    /// when they are short (`DecisionRequest.trimmedTextLimit`), so each prompt fits Ollama's 2,050 tokens. Jev,
-    /// OpenRouter, and Ollaya get every item and the texts, as TypeSafe's docs ask.
-    var trimsDecisionState: Bool { self == .ollamaDecision }
+    /// when they are short (`DecisionRequest.trimmedTextLimit`), so each prompt fits Ollama's 2,050 tokens, and
+    /// Ollaya's Kev, which reads the state once a question, reads a short one. Jev and OpenRouter get every item
+    /// and the texts, as TypeSafe's docs ask.
+    var trimsDecisionState: Bool { self == .ollamaDecision || self == .ollaya }
 
     /// Providers that can search the web when asked to.
     var supportsWebSearch: Bool { self == .claudeCode || self == .codex }

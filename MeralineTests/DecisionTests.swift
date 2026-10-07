@@ -157,7 +157,7 @@ struct DecisionTests {
         #expect(provider.defaultModel == "winnow:e4b", "the one Ollaya recommends")
         #expect(provider.suggestedModels == Provider.ollayaModels && provider.suggestedModels.first == provider.defaultModel)
         #expect(provider.suggestedModels.contains("kev:0.8b") && provider.suggestedModels.contains("kev") && provider.suggestedModels.contains("kev:9b"))
-        #expect(provider.questionsPerRequest == DecisionScope.batchSize && !provider.trimsDecisionState, "Ollaya takes 256 questions a request, each model with its own context")
+        #expect(provider.questionsPerRequest == 8 && provider.trimsDecisionState, "Kev reads the state again for each question, so a request's time grows with its batch squared")
         #expect(Provider.allCases.last == .apple, "the on-device model still sorts last")
         #expect(PromptPreset.exists(provider.symbol))
 
@@ -191,23 +191,25 @@ struct DecisionTests {
         #expect(PriceTable(prices: [:], fetched: .now).price(for: provider, model: "kev:0.8b") == .free)
         #expect(UsageLedger(file: nil).price(for: provider, model: "winnow:e4b") == .free)
 
-        // Its replies in Jev's shapes, as Ollaya's types write them (`crates/ollaya-api/src/decide.rs`): a yes or no
-        // as one probability, a set and levels with a confidence, and the model that answered, which for the Laya
-        // router is the one it picked.
+        // Its replies, as kev:0.8b answered through Ollaya on 2026-10-07: Jev's shapes, to four decimals, a yes or
+        // no as one probability with no confidence, a set and levels with one, and no output tokens, since a
+        // decision model writes nothing. The model is the one that answered, which for the Laya router is the one it
+        // picked.
         let yes = try DecisionClient.decode(Data("""
-        {"model":"kev:0.8b","answers":{"decision":{"type":"noul","noul":0.9312}},"usage":{"input_tokens":126,"output_tokens":0}}
+        {"model":"kev:0.8b","answers":{"decision":{"type":"noul","noul":0.7046}},"usage":{"input_tokens":45,"output_tokens":0}}
         """.utf8), for: .yesNo, from: provider)
-        #expect(yes.decision.chosen.label == "Yes" && yes.usage == TokenUsage(input: 126, output: 0, model: "kev:0.8b"))
+        #expect(yes.decision.chosen.label == "Yes" && yes.usage == TokenUsage(input: 45, output: 0, model: "kev:0.8b"))
+        #expect(abs(yes.decision.confidence - 0.4092) < 1e-12, "twice the yes less one, so a weak yes reads as Not Sure")
         let team = try DecisionClient.decode(Data("""
-        {"model":"laya:en","answers":{"decision":{"type":"choice","choice":"Billing","confidence":0.8418,"probabilities":{"Billing":0.9609,"Technical":0.0367,"Sales":0.0023}}},"usage":{"input_tokens":138,"output_tokens":0}}
+        {"model":"kev:0.8b","answers":{"decision":{"type":"choice","choice":"Technical","confidence":0.6399,"probabilities":{"Billing":0.1985,"Technical":0.7599,"Sales":0.0416}}},"usage":{"input_tokens":50,"output_tokens":0}}
         """.utf8), for: DecisionAnswers(options: ["Billing", "Technical", "Sales"], isOrdered: false), from: provider)
-        #expect(team.decision.chosen.label == "Billing" && abs(team.decision.confidence - 0.8418) < 1e-12 && team.usage.model == "laya:en")
+        #expect(team.decision.chosen.label == "Technical" && abs(team.decision.confidence - 0.6399) < 1e-12)
         let level = try DecisionClient.decode(Data("""
-        {"model":"winnow:e4b","answers":{"decision":{"type":"score","score":1.4049,"confidence":0.1157,"legend":{"0":"Low","1":"Medium","2":"High"},"probabilities":{"0":0.1546,"1":0.2859,"2":0.5595}}},"usage":{"input_tokens":134,"output_tokens":0}}
+        {"model":"laya:en","answers":{"decision":{"type":"score","score":1.3623,"confidence":0.2921,"legend":{"0":"Low","1":"Medium","2":"High"},"probabilities":{"0":0.1658,"1":0.3062,"2":0.5281}}},"usage":{"input_tokens":49,"output_tokens":0}}
         """.utf8), for: DecisionAnswers(options: ["Low", "Medium", "High"], isOrdered: true), from: provider)
-        #expect(level.decision.chosen.label == "High" && level.decision.isOrdered)
+        #expect(level.decision.chosen.label == "High" && level.decision.isOrdered && level.usage.model == "laya:en")
         let score = try #require(level.decision.score)
-        #expect(abs(score - 1.4049) < 1e-12)
+        #expect(abs(score - 1.3623) < 1e-12)
         #expect(StreamDecoder.errorMessage(from: Data(#"{"error":"model \"kev:0.8b\" not found, try pulling it first","code":"MODEL_NOT_FOUND"}"#.utf8)) == "model \"kev:0.8b\" not found, try pulling it first", "Ollaya's error reads as it is")
 
         // Turned on in Settings, it is the decision model when it is the only one ready, and Ollama stays off.
