@@ -190,7 +190,12 @@ struct ShowcaseTests {
             let stage = ShowcaseStage(appearance)
             // Settings › Decision Models on Ollaya's pane, turned on with Kev's smallest size, as after "ollaya pull kev:0.8b".
             let defaults: [String: Any] = ["ollaya.enabled": true, "ollaya.model": "kev:0.8b"]
-            try await Self.settings(on: stage, pane: .provider(.ollaya), defaults: defaults) { window in
+            // With no key: the scenes' secret store answers every provider, and Ollaya's key is for a server that asks.
+            try await Self.settings(on: stage, pane: .provider(.ollaya), defaults: defaults, prepare: { preferences in
+                var ollaya = preferences[.ollaya]
+                ollaya.apiKey = ""
+                preferences[.ollaya] = ollaya
+            }) { window in
                 // The sidebar down to its Decision Models group, so the other three show beside the chosen Ollaya.
                 Self.scroll(window, to: 1_000, sidebar: true)
                 await Showcase.settle(0.5)
@@ -946,6 +951,7 @@ struct ShowcaseTests {
     /// its frame under the app's own name, and the test host is the app, so the frame saved there is put back.
     private static func settings(
         on stage: ShowcaseStage, pane: SettingsPane, defaults values: [String: Any] = [:],
+        prepare: (Preferences) -> Void = { _ in },
         fill: (ChatSession) -> Void = { _ in },
         updater makeUpdater: (Preferences, UserDefaults) -> Updater = { Updater(preferences: $0, defaults: $1) },
         _ body: (NSWindow) async throws -> Void
@@ -954,6 +960,7 @@ struct ShowcaseTests {
         let savedFrame = UserDefaults.standard.object(forKey: frameKey)
         defer { UserDefaults.standard.set(savedFrame, forKey: frameKey) }
         let (preferences, defaults) = preferences(values)
+        prepare(preferences)
         let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { _ in AsyncThrowingStream { $0.finish() } }
         fill(session)
         let controller = SettingsWindowController(preferences: preferences, updater: makeUpdater(preferences, defaults), session: session)
