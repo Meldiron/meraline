@@ -32,6 +32,9 @@ import WebKit
 ///   decision-live  Decision mode: the Context card deciding as you type, a question kept from the input, the input's, and three presets answered on glass capsules
 ///   decision-answers  Decision mode: the answers' panel open over the capsule under the input, Yes / No and two lists of your own, the levels in use selected with Edit and Remove
 ///   decision-answers-form  the same panel's form editing the levels: the toggle between a set and levels in order, and Save and Use
+///   preset-decisions  every preset of Decision mode asked at once about a text from Mail, each answer on one card
+///   decision-improve  Decision mode with Live on, after a click on Improve: the edited text, the capsules answered under it, and the note of what changed, with Undo
+///   new-chat-draft  the clock's panel with Stash Draft and New Chat at its top while the Context card holds text and no chat is open
 ///   table-fit     a three-column table wrapped to the card, and beside a capture of 1.12.0 as table-fit-before-after
 ///   undo-rewrite  the chat's actions searched for "undo" after Make Shorter: Undo Rewrite
 ///   try-again     an answer cut off by its connection, the banner's Try Again, and Ask Again first in the footer
@@ -512,6 +515,71 @@ struct ShowcaseTests {
         }
     }
 
+    /// Improve on the Context card: the text after one click, the capsules answered under it, and the note of
+    /// what it changed, with Undo. Anthropic edits the text, as the LLMs' default, and the live decisions answer
+    /// by each question's wording.
+    @Test func decisionImprove() async throws {
+        guard Showcase.wants("decision-improve") else { return }
+        func yes(_ p: Double) -> Decision { Decision(options: [.init(label: "Yes", probability: p), .init(label: "No", probability: 1 - p)], isYesNo: true, confidence: abs(2 * p - 1)) }
+        let answers: [String: Decision] = [
+            "Is this ready to send?": yes(0.93),
+            "Is this urgent?": yes(0.96),
+            "How high a priority is this?": Decision(options: [.init(label: "Low", probability: 0.03), .init(label: "Medium", probability: 0.11), .init(label: "High", probability: 0.86)], isOrdered: true, score: 1.83, confidence: 0.86),
+        ]
+        let before = "Hi team, checkout has been down for European customers since 9:40 and payments fail with a 502. I’m on it, but we may need to pause the campaign until it’s fixed."
+        let after = "Hi team, checkout has been down for every European customer since 9:40 and all payments fail with a 502. I’m on it now; please pause the campaign until it’s fixed, and I’ll report back by noon."
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.decisionPanel(on: stage, replies: [after], live: answers, presets: ["urgent", "priority"])
+            scene.session.draft = "Is this ready to send?"
+            await Showcase.settle(1.0)
+            // With the keyboard in the card, as after a click on Improve while writing there.
+            await Showcase.waitForIdle()
+            scene.panel.makeKey()
+            await Showcase.settle(0.3)
+            scene.session.writeState()
+            scene.controller.layout.stateFocusRequest += 1
+            scene.session.typedState = before
+            await Showcase.settle(1.5)
+            scene.session.improveContext()
+            var waited = 0
+            while scene.session.isImprovingContext, waited < 200 {
+                try await Task.sleep(for: .milliseconds(50))
+                waited += 1
+            }
+            #expect(scene.session.improvementNote?.hasPrefix("Improved") == true, "the text was improved: \(scene.session.improvementNote ?? "no note")")
+            await Showcase.settle(1.5)
+            #expect(Self.moveCursorToEnd(ofCardIn: scene.panel), "the card has the keyboard")
+            try await stage.capturePanel(scene.panel, as: "decision-improve")
+            stage.close(scene.panel)
+        }
+    }
+
+    /// ⌘N with no chat open: the clock's panel with Stash Draft and New Chat at its top while the Context card
+    /// holds text, above a chat kept in Recent Chats.
+    @Test func newChatDraft() async throws {
+        guard Showcase.wants("new-chat-draft") else { return }
+        let text = "Hi team, checkout has been down for European customers since 9:40 and payments fail with a 502. I’m on it, but we may need to pause the campaign until it’s fixed."
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.panel(on: stage, replies: ["A CRDT is a data structure that several replicas can change at once and still agree on, without a server deciding the order."])
+            scene.session.draft = "What’s a CRDT, in one sentence?"
+            scene.session.send()
+            await GameTestSupport.settle(scene.session)
+            _ = scene.session.reset()
+            scene.session.writeState()
+            scene.session.typedState = text
+            // Lower on the stage, so the panel opens upward over the card, as it does on a screen with room.
+            let room: CGFloat = 320
+            scene.panel.setFrameTopLeftPoint(NSPoint(x: stage.topLeft.x, y: stage.topLeft.y - room))
+            await Showcase.settle(0.5)
+            scene.controller.layout.actionPanel = ActionPanelRequest(kind: .history)
+            await Showcase.settle(1)
+            try await stage.capturePanel(scene.panel, as: "new-chat-draft", roomAbove: room)
+            stage.close(scene.panel)
+        }
+    }
+
     @Test func costNudge() async throws {
         guard Showcase.wants("cost-nudge") else { return }
         for appearance in Showcase.appearances {
@@ -892,9 +960,9 @@ struct ShowcaseTests {
 
     /// The real panel on the stage in Decision mode, TypeSafe answering with `decisions`, or with `batches` about
     /// each word or line of the `scope`, and, with `live`, deciding as you type on the Context card, each question
-    /// answered by its wording, with `presets` turned on.
+    /// answered by its wording, with `presets` turned on; the LLMs' default, Anthropic, answers from `replies`, for Improve.
     private static func decisionPanel(
-        on stage: ShowcaseStage, decisions: [Decision] = [], batches: [DecisionBatch] = [], scope: DecisionScope = .whole,
+        on stage: ShowcaseStage, replies: [String] = [], decisions: [Decision] = [], batches: [DecisionBatch] = [], scope: DecisionScope = .whole,
         answers: [String] = [], live: [String: Decision]? = nil, presets: Set<String> = []
     ) throws -> PanelScene {
         let (preferences, defaults) = preferences()
@@ -904,7 +972,7 @@ struct ShowcaseTests {
         preferences.decisionScope = scope
         // Lists of your own, the last in use.
         for list in answers { preferences.addOwnAnswers(list) }
-        let model = ScriptedModel(decisions: decisions, batches: batches)
+        let model = ScriptedModel(replies, decisions: decisions, batches: batches)
         let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil), stream: { model.stream($0) }) { questions, _, _, _ in
             var decisions: [String: Decision] = [:]
             for question in questions { decisions[question.id] = live?[question.question] }

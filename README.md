@@ -175,6 +175,35 @@ There are no chat lists to manage, no saved history, and no projects. Nothing is
     <td align="center"><sub>Turn on Live, and the judges answer under your text while you type</sub></td>
   </tr>
   <tr>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/preset-decisions.png">
+        <img src="docs/screenshots/preset-decisions-light.png" width="440" alt="Decision mode: every preset asked at once about a message from Mail, each on one row with a check or a cross ringed by its confidence: Urgent? Yes 72%, Scam? No 92%, Tone Neutral 70%, and Priority High 55%">
+      </picture>
+    </td>
+    <td align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/decision-improve.png">
+        <img src="docs/screenshots/decision-improve-light.png" width="440" alt="Decision mode with Live on, after a click on Improve: the edited text on the Context card, Improve beside the Live switch, the capsules under it answered Yes 86% and Yes 92% on green and High 86%, and under them Improved: 19% changed · 8 edits, with Undo">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The circle at the presets' end asks every one of them at once</sub></td>
+    <td align="center"><sub>Improve edits your text toward the answers it should get, and Undo puts it back</sub></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/decision-answers.png">
+        <img src="docs/screenshots/decision-answers-light.png" width="440" alt="The answers' panel open over the capsule under the input: Yes / No, Billing / Technical / Sales, and Low < Medium < High, the levels in use checked with Edit and Remove beside them, and New Answers… under them">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><sub>The answers under the input open a panel: switch between Yes / No and lists of your own, or write one</sub></td>
+  </tr>
+  <tr>
     <td align="center" colspan="2">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/note.png">
