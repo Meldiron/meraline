@@ -177,7 +177,15 @@ struct PromptPane: View {
             }
 
             Section {
-                TextField("Answers", text: $preferences.decisionAnswers, prompt: Text(DecisionAnswers.defaultText))
+                // A picker, not a field: your own answers are written, edited, and removed in the answers' panel
+                // under the input, and a field typed into would have added a list at every keystroke that read.
+                Picker("Answers", selection: $preferences.decisionAnswers) {
+                    Text(DecisionAnswers.defaultText).tag(DecisionAnswers.defaultText)
+                    if !preferences.ownDecisionAnswers.isEmpty {
+                        Divider()
+                        ForEach(preferences.ownDecisionAnswers, id: \.self) { Text($0).tag($0) }
+                    }
+                }
                 LabeledContent {
                     HStack(spacing: 10) {
                         Slider(value: $preferences.unsureBelow, in: 0...0.95, step: 0.05)
@@ -196,9 +204,7 @@ struct PromptPane: View {
             } header: {
                 Text("Decisions")
             } footer: {
-                Text(DecisionAnswers.parse(preferences.decisionAnswers) == nil
-                    ? "Write at least two answers with / between them, or < for levels in order. Until then a question picks Yes or No."
-                    : "The model picks one of these when a question names no answers of its own after its question mark: “Which team should handle this? Billing / Technical / Sales”, or “How urgent is this? Low < Medium < High” for levels in order. A decision model takes no instructions: it reads the text you add and the question, nothing else. Improve’s go to the LLM that changes the Context card’s text toward the live decisions: Yes on each question, the highest level, and from a list of answers the one the text has. How much it may change goes with each request: small edits first, parts rewritten once those stop helping, then the whole text.")
+                Text("The model picks one of these when a question names no answers of its own after its question mark: “Which team should handle this? Billing / Technical / Sales”, or “How urgent is this? Low < Medium < High” for levels in order. Write, edit, and remove answers of your own in Decision mode: click the answers under the input, or press ⇧⌘A. A decision model takes no instructions: it reads the text you add and the question, nothing else. Improve’s go to the LLM that changes the Context card’s text toward the live decisions: Yes on each question, the highest level, and from a list of answers the one the text has. How much it may change goes with each request: small edits first, parts rewritten once those stop helping, then the whole text.")
                     .fixedSize(horizontal: false, vertical: true)
             }
 

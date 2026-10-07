@@ -422,7 +422,7 @@ struct PanelActionsTests {
 
     // MARK: The answers a decision picks from
 
-    @Test func theAnswersPanelOffersYesNoYourOwnAndTheForm() throws {
+    @Test func theAnswersPanelOffersYesNoEachListOfYourOwnAndANewOne() throws {
         let preferences = Support.preferences()
         preferences.mode = .decision
         let model = ScriptedModel()
@@ -430,62 +430,117 @@ struct PanelActionsTests {
         let context = context(session, preferences: preferences)
         var menu = context.answersMenu
         #expect(menu.title == "Answers")
-        #expect(ids(menu) == ["answers.yesNo", "answers.edit"], "no answers of your own yet")
+        #expect(ids(menu) == ["answers.yesNo", "answers.new"], "no answers of your own yet")
         #expect(menu.actions.first?.isChecked == true)
-        #expect(menu.actions.last?.title == "Write Your Own Answers…")
-        #expect(menu.actions.last?.opensEditor == true)
-        #expect(menu.editor?.text == "")
+        #expect(menu.initialSelection == "answers.yesNo", "the panel opens on the answers in use")
+        #expect(!menu.hasSecondaryActions)
+        let new = try #require(menu.actions.last)
+        #expect(new.title == "New Answers…")
+        #expect(new.editor?.title == "New Answers")
+        #expect(new.editor?.text == "")
+        #expect(new.editor?.button == "Add and Use")
 
-        // The form opens in the list's place, and Esc goes back to the list before it closes the panel.
+        // New Answers… opens its form in the list's place, and Esc goes back to the list before it closes the panel.
         context.layout.actionPanel = ActionPanelRequest(kind: .answers)
-        context.run(try #require(menu.actions.last), in: .answers)
-        #expect(context.layout.actionPanel == ActionPanelRequest(kind: .answers, isEditing: true))
+        context.run(new, in: .answers)
+        #expect(context.layout.actionPanel == ActionPanelRequest(kind: .answers, editing: "answers.new"))
+        #expect(menu.action(id: "answers.new")?.editor != nil)
         context.layout.cancelActionPanel()
         #expect(context.layout.actionPanel == ActionPanelRequest(kind: .answers))
         context.layout.cancelActionPanel()
         #expect(context.layout.actionPanel == nil)
 
-        // Answers written in the form are the ones a question that names none picks from.
-        context.layout.actionPanel = ActionPanelRequest(kind: .answers, isEditing: true)
-        try #require(menu.editor).save("Low < Medium < High")
-        #expect(preferences.decisionAnswers == "Low < Medium < High")
-        #expect(preferences.ownDecisionAnswers == "Low < Medium < High")
+        // Each list written joins the others, and is the one a question that names none picks from.
+        context.layout.actionPanel = ActionPanelRequest(kind: .answers, editing: "answers.new")
+        try #require(new.editor).save("Billing / Technical / Sales")
         #expect(context.layout.actionPanel == nil, "the panel closes")
+        try #require(context.answersMenu.actions.last?.editor).save("Low < Medium < High")
+        #expect(preferences.ownDecisionAnswers == ["Billing / Technical / Sales", "Low < Medium < High"])
+        #expect(preferences.decisionAnswers == "Low < Medium < High")
         #expect(session.draftAnswers.kind == .score)
         menu = context.answersMenu
-        #expect(ids(menu) == ["answers.yesNo", "answers.own", "answers.edit"])
-        #expect(menu.actions[0].isChecked == false)
-        #expect(menu.actions[1].title == "Low < Medium < High")
-        #expect(menu.actions[1].subtitle == "Your own levels, in order")
-        #expect(menu.actions[1].isChecked == true)
-        #expect(menu.actions[2].title == "Edit Your Own Answers…")
-        #expect(menu.editor?.text == "Low < Medium < High")
+        #expect(ids(menu) == ["answers.yesNo", "answers.own.0", "answers.own.1", "answers.new"])
+        #expect(menu.actions.map(\.isChecked) == [false, false, true, false])
+        #expect(menu.actions[1].subtitle == "Your own answers to pick one from")
+        #expect(menu.actions[2].subtitle == "Your own levels, in order")
+        #expect(menu.initialSelection == "answers.own.1")
+        #expect(menu.hasSecondaryActions)
+        #expect(menu.actions[0].secondary.isEmpty, "Yes / No is the model's own, never edited or removed")
+        #expect(menu.actions[1].secondary.map(\.title) == ["Edit", "Remove"])
+        #expect(menu.actions[1].secondary.map { $0.shortcut?.text } == ["⌘E", "⌘⌫"])
+        #expect(menu.actions.last?.editor?.others == ["Billing / Technical / Sales", "Low < Medium < High"])
 
-        // Yes / No again keeps your own for later, and your own come back with a click.
-        context.run(menu.actions[0], in: .answers)
-        #expect(preferences.decisionAnswers == "Yes / No")
-        #expect(preferences.ownDecisionAnswers == "Low < Medium < High")
-        menu = context.answersMenu
-        #expect(menu.actions[0].isChecked == true)
-        #expect(menu.actions[1].isChecked == false)
+        // A click on a list uses it; Yes / No keeps every list for later.
         context.run(menu.actions[1], in: .answers)
-        #expect(preferences.decisionAnswers == "Low < Medium < High")
-        #expect(session.draftAnswers.text == "Low < Medium < High")
+        #expect(preferences.decisionAnswers == "Billing / Technical / Sales")
+        context.run(context.answersMenu.actions[0], in: .answers)
+        #expect(preferences.decisionAnswers == "Yes / No")
+        #expect(preferences.ownDecisionAnswers.count == 2)
+
+        // Edit opens the list in the form, and saving keeps its place and uses it.
+        menu = context.answersMenu
+        let edit = try #require(menu.action(id: "answers.own.0.edit"))
+        context.layout.actionPanel = ActionPanelRequest(kind: .answers)
+        context.run(edit, in: .answers)
+        #expect(context.layout.actionPanel == ActionPanelRequest(kind: .answers, editing: "answers.own.0.edit"))
+        #expect(edit.editor?.title == "Edit Answers")
+        #expect(edit.editor?.text == "Billing / Technical / Sales")
+        #expect(edit.editor?.button == "Save and Use")
+        #expect(edit.editor?.others == ["Low < Medium < High"], "the other lists, not the one edited")
+        try #require(edit.editor).save("Billing / Sales")
+        #expect(context.layout.actionPanel == nil)
+        #expect(preferences.ownDecisionAnswers == ["Billing / Sales", "Low < Medium < High"])
+        #expect(preferences.decisionAnswers == "Billing / Sales")
+
+        // Remove asks first, in the panel, and goes back to the list; the list in use gives way to Yes / No.
+        menu = context.answersMenu
+        let remove = try #require(menu.action(id: "answers.own.0.remove"))
+        #expect(remove.isDestructive)
+        #expect(remove.confirmation?.title == "Remove “Billing / Sales”?")
+        context.layout.actionPanel = ActionPanelRequest(kind: .answers)
+        context.run(remove, in: .answers)
+        #expect(context.layout.actionPanel?.confirming == "answers.own.0.remove")
+        #expect(preferences.ownDecisionAnswers.count == 2, "nothing goes before the yes")
+        context.confirm(remove)
+        #expect(context.layout.actionPanel == ActionPanelRequest(kind: .answers), "back to the list, to remove another")
+        #expect(preferences.ownDecisionAnswers == ["Low < Medium < High"])
+        #expect(preferences.decisionAnswers == "Yes / No")
 
         // A question that names its own answers comes first, checked, and the row of the default says so.
+        context.run(context.answersMenu.actions[1], in: .answers)
         session.draft = "Which team? Billing / Sales"
         #expect(session.draftNamesAnswers)
         menu = context.answersMenu
-        #expect(ids(menu) == ["answers.named", "answers.yesNo", "answers.own", "answers.edit"])
-        #expect(menu.actions[0].title == "Billing / Sales")
-        #expect(menu.actions[0].isChecked == true)
-        #expect(menu.actions[1].isChecked == false)
+        #expect(ids(menu) == ["answers.named", "answers.yesNo", "answers.own.0", "answers.new"])
+        #expect(menu.actions.map(\.isChecked) == [true, false, false, false])
         #expect(menu.actions[1].detail == nil)
-        #expect(menu.actions[2].isChecked == false)
         #expect(menu.actions[2].detail == "Default")
-        session.draft = "Is this urgent?"
-        #expect(!session.draftNamesAnswers)
-        #expect(ids(context.answersMenu) == ["answers.yesNo", "answers.own", "answers.edit"])
+        #expect(menu.initialSelection == "answers.named")
+    }
+
+    @Test func aRowsOwnShortcutsGoToThePanelOnlyWhileItsListShows() throws {
+        let preferences = Support.preferences()
+        preferences.mode = .decision
+        preferences.addOwnAnswers("Keep / Toss")
+        let model = ScriptedModel()
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { model.stream($0) }
+        let context = context(session, preferences: preferences)
+        let commandE = (UInt16(kVK_ANSI_E), "e", ActionShortcut.Modifiers.command)
+        let commandDelete = (UInt16(kVK_Delete), "\u{7F}", ActionShortcut.Modifiers.command)
+        #expect(context.rowShortcut(forKeyCode: commandE.0, characters: commandE.1, modifiers: commandE.2) == nil, "no panel open")
+        context.layout.actionPanel = ActionPanelRequest(kind: .answers)
+        #expect(context.rowShortcut(forKeyCode: commandE.0, characters: commandE.1, modifiers: commandE.2) == .command("e"))
+        #expect(context.rowShortcut(forKeyCode: commandDelete.0, characters: commandDelete.1, modifiers: commandDelete.2) == ActionShortcut(.delete, .command))
+        #expect(context.rowShortcut(forKeyCode: commandDelete.0, characters: commandDelete.1, modifiers: []) == nil, "plain ⌫ stays with the search field")
+        context.layout.actionPanel = ActionPanelRequest(kind: .answers, editing: "answers.new")
+        #expect(context.rowShortcut(forKeyCode: commandDelete.0, characters: commandDelete.1, modifiers: commandDelete.2) == nil, "the form's field keeps ⌘⌫")
+        context.layout.actionPanel = ActionPanelRequest(kind: .answers, confirming: "answers.own.0.remove")
+        #expect(context.rowShortcut(forKeyCode: commandE.0, characters: commandE.1, modifiers: commandE.2) == nil)
+        context.layout.actionPanel = ActionPanelRequest(kind: .history)
+        #expect(context.rowShortcut(forKeyCode: commandE.0, characters: commandE.1, modifiers: commandE.2) == nil, "a panel whose rows have none")
+        context.layout.pressRowShortcut(.command("e"))
+        context.layout.pressRowShortcut(.command("e"))
+        #expect(context.layout.rowShortcut == PanelLayout.RowShortcut(shortcut: .command("e"), number: 2), "each press is news")
     }
 
     // MARK: Ask Again

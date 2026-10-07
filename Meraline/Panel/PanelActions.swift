@@ -156,11 +156,17 @@ struct PanelAction: Identifiable {
     var isDestructive = false
     /// Set for an action that can't be undone: the panel asks first.
     var confirmation: ActionConfirmation?
-    /// Set for the row that opens the panel's form in the list's place (see `ActionMenu.editor`): the panel stays
-    /// open, and `perform` is never run.
-    var opensEditor = false
     /// More words the search finds the row by, such as "paste" for Insert Answer.
     var keywords: [String] = []
+    /// The form a row opens in the list's place (see `OwnAnswersForm`, `ActionPanelRequest.editing`): the panel stays
+    /// open, and `perform` is never run.
+    var editor: ActionEditor?
+    /// The panel goes back to its list after the action, rather than closing, as after removing one of several.
+    var staysOpen = false
+    /// What can be done to this row alone, such as Edit and Remove for a list of answers of your own: small buttons
+    /// at its end while it is selected, a context menu, and their shortcuts, which the window's key monitor hands to
+    /// the selected row (`PanelLayout.rowShortcut`) and the search field shows.
+    var secondary: [PanelAction] = []
     let perform: () -> Void
 }
 
@@ -169,12 +175,17 @@ struct ActionSection: Identifiable {
     var actions: [PanelAction]
 }
 
-/// What the answers panel's form starts with, and what it does with the answers written in it (see `OwnAnswersForm`,
-/// `ActionMenu.editor`).
+/// The form a row of the answers' panel opens (see `OwnAnswersForm`, `PanelAction.editor`): its heading, the answers
+/// its field starts with, the button that takes them, and what it does with them.
 struct ActionEditor {
+    let title: String
     /// The answers the field starts with, as `DecisionAnswers.text` writes them, or nothing.
     let text: String
-    /// Return, or Use These Answers, with answers that read: they become the ones a question that names none picks from.
+    /// The label of the row Return runs, such as "Add and Use".
+    let button: String
+    /// The other lists of your own, so the form can say when the answers written are one of them.
+    var others: [String] = []
+    /// Return, or the button, with answers that read.
     let save: (String) -> Void
 }
 
@@ -187,11 +198,23 @@ struct ActionMenu {
     var emptyText = "Nothing here yet"
     /// Whether the first row is the primary action, marked with ↵, which the footer also offers.
     var marksPrimary = false
-    /// The form the panel shows in the list's place once a row with `opensEditor` is run (`ActionPanelRequest.isEditing`):
-    /// the answers of your own a decision picks from (`OwnAnswersForm`), the one form there is.
-    var editor: ActionEditor?
+    /// The row selected as the panel opens, as a pop-up menu opens on its chosen item; else the first.
+    var initialSelection: PanelAction.ID?
 
     var actions: [PanelAction] { sections.flatMap(\.actions) }
+
+    /// Whether any row has actions of its own, so every row keeps room for its checkmark at its end and the buttons of
+    /// the selected row never move it.
+    var hasSecondaryActions: Bool { actions.contains { !$0.secondary.isEmpty } }
+
+    /// A row or one of a row's own actions, by its id, for a confirmation or a form.
+    func action(id: PanelAction.ID) -> PanelAction? {
+        for action in actions {
+            if action.id == id { return action }
+            if let secondary = action.secondary.first(where: { $0.id == id }) { return secondary }
+        }
+        return nil
+    }
 
     /// The action the footer offers beside Actions.
     var primary: PanelAction? { actions.first }
@@ -226,8 +249,8 @@ struct ActionPanelRequest: Equatable {
     var confirming: PanelAction.ID?
     /// The panel opened only to confirm, from the action's shortcut, so Cancel closes it.
     var isConfirmationOnly = false
-    /// The panel's form shows in the list's place (see `ActionMenu.editor`).
-    var isEditing = false
+    /// The action whose form shows in the list's place (see `PanelAction.editor`).
+    var editing: PanelAction.ID?
 }
 
 /// What the actions reach: the chat, the settings, the window's layout, and the Settings window. The footer,
@@ -259,18 +282,36 @@ struct PanelContext {
             layout.actionPanel = ActionPanelRequest(kind: kind, confirming: action.id, isConfirmationOnly: fromShortcut && !isOpen)
             return
         }
-        if action.opensEditor {
-            layout.actionPanel = ActionPanelRequest(kind: kind, isEditing: true)
+        if action.editor != nil {
+            layout.actionPanel = ActionPanelRequest(kind: kind, editing: action.id)
+            return
+        }
+        if action.staysOpen, layout.actionPanel != nil {
+            action.perform()
             return
         }
         if layout.actionPanel != nil { layout.closeActionPanel() }
         action.perform()
     }
 
-    /// Runs an action the user said yes to.
+    /// Runs an action the user said yes to: the panel closes, or goes back to its list for one that stays open.
     func confirm(_ action: PanelAction) {
-        layout.closeActionPanel()
+        if action.staysOpen, layout.actionPanel?.isConfirmationOnly == false {
+            layout.actionPanel?.confirming = nil
+        } else {
+            layout.closeActionPanel()
+        }
         action.perform()
+    }
+
+    /// The shortcut of a row's own action that a key press is, while the open panel's list shows (see
+    /// `PanelAction.secondary`): the window's key monitor hands it to the selected row through `PanelLayout.rowShortcut`.
+    func rowShortcut(forKeyCode keyCode: UInt16, characters: String?, modifiers: ActionShortcut.Modifiers) -> ActionShortcut? {
+        guard let request = layout.actionPanel, request.editing == nil, request.confirming == nil,
+              let menu = menu(for: request.kind) else { return nil }
+        return menu.actions.flatMap(\.secondary).lazy.compactMap(\.shortcut).first {
+            $0.matches(keyCode: keyCode, characters: characters, modifiers: modifiers)
+        }
     }
 
     /// The action a key press runs from anywhere in the window: a switch of mode (see `modeSwitches`), one of the
@@ -867,11 +908,12 @@ struct PanelContext {
     // MARK: The answers a decision picks from
 
     /// The answers' panel, behind the capsule under the input in Decision mode (`DecisionAnswersBadge`) and ⇧⌘A: what
-    /// the next question picks from when it names no answers of its own (see `DecisionAnswers`). Yes / No, then the
-    /// answers of your own last written (`Preferences.ownDecisionAnswers`), the one in use checked, and a row that
-    /// opens the form to write your own in the list's place (`OwnAnswersForm`, through `ActionMenu.editor`). A
-    /// question that names its own answers after its question mark comes first, checked, since those are what it
-    /// picks from, and the row of the default says Default instead.
+    /// the next question picks from when it names no answers of its own (see `DecisionAnswers`). Yes / No, then each
+    /// list of your own (`Preferences.ownDecisionAnswers`), the one in use checked and selected as the panel opens,
+    /// each with Edit (⌘E), which opens the form in the list's place (`OwnAnswersForm`), and Remove (⌘⌫), which asks
+    /// first and goes back to the list; then New Answers…, the same form, empty. A question that names its own answers
+    /// after its question mark comes first, checked, since those are what it picks from, and the default's row says
+    /// Default.
     var answersMenu: ActionMenu {
         let preferences = preferences
         let layout = layout
@@ -900,38 +942,71 @@ struct PanelContext {
             preferences.decisionAnswers = DecisionAnswers.defaultText
             Log.panel.info("Decision answers set to Yes / No")
         })
-        let own = DecisionAnswers.parse(preferences.ownDecisionAnswers).flatMap { $0.isYesNo ? nil : $0 }
-        if let own {
+        let lists = preferences.ownDecisionAnswers.compactMap(DecisionAnswers.parse)
+        for (index, answers) in lists.enumerated() {
+            let text = answers.text
+            let isInUse = fallback == answers
             rows.append(PanelAction(
-                id: "answers.own",
-                title: own.text,
-                subtitle: own.kind == .score ? "Your own levels, in order" : "Your own answers to pick one from",
-                icon: .symbol(own.symbol),
-                detail: namesOwn && fallback == own ? "Default" : nil,
-                isChecked: !namesOwn && fallback == own,
-                keywords: ["own", "custom", "options", "levels", "list"]
+                id: "answers.own.\(index)",
+                title: text,
+                subtitle: answers.kind == .score ? "Your own levels, in order" : "Your own answers to pick one from",
+                icon: .symbol(answers.symbol),
+                detail: namesOwn && isInUse ? "Default" : nil,
+                isChecked: !namesOwn && isInUse,
+                keywords: ["own", "custom", "options", "levels", "list"],
+                secondary: [
+                    PanelAction(
+                        id: "answers.own.\(index).edit",
+                        title: "Edit",
+                        icon: .symbol("pencil"),
+                        shortcut: .command("e"),
+                        editor: ActionEditor(title: "Edit Answers", text: text, button: "Save and Use", others: lists.map(\.text).filter { $0 != text }) { edited in
+                            preferences.replaceOwnAnswers(text, with: edited)
+                            Log.panel.info("Decision answers of your own edited")
+                            layout.closeActionPanel()
+                        }
+                    ) {},
+                    PanelAction(
+                        id: "answers.own.\(index).remove",
+                        title: "Remove",
+                        icon: .symbol("trash"),
+                        shortcut: ActionShortcut(.delete, .command),
+                        isDestructive: true,
+                        confirmation: ActionConfirmation(
+                            title: "Remove “\(text)”?",
+                            message: isInUse
+                                ? "A question that names no answers of its own picks Yes or No again. You can still name these after a question mark."
+                                : "It goes from your answers. You can still name these after a question mark.",
+                            button: "Remove"
+                        ),
+                        staysOpen: true
+                    ) {
+                        preferences.removeOwnAnswers(text)
+                        Log.panel.info("Decision answers of your own removed")
+                    },
+                ]
             ) {
-                preferences.decisionAnswers = own.text
+                preferences.decisionAnswers = text
                 Log.panel.info("Decision answers set to your own")
             })
         }
-        let edit = PanelAction(
-            id: "answers.edit",
-            title: own == nil ? "Write Your Own Answers…" : "Edit Your Own Answers…",
+        let new = PanelAction(
+            id: "answers.new",
+            title: "New Answers…",
             subtitle: "A set to pick one from, or levels in order",
-            icon: .symbol("square.and.pencil"),
-            opensEditor: true,
-            keywords: ["custom", "options", "levels", "list", "write", "edit", "set up", "setup"]
+            icon: .symbol("plus"),
+            keywords: ["new", "add", "create", "custom", "options", "levels", "list", "write"],
+            editor: ActionEditor(title: "New Answers", text: "", button: "Add and Use", others: lists.map(\.text)) { text in
+                preferences.addOwnAnswers(text)
+                Log.panel.info("Decision answers of your own added")
+                layout.closeActionPanel()
+            }
         ) {}
         return ActionMenu(
             title: "Answers",
-            sections: [ActionSection(id: "answers", actions: rows), ActionSection(id: "edit", actions: [edit])],
+            sections: [ActionSection(id: "answers", actions: rows), ActionSection(id: "new", actions: [new])],
             searchPrompt: "Search answers…",
-            editor: ActionEditor(text: own?.text ?? "") { text in
-                preferences.decisionAnswers = text
-                Log.panel.info("Decision answers of your own written")
-                layout.closeActionPanel()
-            }
+            initialSelection: rows.first(where: \.isChecked)?.id
         )
     }
 }

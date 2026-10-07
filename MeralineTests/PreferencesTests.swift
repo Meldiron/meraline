@@ -24,22 +24,62 @@ struct PreferencesTests {
         #expect(!ProviderSettings(model: "", baseURL: "", apiKey: "", isEnabled: false).isReady(for: .apple))
     }
 
-    @Test func answersOfYourOwnAreKeptApartFromTheDefault() {
+    @Test func listsOfYourOwnAnswersAreAddedEditedAndRemoved() {
         let defaults = makeDefaults()
         let preferences = Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: false)
         #expect(preferences.decisionAnswers == "Yes / No")
-        #expect(preferences.ownDecisionAnswers == "")
+        #expect(preferences.ownDecisionAnswers.isEmpty)
+        preferences.addOwnAnswers(" Keep/Toss ")
+        #expect(preferences.ownDecisionAnswers == ["Keep / Toss"], "written as the answers write themselves")
+        #expect(preferences.decisionAnswers == "Keep / Toss")
+        preferences.addOwnAnswers("Low < High")
+        preferences.addOwnAnswers("Keep / Toss")
+        #expect(preferences.ownDecisionAnswers == ["Keep / Toss", "Low < High"], "never twice")
+        #expect(preferences.decisionAnswers == "Keep / Toss", "the one already there is used")
+        preferences.addOwnAnswers("Keep /")
+        #expect(preferences.ownDecisionAnswers.count == 2, "a text that reads as no answers isn't added")
+        preferences.addOwnAnswers("No / Yes")
+        #expect(preferences.ownDecisionAnswers.count == 2, "Yes and No are the model's own")
+        #expect(preferences.decisionAnswers == "Yes / No")
+
+        preferences.replaceOwnAnswers("Low < High", with: "Low < Medium < High")
+        #expect(preferences.ownDecisionAnswers == ["Keep / Toss", "Low < Medium < High"], "an edit keeps its place")
+        #expect(preferences.decisionAnswers == "Low < Medium < High")
+        preferences.replaceOwnAnswers("Low < Medium < High", with: "Keep / Toss")
+        #expect(preferences.ownDecisionAnswers == ["Keep / Toss"], "an edit that matches another list gives way to it")
+        #expect(preferences.decisionAnswers == "Keep / Toss")
+
+        preferences.addOwnAnswers("Low < High")
         preferences.decisionAnswers = "Keep / Toss"
-        #expect(preferences.ownDecisionAnswers == "Keep / Toss", "answers written in Settings count as your own")
-        preferences.decisionAnswers = "Yes / No"
-        #expect(preferences.ownDecisionAnswers == "Keep / Toss", "and stay when Yes / No takes their place")
-        preferences.decisionAnswers = "Keep /"
-        #expect(preferences.ownDecisionAnswers == "Keep / Toss", "a text that reads as no answers isn't")
-        #expect(Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: false).ownDecisionAnswers == "Keep / Toss")
-        // Answers changed before they were kept apart count as your own on the next launch.
+        preferences.removeOwnAnswers("Low < High")
+        #expect(preferences.ownDecisionAnswers == ["Keep / Toss"])
+        #expect(preferences.decisionAnswers == "Keep / Toss", "removing another list leaves the one in use")
+        preferences.removeOwnAnswers("Keep / Toss")
+        #expect(preferences.ownDecisionAnswers.isEmpty)
+        #expect(preferences.decisionAnswers == "Yes / No", "Yes / No takes the place of the list in use")
+
+        preferences.decisionAnswers = "Billing / Sales"
+        #expect(preferences.ownDecisionAnswers == ["Billing / Sales"], "answers in use are always among your own")
+        preferences.addOwnAnswers("Low < High")
+        let again = Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: false)
+        #expect(again.ownDecisionAnswers == ["Billing / Sales", "Low < High"])
+        #expect(again.decisionAnswers == "Low < High")
+    }
+
+    @Test func answersOfOlderVersionsBecomeListsOfYourOwn() {
+        // Settings' field wrote the answers in use, and the panel kept one list apart.
         let older = makeDefaults()
-        older.set("Low < High", forKey: "decisions.answers")
-        #expect(Preferences(defaults: older, secrets: noSecrets, onDeviceModelAvailable: false).ownDecisionAnswers == "Low < High")
+        older.set("Low<High", forKey: "decisions.answers")
+        older.set("Keep / Toss", forKey: "decisions.ownAnswers")
+        let preferences = Preferences(defaults: older, secrets: noSecrets, onDeviceModelAvailable: false)
+        #expect(preferences.ownDecisionAnswers == ["Keep / Toss", "Low < High"])
+        #expect(preferences.decisionAnswers == "Low < High")
+        // A text that read as no answers picked Yes or No, and still does.
+        let unread = makeDefaults()
+        unread.set("Keep /", forKey: "decisions.answers")
+        let yesNo = Preferences(defaults: unread, secrets: noSecrets, onDeviceModelAvailable: false)
+        #expect(yesNo.decisionAnswers == "Yes / No")
+        #expect(yesNo.ownDecisionAnswers.isEmpty)
     }
 
     @Test func enablingALocalProviderMakesItActive() {

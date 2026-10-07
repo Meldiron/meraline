@@ -150,6 +150,18 @@ final class PanelLayout {
         let number: Int
     }
     var promptChoice: PromptChoice?
+    /// A shortcut of a row's own action pressed while a panel's list shows, such as ⌘E or ⌘⌫ on a list of answers of
+    /// your own (see `PanelContext.rowShortcut`), which the panel runs on its selected row, since the selection is its
+    /// own state. `number` tells one press from the next.
+    struct RowShortcut: Equatable {
+        let shortcut: ActionShortcut
+        let number: Int
+    }
+    var rowShortcut: RowShortcut?
+
+    func pressRowShortcut(_ shortcut: ActionShortcut) {
+        rowShortcut = RowShortcut(shortcut: shortcut, number: (rowShortcut?.number ?? 0) + 1)
+    }
 
     func choose(_ index: Int, of prompt: AgentPrompt.ID) {
         promptChoice = PromptChoice(prompt: prompt, index: index, number: (promptChoice?.number ?? 0) + 1)
@@ -161,12 +173,12 @@ final class PanelLayout {
         focusRequest += 1
     }
 
-    /// Esc in a panel of actions: the form for your own answers goes back to the list, a confirmation goes back
-    /// to the list, unless the panel opened only for it, and a list closes.
+    /// Esc in a panel of actions: a form goes back to the list, a confirmation goes back to the list, unless the
+    /// panel opened only for it, and a list closes.
     func cancelActionPanel() {
         guard let request = actionPanel else { return }
-        if request.isEditing {
-            actionPanel?.isEditing = false
+        if request.editing != nil {
+            actionPanel?.editing = nil
         } else if request.confirming != nil && !request.isConfirmationOnly {
             actionPanel?.confirming = nil
         } else {
@@ -644,6 +656,15 @@ final class PanelController: NSObject {
                !self.session.isStreaming,
                event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter) {
                 self.session.send()
+                return nil
+            }
+            // A row's own shortcut while a panel's list shows, such as ⌘E and ⌘⌫ on a list of answers of your own,
+            // goes to the panel's selected row, ahead of the window's shortcuts, as the panel is in front of them.
+            if let shortcut = self.context.rowShortcut(
+                forKeyCode: event.keyCode, characters: event.charactersIgnoringModifiers,
+                modifiers: ActionShortcut.Modifiers(modifiers)
+            ) {
+                self.layout.pressRowShortcut(shortcut)
                 return nil
             }
             if !self.shortcutSetup.isPresented, self.runAction(for: event) {

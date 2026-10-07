@@ -4,12 +4,16 @@ import SwiftUI
 /// A panel of actions in the manner of Raycast's: a heading, rows in sections with an icon, a title, and the
 /// shortcut as keycaps, and a search field at the bottom that filters them. The arrows move the selection,
 /// Return runs it, and Esc closes the panel. An action that can't be undone asks first, in the panel itself:
-/// a sheet or an alert would take the keyboard from the window, which closes when it loses it. A menu with a
-/// form (`ActionMenu.editor`) shows it in the list's place once its row is run, the search field hidden under it
-/// as under a confirmation, and Esc goes back to the list.
+/// a sheet or an alert would take the keyboard from the window, which closes when it loses it. A row with a
+/// form (`PanelAction.editor`) shows it in the list's place once it is run, the search field hidden under it as
+/// under a confirmation, and Esc goes back to the list. A row with actions of its own (`PanelAction.secondary`,
+/// Edit and Remove on a list of answers of your own) shows them as small buttons at its end while it is selected,
+/// in a context menu, and as keycaps beside the search field, whose shortcuts run them on the selected row.
 struct ActionPanel: View {
     let menu: ActionMenu
     let request: ActionPanelRequest
+    /// The last press of a row's own shortcut (see `PanelLayout.rowShortcut`), run on the selected row.
+    var rowShortcut: PanelLayout.RowShortcut?
     let run: (PanelAction) -> Void
     let confirm: (PanelAction) -> Void
     /// Esc, or Cancel in a confirmation, or Back in the form: back to the list, or the panel closes.
@@ -17,6 +21,8 @@ struct ActionPanel: View {
 
     @State private var query = ""
     @State private var selection: PanelAction.ID?
+    /// The action of a row's own under the pointer, for its hover tint.
+    @State private var hoveredSecondary: PanelAction.ID?
     /// In a confirmation, whether Return goes ahead rather than cancels.
     @State private var confirmsOnReturn = true
     /// Requests for the search field to take the keyboard again, once the form and its field have gone.
@@ -36,13 +42,18 @@ struct ActionPanel: View {
     private var visible: [PanelAction] { sections.flatMap(\.actions) }
 
     private var confirming: PanelAction? {
-        request.confirming.flatMap { id in menu.actions.first { $0.id == id } }
+        request.confirming.flatMap(menu.action(id:))
     }
 
-    /// The selected row: the one the arrows or the pointer picked, or else the first.
+    /// The selected row: the one the arrows or the pointer picked, or else the one the menu opens on, or the first.
     private var selected: PanelAction.ID? {
         if let selection, visible.contains(where: { $0.id == selection }) { return selection }
+        if query.trimmed.isEmpty, let initial = menu.initialSelection, visible.contains(where: { $0.id == initial }) { return initial }
         return visible.first?.id
+    }
+
+    private var selectedAction: PanelAction? {
+        selected.flatMap { id in visible.first { $0.id == id } }
     }
 
     /// How tall the rows are: every row and divider has a fixed height, so the list needs no measuring and has
@@ -63,8 +74,9 @@ struct ActionPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if request.isEditing, let editor = menu.editor {
-                OwnAnswersForm(text: editor.text, save: editor.save, back: cancel)
+            if let id = request.editing, let editor = menu.action(id: id)?.editor {
+                OwnAnswersForm(editor: editor, back: cancel)
+                    .id(id)
                     .transition(.opacity)
             } else if let action = confirming, let confirmation = action.confirmation {
                 confirmationView(for: action, confirmation)
@@ -79,12 +91,21 @@ struct ActionPanel: View {
         .glassEffect(.regular, in: .rect(cornerRadius: Self.cornerRadius))
         .shadow(color: .black.opacity(0.22), radius: 18, y: 8)
         .animation(.smooth(duration: 0.18), value: request.confirming)
-        .animation(.smooth(duration: 0.18), value: request.isEditing)
+        .animation(.smooth(duration: 0.18), value: request.editing)
+        .animation(.easeOut(duration: 0.12), value: selected)
         .onChange(of: query) { selection = nil }
         .onChange(of: request.confirming) { confirmsOnReturn = true }
         // Back from the form: its field had the keyboard, and goes with it.
-        .onChange(of: request.isEditing) { _, isEditing in
-            if !isEditing { searchFocus += 1 }
+        .onChange(of: request.editing) { _, editing in
+            if editing == nil { searchFocus += 1 }
+        }
+        .onChange(of: rowShortcut) { _, press in
+            guard let press else { return }
+            guard let action = selectedAction?.secondary.first(where: { $0.shortcut == press.shortcut }) else {
+                NSSound.beep()
+                return
+            }
+            run(action)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(menu.title)
@@ -151,7 +172,58 @@ struct ActionPanel: View {
         .padding(.bottom, 6)
     }
 
+    /// A row: the action's button, then, in a menu whose rows have actions of their own, those of the selected row
+    /// and a place for the checkmark at the end, the same in every row, so the buttons never move it.
     private func row(_ action: PanelAction, isPrimary: Bool) -> some View {
+        let isSelected = action.id == selected
+        let keepsCheckPlace = menu.hasSecondaryActions
+        return HStack(spacing: 0) {
+            mainButton(action, isPrimary: isPrimary, keepsCheckPlace: keepsCheckPlace)
+            if keepsCheckPlace {
+                if isSelected, !action.secondary.isEmpty {
+                    HStack(spacing: 2) {
+                        ForEach(action.secondary) { secondaryButton($0, of: action) }
+                    }
+                    .transition(.opacity)
+                }
+                // The checkmark's place, a click on which runs the row as the rest of it does.
+                Button { run(action) } label: {
+                    ZStack {
+                        if action.isChecked {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Color.meralinePink)
+                        }
+                    }
+                    .frame(width: 14)
+                    .padding(.leading, 6)
+                    .padding(.trailing, 10)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHidden(true)
+            }
+        }
+        .frame(height: action.subtitle == nil ? Self.rowHeight : Self.tallRowHeight)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(.primary.opacity(0.08))
+            }
+        }
+        .padding(.horizontal, 6)
+        .onHover { inside in
+            if inside { selection = action.id }
+        }
+        .contextMenu {
+            ForEach(action.secondary) { secondary in
+                Button(secondary.title, role: secondary.isDestructive ? .destructive : nil) { run(secondary) }
+            }
+        }
+    }
+
+    private func mainButton(_ action: PanelAction, isPrimary: Bool, keepsCheckPlace: Bool) -> some View {
         let isSelected = action.id == selected
         return Button { run(action) } label: {
             HStack(spacing: 10) {
@@ -181,7 +253,7 @@ struct ActionPanel: View {
                         .lineLimit(1)
                         .layoutPriority(1)
                 }
-                if action.isChecked {
+                if action.isChecked, !keepsCheckPlace {
                     Image(systemName: "checkmark")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Color.meralinePink)
@@ -193,24 +265,39 @@ struct ActionPanel: View {
                     KeyCaps(keys: shortcut.keycaps)
                 }
             }
-            .padding(.horizontal, 10)
-            .frame(height: action.subtitle == nil ? Self.rowHeight : Self.tallRowHeight)
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(.primary.opacity(0.08))
-                }
-            }
+            .padding(.leading, 10)
+            .padding(.trailing, keepsCheckPlace ? 0 : 10)
+            .frame(maxHeight: .infinity)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 6)
-        .onHover { inside in
-            if inside { selection = action.id }
-        }
         .accessibilityLabel(action.title)
+        .accessibilityValue(action.isChecked ? "On" : "")
         .accessibilityHint(action.subtitle ?? "")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .modifier(SecondaryAccessibilityActions(actions: action.secondary, run: run))
+    }
+
+    /// One of a row's own actions, at its end while it is selected: its symbol, tinted on hover, red for one that
+    /// removes. Flat, like the row's highlight, not glass inside the panel's glass.
+    private func secondaryButton(_ secondary: PanelAction, of action: PanelAction) -> some View {
+        let isHovered = hoveredSecondary == secondary.id
+        return Button { run(secondary) } label: {
+            icon(secondary.icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(secondary.isDestructive && isHovered ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                .frame(width: 24, height: 24)
+                .background {
+                    if isHovered { Circle().fill((secondary.isDestructive ? Color.red : Color.primary).opacity(0.12)) }
+                }
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            if inside { hoveredSecondary = secondary.id } else if hoveredSecondary == secondary.id { hoveredSecondary = nil }
+        }
+        .help(secondary.shortcut.map { "\(secondary.title) (\($0.text))" } ?? secondary.title)
+        .accessibilityLabel("\(secondary.title) \(action.title)")
     }
 
     @ViewBuilder
@@ -288,7 +375,7 @@ struct ActionPanel: View {
     /// Return and Esc answer the confirmation; under the form it is hidden too, the form's own field holding the
     /// keyboard until the form goes.
     private var searchBar: some View {
-        let isHidden = confirming != nil || request.isEditing
+        let isHidden = confirming != nil || request.editing != nil
         return VStack(spacing: 0) {
             Divider()
             HStack(spacing: 8) {
@@ -297,6 +384,24 @@ struct ActionPanel: View {
                     .foregroundStyle(.tertiary)
                 ActionSearchField(text: $query, prompt: menu.searchPrompt, focus: searchFocus, onMove: move, onSubmit: submit, onCancel: cancel)
                     .frame(height: 20)
+                // What the selected row's own shortcuts do, so the keyboard finds them without the pointer.
+                if let action = selectedAction, !action.secondary.isEmpty {
+                    HStack(spacing: 10) {
+                        ForEach(action.secondary) { secondary in
+                            if let shortcut = secondary.shortcut {
+                                HStack(spacing: 4) {
+                                    KeyCaps(keys: shortcut.keycaps, size: 16)
+                                    Text(secondary.title)
+                                }
+                            }
+                        }
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize()
+                    .transition(.opacity)
+                    .accessibilityHidden(true)
+                }
             }
             .padding(.horizontal, 16)
             .frame(height: Self.searchHeight - 1)
@@ -348,6 +453,19 @@ struct KeyCaps: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(keys.joined(separator: " "))
+    }
+}
+
+/// A row's own actions, such as Edit and Remove, offered to VoiceOver on the row whether or not it is selected,
+/// since their buttons show only on the selected row.
+private struct SecondaryAccessibilityActions: ViewModifier {
+    let actions: [PanelAction]
+    let run: (PanelAction) -> Void
+
+    func body(content: Content) -> some View {
+        actions.reduce(AnyView(content)) { view, action in
+            AnyView(view.accessibilityAction(named: action.title) { run(action) })
+        }
     }
 }
 
@@ -515,7 +633,7 @@ private struct PlacedActionPanel: View {
     private static let gap: CGFloat = 8
 
     var body: some View {
-        let estimate = ActionPanel.estimatedHeight(of: menu, confirming: request.confirming != nil, editing: request.isEditing)
+        let estimate = ActionPanel.estimatedHeight(of: menu, confirming: request.confirming != nil, editing: request.editing != nil)
         let height = height ?? estimate
         let upward = opensUpward ?? canOpenUpward(estimate)
         let inset = ActionPanelHost.inset
@@ -526,6 +644,7 @@ private struct PlacedActionPanel: View {
         ActionPanel(
             menu: menu,
             request: request,
+            rowShortcut: context.layout.rowShortcut,
             run: { context.run($0, in: request.kind) },
             confirm: context.confirm,
             cancel: context.layout.cancelActionPanel

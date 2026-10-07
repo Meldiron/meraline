@@ -142,19 +142,54 @@ final class Preferences {
         didSet {
             guard decisionAnswers != oldValue else { return }
             defaults.set(decisionAnswers, forKey: "decisions.answers")
-            // Answers of your own are kept apart too, so the panel under the input offers them again after Yes / No.
-            if let answers = DecisionAnswers.parse(decisionAnswers), !answers.isYesNo { ownDecisionAnswers = answers.text }
+            // Answers of your own in use are always among your own, so the panel under the input lists them.
+            if let answers = DecisionAnswers.parse(decisionAnswers), !answers.isYesNo, !ownDecisionAnswers.contains(answers.text) {
+                ownDecisionAnswers.append(answers.text)
+            }
             Log.settings.info("Decision answers \(decisionAnswers == DecisionAnswers.defaultText ? "default" : "changed")")
         }
     }
-    /// The last answers of your own that `decisionAnswers` was set to, so the answers' panel under the input
-    /// (`PanelContext.answersMenu`) can offer them again once Yes / No took their place: empty until any were written.
-    var ownDecisionAnswers: String {
+    /// The lists of answers of your own, in the order they were written, each as `DecisionAnswers.text` writes it,
+    /// for the answers' panel under the input (`PanelContext.answersMenu`), which adds, edits, and removes them, and
+    /// Settings' picker. `decisionAnswers` is Yes / No or one of them.
+    var ownDecisionAnswers: [String] {
         didSet {
             guard ownDecisionAnswers != oldValue else { return }
             defaults.set(ownDecisionAnswers, forKey: "decisions.ownAnswers")
-            Log.settings.info("Own decision answers \(ownDecisionAnswers.isEmpty ? "cleared" : "changed")")
+            Log.settings.info("Own decision answers: \(ownDecisionAnswers.count)")
         }
+    }
+
+    /// New answers of your own, written in the answers' panel: they join the lists, unless one has them already,
+    /// and a question that names none picks from them from now on.
+    func addOwnAnswers(_ text: String) {
+        guard let answers = DecisionAnswers.parse(text) else { return }
+        guard !answers.isYesNo else {
+            decisionAnswers = DecisionAnswers.defaultText
+            return
+        }
+        if !ownDecisionAnswers.contains(answers.text) { ownDecisionAnswers.append(answers.text) }
+        decisionAnswers = answers.text
+    }
+
+    /// A list of your own, edited in the answers' panel: it keeps its place, or gives way to another list that has
+    /// the same answers already, and a question that names none picks from it from now on.
+    func replaceOwnAnswers(_ old: String, with text: String) {
+        guard let answers = DecisionAnswers.parse(text) else { return }
+        if answers.isYesNo || ownDecisionAnswers.contains(answers.text) {
+            ownDecisionAnswers.removeAll { $0 == old && $0 != answers.text }
+        } else if let index = ownDecisionAnswers.firstIndex(of: old) {
+            ownDecisionAnswers[index] = answers.text
+        } else {
+            ownDecisionAnswers.append(answers.text)
+        }
+        decisionAnswers = answers.isYesNo ? DecisionAnswers.defaultText : answers.text
+    }
+
+    /// A list of your own, removed in the answers' panel; when it was in use, Yes / No takes its place.
+    func removeOwnAnswers(_ text: String) {
+        ownDecisionAnswers.removeAll { $0 == text }
+        if decisionAnswers == text { decisionAnswers = DecisionAnswers.defaultText }
     }
     /// What a decision is about: the whole text, or each of its words or lines (see `DecisionScope`). The switch
     /// under the input in Decision mode sets it.
@@ -252,11 +287,18 @@ final class Preferences {
         }
         self.changedPresets = changedPresets
         unsureBelow = defaults.object(forKey: "decisions.unsureBelow") as? Double ?? Decision.defaultUnsureBelow
-        let answers = defaults.string(forKey: "decisions.answers") ?? DecisionAnswers.defaultText
-        decisionAnswers = answers
-        // Answers changed before they were kept apart count as your own.
-        ownDecisionAnswers = defaults.string(forKey: "decisions.ownAnswers")
-            ?? DecisionAnswers.parse(answers).flatMap { $0.isYesNo ? nil : $0.text } ?? ""
+        // The answers in use, Yes / No or a list of your own, as `DecisionAnswers.text` writes them; a text that reads
+        // as none, which Settings' old field allowed, is Yes / No, as it was in effect.
+        let answers = DecisionAnswers.parse(defaults.string(forKey: "decisions.answers") ?? "").flatMap { $0.isYesNo ? nil : $0 }
+        decisionAnswers = answers?.text ?? DecisionAnswers.defaultText
+        // The lists of your own: one alone in older versions, and the answers in use, which Settings' field wrote.
+        let lists = defaults.stringArray(forKey: "decisions.ownAnswers") ?? defaults.string(forKey: "decisions.ownAnswers").map { [$0] } ?? []
+        var own: [String] = []
+        for text in lists + [answers?.text].compactMap(\.self) {
+            guard let list = DecisionAnswers.parse(text), !list.isYesNo, !own.contains(list.text) else { continue }
+            own.append(list.text)
+        }
+        ownDecisionAnswers = own
         decisionScope = defaults.string(forKey: "decisions.scope").flatMap(DecisionScope.init(rawValue:)) ?? .whole
         language = defaults.string(forKey: "language").flatMap(AnswerLanguage.init(rawValue:)) ?? .english
         updateChannel = defaults.string(forKey: "updateChannel").flatMap(UpdateChannel.init(rawValue:)) ?? .stable

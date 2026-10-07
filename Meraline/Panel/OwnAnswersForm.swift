@@ -30,6 +30,13 @@ nonisolated struct OwnAnswersDraft: Equatable, Sendable {
     /// Under the field: the answers in a line once they read, else what is missing.
     var status: String { answers?.summary ?? problem ?? "" }
 
+    /// Under the field, for a form beside `others`, the other lists of your own: that the answers are one of them
+    /// already, when they are, which the button then uses rather than writing them twice.
+    func status(beside others: [String]) -> String {
+        guard let answers, others.contains(answers.text) else { return status }
+        return "\(answers.summary) You have these already."
+    }
+
     /// The other way of writing: ↑ or ↓ in the field.
     mutating func switchOrder() { choose(ordered: !isOrdered) }
 
@@ -48,15 +55,16 @@ nonisolated struct OwnAnswersDraft: Equatable, Sendable {
     }
 }
 
-/// In the answers panel's list's place (see `ActionMenu.editor`, `ActionPanelRequest.isEditing`): the answers of
-/// your own a decision picks from when its question names none, written in a field of the panel's own kind. A
-/// toggle above it says how they are written, a set to pick one from with `/` between them or levels in order with
-/// `<`, each explained under it; ↑ and ↓ switch it, as the arrows move a list's selection, and typing either
-/// separator switches it too. Under the field, the answers in a line once they read, or what is missing. Return
-/// takes them, as Use These Answers does, and Esc goes back to the list, as Back does. The toggle's thumb is a flat
-/// tint, not glass, like the row highlights around it: the form fades in and out inside the panel's glass.
+/// In the answers panel's list's place (see `PanelAction.editor`, `ActionPanelRequest.editing`): a list of answers of
+/// your own, new or one to edit, written in a field of the panel's own kind. A toggle above it says how they are
+/// written, a set to pick one from with `/` between them or levels in order with `<`, each explained under it; ↑ and
+/// ↓ switch it, as the arrows move a list's selection, and typing either separator switches it too. Under the
+/// field, the answers in a line once they read, or what is missing, and when another list has them already, so
+/// it says. Return takes them, as the form's button does (Add and Use, Save and Use), and Esc goes back to the
+/// list, as Back does. The toggle's thumb is a flat tint, not glass, like the row highlights around it: the form
+/// fades in and out inside the panel's glass.
 struct OwnAnswersForm: View {
-    let save: (String) -> Void
+    let editor: ActionEditor
     let back: () -> Void
 
     @State private var draft: OwnAnswersDraft
@@ -64,10 +72,10 @@ struct OwnAnswersForm: View {
     @State private var fieldFocus = 0
     @State private var hovered: String?
 
-    init(text: String, save: @escaping (String) -> Void, back: @escaping () -> Void) {
-        self.save = save
+    init(editor: ActionEditor, back: @escaping () -> Void) {
+        self.editor = editor
         self.back = back
-        _draft = State(initialValue: OwnAnswersDraft(text: text))
+        _draft = State(initialValue: OwnAnswersDraft(text: editor.text))
     }
 
     /// About how tall the form is, for the panel to choose which way to open (see `ActionPanel.estimatedHeight`).
@@ -76,7 +84,7 @@ struct OwnAnswersForm: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Your Own Answers")
+            Text(editor.title)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
@@ -98,19 +106,20 @@ struct OwnAnswersForm: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .contentTransition(.opacity)
                 field
-                Text(draft.status)
+                let status = draft.status(beside: editor.others)
+                Text(status)
                     .font(.system(size: 11))
                     .foregroundStyle(draft.answers == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 2)
-                    .accessibilityLabel(draft.status)
+                    .accessibilityLabel(status)
             }
             .padding(.horizontal, 16)
             .padding(.top, 10)
             .padding(.bottom, 12)
             Divider()
             VStack(spacing: 0) {
-                row("Use These Answers", keys: ActionShortcut.returnKey.keycaps, isEnabled: draft.answers != nil, isPrimary: true, action: submit)
+                row(editor.button, keys: ActionShortcut.returnKey.keycaps, isEnabled: draft.answers != nil, isPrimary: true, action: submit)
                 row("Back", keys: ActionShortcut.escape.keycaps, isEnabled: true, isPrimary: false, action: back)
             }
             .padding(.vertical, 6)
@@ -148,7 +157,7 @@ struct OwnAnswersForm: View {
         .accessibilityLabel("Answers")
     }
 
-    /// A row like the confirmation's: Use These Answers, lit while the answers read, since Return takes them, and
+    /// A row like the confirmation's: the form's button, lit while the answers read, since Return takes them, and
     /// faded until then; and Back.
     private func row(_ title: String, keys: [String], isEnabled: Bool, isPrimary: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -182,7 +191,7 @@ struct OwnAnswersForm: View {
 
     private func submit() {
         guard let answers = draft.answers else { return }
-        save(answers.text)
+        editor.save(answers.text)
     }
 }
 

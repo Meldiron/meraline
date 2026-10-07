@@ -316,6 +316,9 @@ struct DecisionTests {
         #expect(draft.text == "Low /", "a text that reads as no answers yet keeps its words, with the separator swapped")
         #expect(draft.status == "An answer is missing before or after a /.")
         #expect(OwnAnswersDraft(text: "Low < High").isOrdered)
+        #expect(OwnAnswersDraft(text: "Keep/Toss").status(beside: ["Keep / Toss"]) == "2 answers to pick one from. You have these already.")
+        #expect(OwnAnswersDraft(text: "Keep / Toss").status(beside: ["Low < High"]) == "2 answers to pick one from.")
+        #expect(OwnAnswersDraft(text: "Keep /").status(beside: ["Keep / Toss"]) == "An answer is missing before or after a /.")
         #expect(OwnAnswersDraft(text: "Low < High").answers == DecisionAnswers(options: ["Low", "High"], isOrdered: true))
     }
 
