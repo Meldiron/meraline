@@ -276,6 +276,49 @@ struct DecisionTests {
         #expect(DecisionAnswers.parse((1...10).map(String.init).joined(separator: " < "))?.kind == .score)
     }
 
+    @Test func ownAnswersReadOrSayWhatIsMissing() {
+        #expect(DecisionAnswers.problem(in: "Billing / Technical / Sales", ordered: false) == nil)
+        #expect(DecisionAnswers.problem(in: "", ordered: false) == "Write two or more answers, with / between them.")
+        #expect(DecisionAnswers.problem(in: "", ordered: true) == "Write two or more answers, with < between them.")
+        #expect(DecisionAnswers.problem(in: "Billing", ordered: false) == "Write two or more answers, with / between them.")
+        #expect(DecisionAnswers.problem(in: "Billing /", ordered: false) == "An answer is missing before or after a /.")
+        #expect(DecisionAnswers.problem(in: "Low < < High", ordered: false) == "An answer is missing before or after a <.", "the text's separator, whatever the toggle says")
+        #expect(DecisionAnswers.problem(in: String(repeating: "a", count: 41) + " / b", ordered: false) == "An answer is a word or a few, not a sentence.")
+        #expect(DecisionAnswers.problem(in: "Keep / keep", ordered: false) == "Two of the answers are alike.")
+        #expect(DecisionAnswers.problem(in: (1...256).map(String.init).joined(separator: "/"), ordered: false) == "At most 255 answers.")
+        #expect(DecisionAnswers.yesNo.summary == "Yes and No: the model’s own yes-or-no question.")
+        #expect(DecisionAnswers(options: ["Billing", "Technical", "Sales"], isOrdered: false).summary == "3 answers to pick one from.")
+        #expect(DecisionAnswers(options: ["Low", "Medium", "High"], isOrdered: true).summary == "3 levels, Low to High.")
+        #expect(DecisionAnswers(options: (1...11).map(String.init), isOrdered: true).summary == "11 levels: more than 10 go as a set to pick one from.")
+        #expect(DecisionAnswers.yesNo.symbol == "circle.lefthalf.filled")
+        #expect(DecisionAnswers(options: ["Low", "High"], isOrdered: true).symbol == "list.number")
+    }
+
+    @Test func theFormSwitchesBetweenASetAndLevels() {
+        var draft = OwnAnswersDraft(text: "")
+        #expect(!draft.isOrdered)
+        #expect(draft.status == "Write two or more answers, with / between them.")
+        draft.switchOrder()
+        #expect(draft.isOrdered, "an empty text keeps the choice")
+        #expect(draft.status == "Write two or more answers, with < between them.")
+        draft.text = "Low / Medium / High"
+        #expect(!draft.isOrdered, "the text says")
+        #expect(draft.status == "3 answers to pick one from.")
+        draft.choose(ordered: true)
+        #expect(draft.text == "Low < Medium < High")
+        #expect(draft.answers?.kind == .score)
+        draft.choose(ordered: true)
+        #expect(draft.text == "Low < Medium < High", "the same way again changes nothing")
+        draft.switchOrder()
+        #expect(draft.text == "Low / Medium / High")
+        draft.text = "Low <"
+        draft.choose(ordered: false)
+        #expect(draft.text == "Low /", "a text that reads as no answers yet keeps its words, with the separator swapped")
+        #expect(draft.status == "An answer is missing before or after a /.")
+        #expect(OwnAnswersDraft(text: "Low < High").isOrdered)
+        #expect(OwnAnswersDraft(text: "Low < High").answers == DecisionAnswers(options: ["Low", "High"], isOrdered: true))
+    }
+
     // MARK: The request and the reply
 
     @Test func theRequestCarriesTheTextsTheQuestionAndTheAnswers() throws {

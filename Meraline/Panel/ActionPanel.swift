@@ -4,19 +4,23 @@ import SwiftUI
 /// A panel of actions in the manner of Raycast's: a heading, rows in sections with an icon, a title, and the
 /// shortcut as keycaps, and a search field at the bottom that filters them. The arrows move the selection,
 /// Return runs it, and Esc closes the panel. An action that can't be undone asks first, in the panel itself:
-/// a sheet or an alert would take the keyboard from the window, which closes when it loses it.
+/// a sheet or an alert would take the keyboard from the window, which closes when it loses it. A menu with a
+/// form (`ActionMenu.editor`) shows it in the list's place once its row is run, the search field hidden under it
+/// as under a confirmation, and Esc goes back to the list.
 struct ActionPanel: View {
     let menu: ActionMenu
     let request: ActionPanelRequest
     let run: (PanelAction) -> Void
     let confirm: (PanelAction) -> Void
-    /// Esc, or Cancel in a confirmation: back to the list, or the panel closes.
+    /// Esc, or Cancel in a confirmation, or Back in the form: back to the list, or the panel closes.
     let cancel: () -> Void
 
     @State private var query = ""
     @State private var selection: PanelAction.ID?
     /// In a confirmation, whether Return goes ahead rather than cancels.
     @State private var confirmsOnReturn = true
+    /// Requests for the search field to take the keyboard again, once the form and its field have gone.
+    @State private var searchFocus = 0
 
     static let width: CGFloat = 360
     static let cornerRadius: CGFloat = 18
@@ -49,7 +53,8 @@ struct ActionPanel: View {
     }
 
     /// About how tall the panel is with nothing typed, to choose whether it opens above or below its button.
-    static func estimatedHeight(of menu: ActionMenu, confirming: Bool) -> CGFloat {
+    static func estimatedHeight(of menu: ActionMenu, confirming: Bool, editing: Bool = false) -> CGFloat {
+        if editing { return OwnAnswersForm.estimatedHeight }
         if confirming { return confirmationHeight }
         let sections = menu.filtered(by: "")
         let rows = sections.isEmpty ? 44 : min(rowsHeight(of: sections), maximumRowsHeight)
@@ -58,7 +63,10 @@ struct ActionPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let action = confirming, let confirmation = action.confirmation {
+            if request.isEditing, let editor = menu.editor {
+                OwnAnswersForm(text: editor.text, save: editor.save, back: cancel)
+                    .transition(.opacity)
+            } else if let action = confirming, let confirmation = action.confirmation {
                 confirmationView(for: action, confirmation)
                     .transition(.opacity)
             } else {
@@ -71,8 +79,13 @@ struct ActionPanel: View {
         .glassEffect(.regular, in: .rect(cornerRadius: Self.cornerRadius))
         .shadow(color: .black.opacity(0.22), radius: 18, y: 8)
         .animation(.smooth(duration: 0.18), value: request.confirming)
+        .animation(.smooth(duration: 0.18), value: request.isEditing)
         .onChange(of: query) { selection = nil }
         .onChange(of: request.confirming) { confirmsOnReturn = true }
+        // Back from the form: its field had the keyboard, and goes with it.
+        .onChange(of: request.isEditing) { _, isEditing in
+            if !isEditing { searchFocus += 1 }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(menu.title)
     }
@@ -272,16 +285,17 @@ struct ActionPanel: View {
     // MARK: Search
 
     /// The search field. It stays while a confirmation shows, only hidden, so the keyboard stays with it and
-    /// Return and Esc answer the confirmation.
+    /// Return and Esc answer the confirmation; under the form it is hidden too, the form's own field holding the
+    /// keyboard until the form goes.
     private var searchBar: some View {
-        let isHidden = confirming != nil
+        let isHidden = confirming != nil || request.isEditing
         return VStack(spacing: 0) {
             Divider()
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.tertiary)
-                ActionSearchField(text: $query, prompt: menu.searchPrompt, onMove: move, onSubmit: submit, onCancel: cancel)
+                ActionSearchField(text: $query, prompt: menu.searchPrompt, focus: searchFocus, onMove: move, onSubmit: submit, onCancel: cancel)
                     .frame(height: 20)
             }
             .padding(.horizontal, 16)
@@ -501,7 +515,7 @@ private struct PlacedActionPanel: View {
     private static let gap: CGFloat = 8
 
     var body: some View {
-        let estimate = ActionPanel.estimatedHeight(of: menu, confirming: request.confirming != nil)
+        let estimate = ActionPanel.estimatedHeight(of: menu, confirming: request.confirming != nil, editing: request.isEditing)
         let height = height ?? estimate
         let upward = opensUpward ?? canOpenUpward(estimate)
         let inset = ActionPanelHost.inset
@@ -538,11 +552,18 @@ private struct PlacedActionPanel: View {
     }
 }
 
-/// The search field of an action panel: plain text in AppKit, because a SwiftUI field keeps the arrows,
-/// Return, and Esc to itself. It takes the keyboard as soon as it is in the window.
+/// The search field of an action panel, and the field of its form: plain text in AppKit, because a SwiftUI field
+/// keeps the arrows, Return, and Esc to itself. It takes the keyboard as soon as it is in the window, and again
+/// each time `focus` changes.
 struct ActionSearchField: NSViewRepresentable {
     @Binding var text: String
     let prompt: String
+    /// Requests to take the keyboard again, as when the form closes and its field with it, or a click on the
+    /// form's toggle took it.
+    var focus = 0
+    /// The cursor goes after the text as the field takes the keyboard, for the form's answers, which are added to;
+    /// the search field keeps AppKit's whole selection, so a filter typed before is typed over.
+    var keepsCursorAtEnd = false
     let onMove: (Int) -> Void
     let onSubmit: () -> Void
     let onCancel: () -> Void
@@ -551,6 +572,8 @@ struct ActionSearchField: NSViewRepresentable {
 
     func makeNSView(context: Context) -> SearchTextField {
         let field = SearchTextField()
+        context.coordinator.focus = focus
+        field.keepsCursorAtEnd = keepsCursorAtEnd
         field.delegate = context.coordinator
         field.isBordered = false
         field.drawsBackground = false
@@ -570,10 +593,16 @@ struct ActionSearchField: NSViewRepresentable {
         context.coordinator.parent = self
         if field.stringValue != text { field.stringValue = text }
         if field.placeholderString != prompt { field.placeholderString = prompt }
+        if context.coordinator.focus != focus {
+            context.coordinator.focus = focus
+            field.takeKeyboard()
+        }
     }
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: ActionSearchField
+        /// The last `focus` answered.
+        var focus = 0
 
         init(_ parent: ActionSearchField) {
             self.parent = parent
@@ -600,13 +629,23 @@ struct ActionSearchField: NSViewRepresentable {
 
 /// A text field that takes the keyboard when it joins a window, with the panel's pink cursor.
 final class SearchTextField: NSTextField {
+    /// Whether the cursor goes after the text, rather than the text being selected whole, as the field takes the keyboard.
+    var keepsCursorAtEnd = false
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil else { return }
+        takeKeyboard()
+    }
+
+    /// Takes the keyboard a moment later, once the window has settled with the field in it.
+    func takeKeyboard() {
         Task { @MainActor [weak self] in
             guard let self, let window = self.window else { return }
             window.makeFirstResponder(self)
-            (self.currentEditor() as? NSTextView)?.insertionPointColor = NSColor(named: "Pink") ?? .controlAccentColor
+            guard let editor = self.currentEditor() as? NSTextView else { return }
+            editor.insertionPointColor = NSColor(named: "Pink") ?? .controlAccentColor
+            if self.keepsCursorAtEnd { editor.setSelectedRange(NSRange(location: (editor.string as NSString).length, length: 0)) }
         }
     }
 }

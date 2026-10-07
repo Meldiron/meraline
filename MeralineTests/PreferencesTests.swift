@@ -24,6 +24,24 @@ struct PreferencesTests {
         #expect(!ProviderSettings(model: "", baseURL: "", apiKey: "", isEnabled: false).isReady(for: .apple))
     }
 
+    @Test func answersOfYourOwnAreKeptApartFromTheDefault() {
+        let defaults = makeDefaults()
+        let preferences = Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: false)
+        #expect(preferences.decisionAnswers == "Yes / No")
+        #expect(preferences.ownDecisionAnswers == "")
+        preferences.decisionAnswers = "Keep / Toss"
+        #expect(preferences.ownDecisionAnswers == "Keep / Toss", "answers written in Settings count as your own")
+        preferences.decisionAnswers = "Yes / No"
+        #expect(preferences.ownDecisionAnswers == "Keep / Toss", "and stay when Yes / No takes their place")
+        preferences.decisionAnswers = "Keep /"
+        #expect(preferences.ownDecisionAnswers == "Keep / Toss", "a text that reads as no answers isn't")
+        #expect(Preferences(defaults: defaults, secrets: noSecrets, onDeviceModelAvailable: false).ownDecisionAnswers == "Keep / Toss")
+        // Answers changed before they were kept apart count as your own on the next launch.
+        let older = makeDefaults()
+        older.set("Low < High", forKey: "decisions.answers")
+        #expect(Preferences(defaults: older, secrets: noSecrets, onDeviceModelAvailable: false).ownDecisionAnswers == "Low < High")
+    }
+
     @Test func enablingALocalProviderMakesItActive() {
         let preferences = Preferences(defaults: makeDefaults(), secrets: noSecrets, onDeviceModelAvailable: false)
         #expect(preferences.activeProvider == nil)

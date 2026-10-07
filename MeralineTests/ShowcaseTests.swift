@@ -30,6 +30,8 @@ import WebKit
 ///   decision-lines  Decision mode about each line: six tasks from Notes grouped under Yes, No, and Not sure
 ///   decision-scope  Decision mode: the switch under the input set to each line, and the note that says what it decides about
 ///   decision-live  Decision mode: the Context card deciding as you type, a question kept from the input, the input's, and three presets answered on glass capsules
+///   decision-answers  Decision mode: the answers' panel open over the capsule under the input, Yes / No, levels of your own checked, and the row that edits them
+///   decision-answers-form  the same panel's form: the toggle between a set and levels in order, the levels in its field, and Use These Answers
 ///   table-fit     a three-column table wrapped to the card, and beside a capture of 1.12.0 as table-fit-before-after
 ///   undo-rewrite  the chat's actions searched for "undo" after Make Shorter: Undo Rewrite
 ///   try-again     an answer cut off by its connection, the banner's Try Again, and Ask Again first in the footer
@@ -420,6 +422,39 @@ struct ShowcaseTests {
             scene.session.chooseScope(.lines)
             await Showcase.settle(1.5)
             try await stage.capturePanel(scene.panel, as: "decision-scope")
+            stage.close(scene.panel)
+        }
+    }
+
+    /// The answers' panel over the capsule under the input, with levels of your own in use, then its form.
+    @Test func decisionAnswers() async throws {
+        let wantsList = Showcase.wants("decision-answers")
+        let wantsForm = Showcase.wants("decision-answers-form")
+        guard wantsList || wantsForm else { return }
+        let text = "Checkout has been failing for every customer in Europe since 9:40, and the payment provider's status page says nothing."
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            let scene = try Self.decisionPanel(on: stage, answers: "Low < Medium < High")
+            scene.session.bring(try #require(SelectedText(text, appName: "Slack", appURL: URL(fileURLWithPath: "/Applications/Slack.app"))))
+            scene.session.draft = "How high a priority is this?"
+            // Lower on the stage, so the panel opens upward over the card, as it does on a screen with room.
+            let room: CGFloat = 320
+            scene.panel.setFrameTopLeftPoint(NSPoint(x: stage.topLeft.x, y: stage.topLeft.y - room))
+            await Showcase.settle(0.5)
+            scene.controller.layout.actionPanel = ActionPanelRequest(kind: .answers)
+            await Showcase.settle(1)
+            if wantsList {
+                try await stage.capturePanel(scene.panel, as: "decision-answers", roomAbove: room)
+            }
+            if wantsForm {
+                scene.controller.layout.actionPanel = ActionPanelRequest(kind: .answers, isEditing: true)
+                await Showcase.settle(1)
+                // With the keyboard, so the field shows its cursor after the levels.
+                await Showcase.waitForIdle()
+                scene.panel.makeKey()
+                await Showcase.settle(0.5)
+                try await stage.capturePanel(scene.panel, as: "decision-answers-form", roomAbove: room)
+            }
             stage.close(scene.panel)
         }
     }
@@ -839,13 +874,14 @@ struct ShowcaseTests {
     /// answered by its wording, with `presets` turned on.
     private static func decisionPanel(
         on stage: ShowcaseStage, decisions: [Decision] = [], batches: [DecisionBatch] = [], scope: DecisionScope = .whole,
-        live: [String: Decision]? = nil, presets: Set<String> = []
+        answers: String? = nil, live: [String: Decision]? = nil, presets: Set<String> = []
     ) throws -> PanelScene {
         let (preferences, defaults) = preferences()
         preferences[.typeSafe] = ProviderSettings(model: "jev-latest", baseURL: Provider.typeSafe.defaultBaseURL, apiKey: "demo", isEnabled: true)
         preferences.setDefaultProvider(.typeSafe, for: .decision)
         preferences.mode = .decision
         preferences.decisionScope = scope
+        if let answers { preferences.decisionAnswers = answers }
         let model = ScriptedModel(decisions: decisions, batches: batches)
         let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil), stream: { model.stream($0) }) { questions, _, _, _ in
             var decisions: [String: Decision] = [:]

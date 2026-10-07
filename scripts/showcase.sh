@@ -30,6 +30,8 @@
 #   decision-lines  Decision mode about each line: six tasks from Notes under Yes, No, and Not sure, Yes open and the rest folded
 #   decision-scope  Decision mode: six tasks from Notes, the switch under the input set to each line, and the note that says what it decides about
 #   decision-live  Decision mode: the Context card deciding as you type, a question kept from the input, the input's, and three presets answered on glass capsules
+#   decision-answers  Decision mode: the answers' panel open over the capsule under the input, Yes / No, levels of your own checked, and the row that edits them
+#   decision-answers-form  the same panel's form: the toggle between a set and levels in order, the levels in its field, and Use These Answers
 #   decision-models  Settings › Decision Models: the three providers in the sidebar, and Ollama's pane turned on with Nimble and what to pull
 #   preset-decisions  every preset of Decision mode asked at once about a text from Mail, each answer on one card
 #   table-fit     a three-column table wrapped to the card, and, beside a capture of 1.12.0, as table-fit-before-after

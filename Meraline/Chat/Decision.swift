@@ -60,6 +60,48 @@ nonisolated struct DecisionAnswers: Equatable, Hashable, Sendable {
         return DecisionAnswers(options: parts, isOrdered: isOrdered)
     }
 
+    /// Why `parse` reads no answers in a text, in a line for the form that writes them (see `OwnAnswersForm`), or
+    /// nil once it does. `ordered` says which separator to ask for while the text has neither.
+    static func problem(in text: String, ordered: Bool) -> String? {
+        guard parse(text) == nil else { return nil }
+        let separator: Character = text.contains("<") ? "<" : text.contains("/") ? "/" : ordered ? "<" : "/"
+        let parts = text.split(separator: separator, omittingEmptySubsequences: false).map { $0.trimmed }
+        if parts.count < 2 { return "Write two or more answers, with \(separator) between them." }
+        if parts.contains(where: \.isEmpty) { return "An answer is missing before or after a \(separator)." }
+        if parts.contains(where: { $0.count > optionLength }) { return "An answer is a word or a few, not a sentence." }
+        if parts.contains(where: { $0.contains(where: \.isNewline) }) { return "Keep the answers on one line." }
+        if Set(parts.map { $0.lowercased() }).count < parts.count { return "Two of the answers are alike." }
+        return "At most \(optionLimit) answers."
+    }
+
+    /// The answers in a line, for the form that writes them: how many, and what the model does with them.
+    var summary: String {
+        switch kind {
+        case .yesNo: "Yes and No: the model’s own yes-or-no question."
+        case .choice where isOrdered: "\(options.count) levels: more than \(Self.levelLimit) go as a set to pick one from."
+        case .choice: "\(options.count) answers to pick one from."
+        case .score: "\(options.count) levels, \(options.first ?? "") to \(options.last ?? "")."
+        }
+    }
+
+    /// What each way of writing answers means, for the form's toggle: a set to pick one from, with `/` between
+    /// them, or levels in order, with `<`.
+    static func explanation(ordered: Bool) -> String {
+        ordered
+            ? "Levels of one thing, first to last, as in Low < Medium < High. The model places the text along them, between two when it isn’t sure. Up to \(levelLimit)."
+            : "Answers to pick one from, in any order, as in Billing / Technical / Sales. The model gives each its probability and picks the surest."
+    }
+
+    /// The symbol the answers wear under the input and in their panel: a half-filled circle for Yes and No, a list
+    /// for a set to pick one from, a numbered list for levels in order.
+    var symbol: String {
+        switch kind {
+        case .yesNo: "circle.lefthalf.filled"
+        case .choice: "list.bullet"
+        case .score: "list.number"
+        }
+    }
+
     /// A question and its answers: those it names after its last question mark or colon, or `fallback` when it
     /// names none, in which case the question goes whole.
     static func split(_ question: String, fallback: DecisionAnswers) -> (question: String, answers: DecisionAnswers) {

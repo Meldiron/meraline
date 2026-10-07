@@ -161,11 +161,13 @@ final class PanelLayout {
         focusRequest += 1
     }
 
-    /// Esc in a panel of actions: a confirmation goes back to the list, unless the panel opened only for it,
-    /// and a list closes.
+    /// Esc in a panel of actions: the form for your own answers goes back to the list, a confirmation goes back
+    /// to the list, unless the panel opened only for it, and a list closes.
     func cancelActionPanel() {
         guard let request = actionPanel else { return }
-        if request.confirming != nil && !request.isConfirmationOnly {
+        if request.isEditing {
+            actionPanel?.isEditing = false
+        } else if request.confirming != nil && !request.isConfirmationOnly {
             actionPanel?.confirming = nil
         } else {
             closeActionPanel()
@@ -704,6 +706,11 @@ final class PanelController: NSObject {
             } else {
                 layout.actionPanel = ActionPanelRequest(kind: context.chatMenu == nil ? .providers : .chat)
             }
+            return true
+        }
+        // ⇧⌘A opens or closes the answers' panel in Decision mode, the one behind the capsule under the input.
+        if modifiers == [.command, .shift], event.charactersIgnoringModifiers?.lowercased() == "a", session.isDeciding {
+            layout.toggleActionPanel(.answers)
             return true
         }
         guard let action = context.action(forKeyCode: event.keyCode, characters: event.charactersIgnoringModifiers, modifiers: modifiers) else {

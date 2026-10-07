@@ -156,6 +156,9 @@ struct PanelAction: Identifiable {
     var isDestructive = false
     /// Set for an action that can't be undone: the panel asks first.
     var confirmation: ActionConfirmation?
+    /// Set for the row that opens the panel's form in the list's place (see `ActionMenu.editor`): the panel stays
+    /// open, and `perform` is never run.
+    var opensEditor = false
     /// More words the search finds the row by, such as "paste" for Insert Answer.
     var keywords: [String] = []
     let perform: () -> Void
@@ -164,6 +167,15 @@ struct PanelAction: Identifiable {
 struct ActionSection: Identifiable {
     let id: String
     var actions: [PanelAction]
+}
+
+/// What the answers panel's form starts with, and what it does with the answers written in it (see `OwnAnswersForm`,
+/// `ActionMenu.editor`).
+struct ActionEditor {
+    /// The answers the field starts with, as `DecisionAnswers.text` writes them, or nothing.
+    let text: String
+    /// Return, or Use These Answers, with answers that read: they become the ones a question that names none picks from.
+    let save: (String) -> Void
 }
 
 /// The rows an action panel offers, grouped into sections, with the panel's heading and search prompt.
@@ -175,6 +187,9 @@ struct ActionMenu {
     var emptyText = "Nothing here yet"
     /// Whether the first row is the primary action, marked with ↵, which the footer also offers.
     var marksPrimary = false
+    /// The form the panel shows in the list's place once a row with `opensEditor` is run (`ActionPanelRequest.isEditing`):
+    /// the answers of your own a decision picks from (`OwnAnswersForm`), the one form there is.
+    var editor: ActionEditor?
 
     var actions: [PanelAction] { sections.flatMap(\.actions) }
 
@@ -194,12 +209,14 @@ struct ActionMenu {
     }
 }
 
-/// The three panels of actions: the open chat's, behind Actions in the footer and ⌘K; the sparkle's; and the
-/// recent chats, behind the clock under the input.
+/// The four panels of actions: the open chat's, behind Actions in the footer and ⌘K; the sparkle's; the recent
+/// chats, behind the clock under the input; and the answers a decision picks from, behind the capsule beside the
+/// clock in Decision mode and ⇧⌘A.
 nonisolated enum ActionPanelKind: Hashable, Sendable {
     case chat
     case providers
     case history
+    case answers
 }
 
 /// The panel of actions open over the window.
@@ -209,6 +226,8 @@ struct ActionPanelRequest: Equatable {
     var confirming: PanelAction.ID?
     /// The panel opened only to confirm, from the action's shortcut, so Cancel closes it.
     var isConfirmationOnly = false
+    /// The panel's form shows in the list's place (see `ActionMenu.editor`).
+    var isEditing = false
 }
 
 /// What the actions reach: the chat, the settings, the window's layout, and the Settings window. The footer,
@@ -229,6 +248,7 @@ struct PanelContext {
         case .chat: chatMenu
         case .providers: providersMenu
         case .history: historyMenu
+        case .answers: answersMenu
         }
     }
 
@@ -237,6 +257,10 @@ struct PanelContext {
         if action.confirmation != nil {
             let isOpen = layout.actionPanel?.kind == kind
             layout.actionPanel = ActionPanelRequest(kind: kind, confirming: action.id, isConfirmationOnly: fromShortcut && !isOpen)
+            return
+        }
+        if action.opensEditor {
+            layout.actionPanel = ActionPanelRequest(kind: kind, isEditing: true)
             return
         }
         if layout.actionPanel != nil { layout.closeActionPanel() }
@@ -838,6 +862,77 @@ struct PanelContext {
         if case .game(let game) = chat.mode { return .symbol(game.symbol) }
         if chat.isStash { return .symbol("tray.full") }
         return chat.workspace == nil ? .symbol("bubble.left") : .image(ProviderKind.agent.image)
+    }
+
+    // MARK: The answers a decision picks from
+
+    /// The answers' panel, behind the capsule under the input in Decision mode (`DecisionAnswersBadge`) and ⇧⌘A: what
+    /// the next question picks from when it names no answers of its own (see `DecisionAnswers`). Yes / No, then the
+    /// answers of your own last written (`Preferences.ownDecisionAnswers`), the one in use checked, and a row that
+    /// opens the form to write your own in the list's place (`OwnAnswersForm`, through `ActionMenu.editor`). A
+    /// question that names its own answers after its question mark comes first, checked, since those are what it
+    /// picks from, and the row of the default says Default instead.
+    var answersMenu: ActionMenu {
+        let preferences = preferences
+        let layout = layout
+        let fallback = session.defaultAnswers
+        let namesOwn = session.draftNamesAnswers
+        var rows: [PanelAction] = []
+        if namesOwn {
+            let named = session.draftAnswers
+            rows.append(PanelAction(
+                id: "answers.named",
+                title: named.text,
+                subtitle: "What your question names after its question mark",
+                icon: .symbol(named.symbol),
+                isChecked: true
+            ) {})
+        }
+        rows.append(PanelAction(
+            id: "answers.yesNo",
+            title: DecisionAnswers.defaultText,
+            subtitle: "The model’s own yes-or-no question",
+            icon: .symbol(DecisionAnswers.yesNo.symbol),
+            detail: namesOwn && fallback.isYesNo ? "Default" : nil,
+            isChecked: !namesOwn && fallback.isYesNo,
+            keywords: ["yes", "no", "default"]
+        ) {
+            preferences.decisionAnswers = DecisionAnswers.defaultText
+            Log.panel.info("Decision answers set to Yes / No")
+        })
+        let own = DecisionAnswers.parse(preferences.ownDecisionAnswers).flatMap { $0.isYesNo ? nil : $0 }
+        if let own {
+            rows.append(PanelAction(
+                id: "answers.own",
+                title: own.text,
+                subtitle: own.kind == .score ? "Your own levels, in order" : "Your own answers to pick one from",
+                icon: .symbol(own.symbol),
+                detail: namesOwn && fallback == own ? "Default" : nil,
+                isChecked: !namesOwn && fallback == own,
+                keywords: ["own", "custom", "options", "levels", "list"]
+            ) {
+                preferences.decisionAnswers = own.text
+                Log.panel.info("Decision answers set to your own")
+            })
+        }
+        let edit = PanelAction(
+            id: "answers.edit",
+            title: own == nil ? "Write Your Own Answers…" : "Edit Your Own Answers…",
+            subtitle: "A set to pick one from, or levels in order",
+            icon: .symbol("square.and.pencil"),
+            opensEditor: true,
+            keywords: ["custom", "options", "levels", "list", "write", "edit", "set up", "setup"]
+        ) {}
+        return ActionMenu(
+            title: "Answers",
+            sections: [ActionSection(id: "answers", actions: rows), ActionSection(id: "edit", actions: [edit])],
+            searchPrompt: "Search answers…",
+            editor: ActionEditor(text: own?.text ?? "") { text in
+                preferences.decisionAnswers = text
+                Log.panel.info("Decision answers of your own written")
+                layout.closeActionPanel()
+            }
+        )
     }
 }
 

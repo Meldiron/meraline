@@ -680,6 +680,12 @@ final class ChatSession {
         DecisionAnswers.split(draft, fallback: defaultAnswers).answers
     }
 
+    /// Whether the question in the input names its own answers after its question mark or colon (see
+    /// `DecisionAnswers.split`), which the capsule under the input then shows in the default's place.
+    var draftNamesAnswers: Bool {
+        DecisionAnswers.split(draft, fallback: defaultAnswers).question != draft.trimmed
+    }
+
     func send() {
         guard canSend else { return }
         if let game {

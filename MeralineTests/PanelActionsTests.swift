@@ -420,6 +420,74 @@ struct PanelActionsTests {
         #expect(session.history.isEmpty)
     }
 
+    // MARK: The answers a decision picks from
+
+    @Test func theAnswersPanelOffersYesNoYourOwnAndTheForm() throws {
+        let preferences = Support.preferences()
+        preferences.mode = .decision
+        let model = ScriptedModel()
+        let session = ChatSession(preferences: preferences, usage: UsageLedger(file: nil)) { model.stream($0) }
+        let context = context(session, preferences: preferences)
+        var menu = context.answersMenu
+        #expect(menu.title == "Answers")
+        #expect(ids(menu) == ["answers.yesNo", "answers.edit"], "no answers of your own yet")
+        #expect(menu.actions.first?.isChecked == true)
+        #expect(menu.actions.last?.title == "Write Your Own Answers…")
+        #expect(menu.actions.last?.opensEditor == true)
+        #expect(menu.editor?.text == "")
+
+        // The form opens in the list's place, and Esc goes back to the list before it closes the panel.
+        context.layout.actionPanel = ActionPanelRequest(kind: .answers)
+        context.run(try #require(menu.actions.last), in: .answers)
+        #expect(context.layout.actionPanel == ActionPanelRequest(kind: .answers, isEditing: true))
+        context.layout.cancelActionPanel()
+        #expect(context.layout.actionPanel == ActionPanelRequest(kind: .answers))
+        context.layout.cancelActionPanel()
+        #expect(context.layout.actionPanel == nil)
+
+        // Answers written in the form are the ones a question that names none picks from.
+        context.layout.actionPanel = ActionPanelRequest(kind: .answers, isEditing: true)
+        try #require(menu.editor).save("Low < Medium < High")
+        #expect(preferences.decisionAnswers == "Low < Medium < High")
+        #expect(preferences.ownDecisionAnswers == "Low < Medium < High")
+        #expect(context.layout.actionPanel == nil, "the panel closes")
+        #expect(session.draftAnswers.kind == .score)
+        menu = context.answersMenu
+        #expect(ids(menu) == ["answers.yesNo", "answers.own", "answers.edit"])
+        #expect(menu.actions[0].isChecked == false)
+        #expect(menu.actions[1].title == "Low < Medium < High")
+        #expect(menu.actions[1].subtitle == "Your own levels, in order")
+        #expect(menu.actions[1].isChecked == true)
+        #expect(menu.actions[2].title == "Edit Your Own Answers…")
+        #expect(menu.editor?.text == "Low < Medium < High")
+
+        // Yes / No again keeps your own for later, and your own come back with a click.
+        context.run(menu.actions[0], in: .answers)
+        #expect(preferences.decisionAnswers == "Yes / No")
+        #expect(preferences.ownDecisionAnswers == "Low < Medium < High")
+        menu = context.answersMenu
+        #expect(menu.actions[0].isChecked == true)
+        #expect(menu.actions[1].isChecked == false)
+        context.run(menu.actions[1], in: .answers)
+        #expect(preferences.decisionAnswers == "Low < Medium < High")
+        #expect(session.draftAnswers.text == "Low < Medium < High")
+
+        // A question that names its own answers comes first, checked, and the row of the default says so.
+        session.draft = "Which team? Billing / Sales"
+        #expect(session.draftNamesAnswers)
+        menu = context.answersMenu
+        #expect(ids(menu) == ["answers.named", "answers.yesNo", "answers.own", "answers.edit"])
+        #expect(menu.actions[0].title == "Billing / Sales")
+        #expect(menu.actions[0].isChecked == true)
+        #expect(menu.actions[1].isChecked == false)
+        #expect(menu.actions[1].detail == nil)
+        #expect(menu.actions[2].isChecked == false)
+        #expect(menu.actions[2].detail == "Default")
+        session.draft = "Is this urgent?"
+        #expect(!session.draftNamesAnswers)
+        #expect(ids(context.answersMenu) == ["answers.yesNo", "answers.own", "answers.edit"])
+    }
+
     // MARK: Ask Again
 
     @Test func askAgainReplacesTheLastAnswerAndKeepsTheInput() async {

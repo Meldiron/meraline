@@ -142,7 +142,18 @@ final class Preferences {
         didSet {
             guard decisionAnswers != oldValue else { return }
             defaults.set(decisionAnswers, forKey: "decisions.answers")
+            // Answers of your own are kept apart too, so the panel under the input offers them again after Yes / No.
+            if let answers = DecisionAnswers.parse(decisionAnswers), !answers.isYesNo { ownDecisionAnswers = answers.text }
             Log.settings.info("Decision answers \(decisionAnswers == DecisionAnswers.defaultText ? "default" : "changed")")
+        }
+    }
+    /// The last answers of your own that `decisionAnswers` was set to, so the answers' panel under the input
+    /// (`PanelContext.answersMenu`) can offer them again once Yes / No took their place: empty until any were written.
+    var ownDecisionAnswers: String {
+        didSet {
+            guard ownDecisionAnswers != oldValue else { return }
+            defaults.set(ownDecisionAnswers, forKey: "decisions.ownAnswers")
+            Log.settings.info("Own decision answers \(ownDecisionAnswers.isEmpty ? "cleared" : "changed")")
         }
     }
     /// What a decision is about: the whole text, or each of its words or lines (see `DecisionScope`). The switch
@@ -241,7 +252,11 @@ final class Preferences {
         }
         self.changedPresets = changedPresets
         unsureBelow = defaults.object(forKey: "decisions.unsureBelow") as? Double ?? Decision.defaultUnsureBelow
-        decisionAnswers = defaults.string(forKey: "decisions.answers") ?? DecisionAnswers.defaultText
+        let answers = defaults.string(forKey: "decisions.answers") ?? DecisionAnswers.defaultText
+        decisionAnswers = answers
+        // Answers changed before they were kept apart count as your own.
+        ownDecisionAnswers = defaults.string(forKey: "decisions.ownAnswers")
+            ?? DecisionAnswers.parse(answers).flatMap { $0.isYesNo ? nil : $0.text } ?? ""
         decisionScope = defaults.string(forKey: "decisions.scope").flatMap(DecisionScope.init(rawValue:)) ?? .whole
         language = defaults.string(forKey: "language").flatMap(AnswerLanguage.init(rawValue:)) ?? .english
         updateChannel = defaults.string(forKey: "updateChannel").flatMap(UpdateChannel.init(rawValue:)) ?? .stable

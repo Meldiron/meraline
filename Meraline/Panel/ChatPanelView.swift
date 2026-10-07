@@ -337,6 +337,10 @@ struct ChatPanelView: View {
         .onChange(of: hasConversation) {
             if !hasConversation, layout.actionPanel?.kind == .chat { layout.actionPanel = nil }
         }
+        // The answers' panel is Decision mode's.
+        .onChange(of: preferences.mode) {
+            if preferences.mode != .decision, layout.actionPanel?.kind == .answers { layout.actionPanel = nil }
+        }
         .onChange(of: session.turns.isEmpty) {
             // The next chat's conversation comes in at its own size (see `conversation`).
             if session.turns.isEmpty { conversationHeight = 0 }

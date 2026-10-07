@@ -2,7 +2,8 @@ import SwiftUI
 
 /// The row under the input: the LLM, Agent, and Decision toggle on the left, with quiet privacy badges beside it
 /// (`PrivacyBadges`); on the right, the games behind a controller, or in Decision mode the answers the next
-/// question picks from (`DecisionAnswersBadge`), and the recent chats behind a clock. All are small glass groups in the panel's own language.
+/// question picks from (`DecisionAnswersBadge`, whose click opens their panel), and the recent chats behind a
+/// clock. All are small glass groups in the panel's own language.
 /// The chosen item sits raised in glass with the faint pink tint of the active pin, and the other items
 /// stay quiet until the pointer is over them.
 struct ModeBar: View {
@@ -51,7 +52,11 @@ struct ModeBar: View {
                                 session.chooseScope(scope)
                                 focusInput()
                             }
-                            DecisionAnswersBadge(answers: session.draftAnswers)
+                            DecisionAnswersBadge(
+                                answers: session.draftAnswers, isNamed: session.draftNamesAnswers, isOpen: layout.actionPanel?.kind == .answers
+                            ) {
+                                layout.toggleActionPanel(.answers)
+                            }
                         }
                     }
                     .opacity(isDeciding ? 1 : 0)

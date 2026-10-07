@@ -236,38 +236,55 @@ private struct ScaleRow: View {
 }
 
 /// The answers the next question picks from, at the games' place under the input while Decision mode is on (see
-/// `DecisionAnswers`): the ones typed after the question, or Settings' default. Neutral glass, no click.
+/// `DecisionAnswers`): the ones typed after the question, or Settings' default. A glass capsule like the clock's
+/// beside it, with a pop-up's chevrons at its end: a click, or ⇧⌘A, opens the answers' panel over it
+/// (`PanelContext.answersMenu`), with Yes / No, your own answers, and the form to write them, and the capsule wears
+/// the clock's open look while the panel is up.
 struct DecisionAnswersBadge: View {
     let answers: DecisionAnswers
-
-    private var symbol: String {
-        switch answers.kind {
-        case .yesNo: "circle.lefthalf.filled"
-        case .choice: "list.bullet"
-        case .score: "list.number"
-        }
-    }
+    /// Whether the question in the input names these answers itself (see `ChatSession.draftNamesAnswers`).
+    var isNamed = false
+    var isOpen = false
+    var open: () -> Void = {}
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Text(answers.text)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+        Button(action: open) {
+            HStack(spacing: 6) {
+                Image(systemName: answers.symbol)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(answers.text)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(.leading, 11)
+            .padding(.trailing, 9)
+            .frame(height: 30)
+            // Its label's width, up to a cap, whatever the row offers: a flexible frame alone stretched it to the cap.
+            .frame(maxWidth: 260)
+            .fixedSize(horizontal: true, vertical: false)
+            .glassEffect(isOpen ? .regular.tint(.primary.opacity(0.08)).interactive() : .regular.interactive(), in: .capsule)
+            .contentShape(.capsule)
         }
-        .padding(.horizontal, 11)
-        .frame(height: 30)
-        // Its label's width, up to a cap, whatever the row offers: a flexible frame alone stretched it to the cap.
-        .frame(maxWidth: 260)
-        .fixedSize(horizontal: true, vertical: false)
-        .glassEffect(.regular, in: .capsule)
-        .help(answers.isOrdered ? "The levels the model places the text along" : "The answers the model picks from")
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Answers: \(answers.text)")
+        .buttonStyle(.plain)
+        .actionPanelAnchor(.answers)
+        .help(help)
+        .accessibilityLabel("Answers")
+        .accessibilityValue(answers.text)
+        .accessibilityHint("Opens the answers to pick from")
+    }
+
+    private var help: String {
+        if isNamed { return "The answers your question names after its question mark. Click for the ones a question without any picks from (⇧⌘A)." }
+        return answers.isOrdered
+            ? "The levels the model places the text along. Click to change them (⇧⌘A)."
+            : "The answers the model picks from. Click to change them (⇧⌘A)."
     }
 }
 
