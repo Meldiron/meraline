@@ -4,21 +4,40 @@ Notable changes in each Meraline release, newest first.
 
 When a version has an entry here, the Release workflow uses it as the release notes on GitHub and in the in-app update window. A version without an entry gets the list of commits since the previous tag instead. Headings are `## vX.Y.Z - YYYY-MM-DD`.
 
-## Unreleased
+## v1.14.0 - 2026-10-07
+
+Decision mode grows in this release: decision models run on this Mac through Ollaya, the answers under the input open a panel with lists of your own, every preset asks at once, and Improve edits your text toward the answers it should get. Around it, presets ask with one click, the window stops closing by itself, and updates arrive within a quarter of an hour.
+
+### Decisions
 
 - **Decision models through Ollaya.** Settings › Decision Models has Ollaya beside Ollama: the Ollama of decision models, which pulls and serves EldanRing's Winnow, Jared Palmer's Kev, Laya, Mapika's Decider, and more on this Mac behind the same API as Jev. Turn it on, pull a model (`ollaya pull winnow:e4b`, the one it recommends, or `ollaya pull kev:0.8b`), and decisions, live decisions, the presets, and each word or line go to `127.0.0.1:11435` and nowhere else, free in Settings › Usage. A key is needed only for a server that asks for one.
 
+![Settings › Decision Models on Ollaya's pane: Use Ollaya on, the API key optional, the model kev:0.8b, what to pull in Terminal, an Install Ollaya link, and the server address 127.0.0.1:11435](https://raw.githubusercontent.com/Meldiron/meraline/v1.14.0/docs/screenshots/ollaya-light.png)
+
 - **The answers under the input are a click away.** In Decision mode the capsule that shows what the next question picks from, Yes / No until you change it, opens a panel like the clock's, on the answers in use: switch between Yes / No and as many lists of your own as you like, Billing / Technical / Sales for one question and Low < Medium < High for another. New Answers… writes one in a form there, a set to pick one from with / between its answers or levels in order with <, with a toggle between the two and a word on what each means; ↑ and ↓ switch the toggle, Return takes the answers, and Esc goes back. On a list of yours, Edit (⌘E) opens it in the same form and Remove (⌘⌫) asks first, from the buttons at its end, a right-click, or the keyboard, and the search field shows both shortcuts. ⇧⌘A opens the panel from the keyboard, and Settings › Prompt › Decisions picks among the same lists. A question that names its own answers after its question mark still wins, and the panel says so.
 
+![The answers' panel open over the capsule under the input: Yes / No, Billing / Technical / Sales, and Low < Medium < High, the levels in use checked with Edit and Remove beside them, New Answers… under them, and the search field with ⌘E Edit and ⌘⌫ Remove](https://raw.githubusercontent.com/Meldiron/meraline/v1.14.0/docs/screenshots/decision-answers-light.png)
+![The same panel's form editing the levels: a toggle between Pick one with / and Levels in order with <, a line on what levels are, the field holding Low < Medium < High, “3 levels, Low to High” under it, Save and Use on Return, and Back on Esc](https://raw.githubusercontent.com/Meldiron/meraline/v1.14.0/docs/screenshots/decision-answers-form-light.png)
+
+- **Every decision preset at once.** In Decision mode, a circle at the end of the presets, by the gear, asks all of them about your text in one click and one request: each preset's answer on one card, Urgent? Yes, Scam? No, Tone Neutral, Priority High, with how sure the model is. Your own question stays in the input for a follow-up, and Ask Again asks them all again.
+
+![Decision mode: every preset asked at once about a message from Mail, each on one row with a check or a cross ringed by its confidence: Urgent? Yes 72%, Scam? No 92%, Tone Neutral 70%, and Priority High 55%](https://raw.githubusercontent.com/Meldiron/meraline/v1.14.0/docs/screenshots/preset-decisions-light.png)
+
+- **Improve on the Context card.** In Decision mode with Live on, a wand beside the switch has the LLM you use change your text toward the answers the questions should get: Yes on each question, the highest level of a scale, or the answer a list of your own already gives. It starts with small edits that keep your words and length, and when those stop making the answers surer, a click more rewrites the parts in the way, then the whole text if that is what it takes, so it never says there is nothing to improve while an answer sits at 65%; a note under the capsules says what it did and how much changed, and Undo puts the text back. The instructions it works with are in Settings › Prompt › Decisions, and Settings › Usage counts the clicks.
+
+![Decision mode with Live on, after a click on Improve: the edited text on the Context card, Improve beside the Live switch, the capsules under it answered Yes 86% and Yes 92% on green and High 86%, and under them “Improved: 19% changed · 8 edits” with Undo](https://raw.githubusercontent.com/Meldiron/meraline/v1.14.0/docs/screenshots/decision-improve-light.png)
+
+### Presets
+
 - **Presets ask with one click.** With text selected, copied, or written on the Context card, a click on a preset above the window asks it right away, and the capsule shows an arrow as you hover. With no text yet, the click puts the preset in the input and opens the card for it as before; paste the text and click the preset again. Shift-click no longer sends: it puts the preset in the input to add to, and in Decision mode it turns on Live with that preset and puts the cursor in the Context card; Shift-click it again and it stops asking the preset, and when nothing else is asked and the card is empty, the card closes, Live goes off, and the cursor is back in the input, as if you never clicked.
+
+### The window
 
 - **The window no longer closes by itself.** It closed whenever it lost the keyboard, and sometimes something took the keyboard that you never asked for: an app coming forward on its own, a helper window of the system's, or the editor taking its window back a moment after ⌥ Space opened the panel over it, so the window vanished while you were reading an answer, or ⌥ Space seemed to do nothing. Now it closes only when you send the keyboard elsewhere, with a click, a key press, or a switch to another Space, and takes it back otherwise.
 
 - **⌘N clears the Context card with no chat open.** Esc with only text on the Context card closes the window and leaves the text for next time, on purpose, so there was no way to be rid of it short of selecting it and deleting. ⌘N now starts over with no chat open too: the input and the card empty, and the card's text waiting in Recent Chats as a stashed draft, with Live as it was, for 30 minutes; a line in the input alone is cleared, as Esc clears it. The row sits beside Stash Draft at the top of the clock's panel. Starting a new chat from a chat keeps the card's text the same way, with the chat.
 
-- **Every decision preset at once.** In Decision mode, a circle at the end of the presets, by the gear, asks all of them about your text in one click and one request: each preset's answer on one card, Urgent? Yes, Scam? No, Tone Neutral, Priority High, with how sure the model is. Your own question stays in the input for a follow-up, and Ask Again asks them all again.
-
-- **Improve on the Context card.** In Decision mode with Live on, a wand beside the switch has the LLM you use change your text toward the answers the questions should get: Yes on each question, the highest level of a scale, or the answer a list of your own already gives. It starts with small edits that keep your words and length, and when those stop making the answers surer, a click more rewrites the parts in the way, then the whole text if that is what it takes, so it never says there is nothing to improve while an answer sits at 65%; a note under the capsules says what it did and how much changed, and Undo puts the text back. The instructions it works with are in Settings › Prompt › Decisions, and Settings › Usage counts the clicks.
+![The clock's panel over an empty chat whose Context card holds text: Stash Draft ⌘S and New Chat ⌘N at its top, a recent chat under them, and Clear Recent Chats](https://raw.githubusercontent.com/Meldiron/meraline/v1.14.0/docs/screenshots/new-chat-draft-light.png)
 
 - **Updates are found within a quarter of an hour.** Meraline checks for updates every 15 minutes instead of once a day, and when you open the window after the Mac slept through a check, so the Update Available capsule is under the window by the time you press ⌥ Space. Before, Settings › Software Update could say “Last checked 15 hours ago” while a release waited.
 
