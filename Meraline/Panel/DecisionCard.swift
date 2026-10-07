@@ -1090,22 +1090,24 @@ struct PresetDecisionsCard: View {
     /// The disc: the symbol on tinted glass, ringed by how sure Jev is, or dots on plain glass while the answer is
     /// on its way.
     private func disc(_ decision: Decision?, verdict: Decision.Verdict?) -> some View {
-        let tint = verdict.flatMap { tint(of: $0, confidence: decision?.confidence ?? 0) }
+        // Named apart from `tint(of:confidence:)`: a local called tint, declared by a closure that calls the
+        // method, is one Xcode 26's compiler can't resolve.
+        let color = verdict.flatMap { tint(of: $0, confidence: decision?.confidence ?? 0) }
         return ZStack {
             Circle()
                 .stroke(.primary.opacity(0.08), lineWidth: 2)
             if let decision {
                 Circle()
                     .trim(from: 0, to: decision.confidence)
-                    .stroke(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .stroke(color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary), style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
             Image(systemName: verdict.map(symbol(of:)) ?? "ellipsis")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(decision == nil ? .tertiary : .primary))
+                .foregroundStyle(color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(decision == nil ? .tertiary : .primary))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: Self.discSize - 8, height: Self.discSize - 8)
-                .glassEffect(tint.map { .regular.tint($0.opacity(0.3)) } ?? .regular, in: .circle)
+                .glassEffect(color.map { .regular.tint($0.opacity(0.3)) } ?? .regular, in: .circle)
         }
         .frame(width: Self.discSize, height: Self.discSize)
         .accessibilityHidden(true)
