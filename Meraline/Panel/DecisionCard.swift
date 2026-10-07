@@ -104,11 +104,11 @@ struct DecisionCard: View {
     }
 
     private var symbolColor: AnyShapeStyle {
-        tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.primary)
+        tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.primary)
     }
 
     private var ringColor: AnyShapeStyle {
-        tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary)
+        tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary)
     }
 
     private var title: String {
@@ -730,7 +730,7 @@ struct LiveDecisionStrip: View {
                     HStack(spacing: 5) {
                         Image(systemName: symbol(of: verdict))
                             .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(tint(of: verdict).map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
+                            .foregroundStyle(tint(of: verdict).map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
                             .contentTransition(.symbolEffect(.replace))
                             .symbolEffect(.bounce, value: answer)
                         Text(verdict == .unsure ? "Not sure" : answer.chosen.label)
@@ -932,7 +932,7 @@ struct BulkDecisionCard: View {
         HStack(spacing: 6) {
             Image(systemName: symbol(of: group.verdict))
                 .font(.system(size: group.verdict == .chosen ? 7 : 11, weight: .bold))
-                .foregroundStyle(tint(of: group.verdict).map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
+                .foregroundStyle(tint(of: group.verdict).map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
                 .frame(width: 14)
             Text("\(group.label) · \(group.items.count.formatted())")
                 .font(.system(size: 13, weight: .semibold))
@@ -1097,12 +1097,12 @@ struct PresetDecisionsCard: View {
             if let decision {
                 Circle()
                     .trim(from: 0, to: decision.confidence)
-                    .stroke(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .stroke(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary), style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
             Image(systemName: verdict.map(symbol(of:)) ?? "ellipsis")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(decision == nil ? .tertiary : .primary))
+                .foregroundStyle(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(decision == nil ? .tertiary : .primary))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: Self.discSize - 8, height: Self.discSize - 8)
                 .glassEffect(tint.map { .regular.tint($0.opacity(0.3)) } ?? .regular, in: .circle)
