@@ -70,7 +70,7 @@ nonisolated struct ChatRequest: Sendable {
             preconditionFailure("\(provider) runs through CommandLineClient")
         case .apple:
             preconditionFailure("\(provider) runs through AppleIntelligenceClient")
-        case .typeSafe, .openRouterDecision, .ollamaDecision:
+        case .typeSafe, .openRouterDecision, .ollamaDecision, .ollaya:
             preconditionFailure("\(provider) runs through DecisionClient")
         }
 

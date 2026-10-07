@@ -95,7 +95,7 @@ nonisolated struct PriceTable: Codable, Equatable, Sendable {
         case .anthropic, .claudeCode: ["anthropic"]
         case .openAI, .codex: ["openai"]
         case .gemini: ["google"]
-        case .openRouter, .custom, .opencode, .ollama, .apple, .typeSafe, .openRouterDecision, .ollamaDecision: []
+        case .openRouter, .custom, .opencode, .ollama, .apple, .typeSafe, .openRouterDecision, .ollamaDecision, .ollaya: []
         }
     }
 

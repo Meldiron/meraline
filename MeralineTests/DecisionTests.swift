@@ -37,7 +37,7 @@ struct DecisionTests {
 
     @Test func typeSafeIsADecisionModelOfItsOwnMode() {
         #expect(Provider.typeSafe.kind == .decision)
-        #expect(ProviderKind.decision.providers == [.typeSafe, .openRouterDecision, .ollamaDecision])
+        #expect(ProviderKind.decision.providers == [.typeSafe, .openRouterDecision, .ollamaDecision, .ollaya])
         #expect(Provider.typeSafe.keyPolicy == .required)
         #expect(Provider.typeSafe.defaultModel == "jev-latest")
         #expect(!SystemPrompt.allCases.contains(.chat(.decision)), "Jev takes no prompt, so Settings › Prompt has none for it")
@@ -145,6 +145,79 @@ struct DecisionTests {
         preferences[provider] = ollama
         #expect(preferences.readyProviders(for: .decision) == [provider] && preferences.defaultProvider(for: .decision) == provider)
         #expect(!preferences[.ollama].isEnabled && preferences.readyProviders(for: .llm).isEmpty)
+    }
+
+    @Test func ollayaDecidesOnThisMacToo() throws {
+        let provider = Provider.ollaya
+        #expect(provider.kind == .decision && Provider.decisionModels.last == provider)
+        #expect(provider.name == "Ollaya" && provider.symbol == "cpu" && provider.tint != Provider.ollamaDecision.tint, "told apart from Ollama in the sidebar")
+        #expect(provider.keyPolicy == .optional && provider.sharesKey == nil, "a key only for a server that sets OLLAYA_API_KEY")
+        #expect(provider.keyPortal == URL(string: "https://ollaya.dev/download"))
+        #expect(provider.runsOnThisMac && !Provider.custom.runsOnThisMac)
+        #expect(provider.defaultModel == "winnow:e4b", "the one Ollaya recommends")
+        #expect(provider.suggestedModels == Provider.ollayaModels && provider.suggestedModels.first == provider.defaultModel)
+        #expect(provider.suggestedModels.contains("kev:0.8b") && provider.suggestedModels.contains("kev") && provider.suggestedModels.contains("kev:9b"))
+        #expect(provider.questionsPerRequest == DecisionScope.batchSize && !provider.trimsDecisionState, "Ollaya takes 256 questions a request, each model with its own context")
+        #expect(Provider.allCases.last == .apple, "the on-device model still sorts last")
+        #expect(PromptPreset.exists(provider.symbol))
+
+        // Off until Settings turns it on, like Ollama, and then ready with a model and no key.
+        var settings = ProviderSettings(model: "kev:0.8b", baseURL: provider.defaultBaseURL, apiKey: "", isEnabled: false)
+        #expect(!settings.isReady(for: provider))
+        settings.isEnabled = true
+        #expect(settings.isReady(for: provider))
+        #expect(!ProviderSettings(model: "", baseURL: provider.defaultBaseURL, apiKey: "", isEnabled: true).isReady(for: provider), "a model is needed")
+
+        // The request goes to Ollaya's System One endpoint on this Mac: no Authorization header without a key, the
+        // key as a bearer token with one, and time for the model to load.
+        let mail = try #require(SelectedText("Production is down.", appName: "Mail"))
+        let request = DecisionRequest(state: [mail], question: "Is this urgent?", answers: .yesNo)
+        var urlRequest = try DecisionClient.urlRequest(request, settings: settings, provider: provider)
+        #expect(urlRequest.url?.absoluteString == "http://127.0.0.1:11435/v1/systemone")
+        #expect(urlRequest.value(forHTTPHeaderField: "Authorization") == nil)
+        #expect(urlRequest.timeoutInterval == 120)
+        var sentBody = try #require(urlRequest.httpBody)
+        var sent = try #require(JSONSerialization.jsonObject(with: sentBody) as? [String: Any])
+        #expect(sent["model"] as? String == "kev:0.8b")
+        settings.apiKey = "local"
+        settings.model = ""
+        urlRequest = try DecisionClient.urlRequest(request, settings: settings, provider: provider)
+        #expect(urlRequest.value(forHTTPHeaderField: "Authorization") == "Bearer local")
+        sentBody = try #require(urlRequest.httpBody)
+        sent = try #require(JSONSerialization.jsonObject(with: sentBody) as? [String: Any])
+        #expect(sent["model"] as? String == "winnow:e4b", "the provider's default model when none is set")
+
+        // Free, whatever the price list says, in the ledger too.
+        #expect(PriceTable(prices: [:], fetched: .now).price(for: provider, model: "kev:0.8b") == .free)
+        #expect(UsageLedger(file: nil).price(for: provider, model: "winnow:e4b") == .free)
+
+        // Its replies in Jev's shapes, as Ollaya's types write them (`crates/ollaya-api/src/decide.rs`): a yes or no
+        // as one probability, a set and levels with a confidence, and the model that answered, which for the Laya
+        // router is the one it picked.
+        let yes = try DecisionClient.decode(Data("""
+        {"model":"kev:0.8b","answers":{"decision":{"type":"noul","noul":0.9312}},"usage":{"input_tokens":126,"output_tokens":0}}
+        """.utf8), for: .yesNo, from: provider)
+        #expect(yes.decision.chosen.label == "Yes" && yes.usage == TokenUsage(input: 126, output: 0, model: "kev:0.8b"))
+        let team = try DecisionClient.decode(Data("""
+        {"model":"laya:en","answers":{"decision":{"type":"choice","choice":"Billing","confidence":0.8418,"probabilities":{"Billing":0.9609,"Technical":0.0367,"Sales":0.0023}}},"usage":{"input_tokens":138,"output_tokens":0}}
+        """.utf8), for: DecisionAnswers(options: ["Billing", "Technical", "Sales"], isOrdered: false), from: provider)
+        #expect(team.decision.chosen.label == "Billing" && abs(team.decision.confidence - 0.8418) < 1e-12 && team.usage.model == "laya:en")
+        let level = try DecisionClient.decode(Data("""
+        {"model":"winnow:e4b","answers":{"decision":{"type":"score","score":1.4049,"confidence":0.1157,"legend":{"0":"Low","1":"Medium","2":"High"},"probabilities":{"0":0.1546,"1":0.2859,"2":0.5595}}},"usage":{"input_tokens":134,"output_tokens":0}}
+        """.utf8), for: DecisionAnswers(options: ["Low", "Medium", "High"], isOrdered: true), from: provider)
+        #expect(level.decision.chosen.label == "High" && level.decision.isOrdered)
+        let score = try #require(level.decision.score)
+        #expect(abs(score - 1.4049) < 1e-12)
+        #expect(StreamDecoder.errorMessage(from: Data(#"{"error":"model \"kev:0.8b\" not found, try pulling it first","code":"MODEL_NOT_FOUND"}"#.utf8)) == "model \"kev:0.8b\" not found, try pulling it first", "Ollaya's error reads as it is")
+
+        // Turned on in Settings, it is the decision model when it is the only one ready, and Ollama stays off.
+        let preferences = Self.preferences(Self.throwaway())
+        #expect(preferences.readyProviders(for: .decision).isEmpty)
+        var ollaya = preferences[provider]
+        ollaya.isEnabled = true
+        preferences[provider] = ollaya
+        #expect(preferences.readyProviders(for: .decision) == [provider] && preferences.defaultProvider(for: .decision) == provider)
+        #expect(!preferences[.ollamaDecision].isEnabled && !preferences[.ollama].isEnabled)
     }
 
     @Test func ollamaGetsEightQuestionsARequestAboutOnlyTheirItems() throws {

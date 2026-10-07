@@ -32,7 +32,8 @@
 #   decision-live  Decision mode: the Context card deciding as you type, a question kept from the input, the input's, and three presets answered on glass capsules
 #   decision-answers  Decision mode: the answers' panel open over the capsule under the input, Yes / No and two lists of your own, the levels in use selected with Edit and Remove
 #   decision-answers-form  the same panel's form editing the levels: the toggle between a set and levels in order, and Save and Use
-#   decision-models  Settings › Decision Models: the three providers in the sidebar, and Ollama's pane turned on with Nimble and what to pull
+#   decision-models  Settings › Decision Models: the four providers in the sidebar, and Ollama's pane turned on with Nimble and what to pull
+#   ollaya        Settings › Decision Models on Ollaya's pane, turned on with Kev's smallest size, and what to pull
 #   preset-decisions  every preset of Decision mode asked at once about a text from Mail, each answer on one card
 #   table-fit     a three-column table wrapped to the card, and, beside a capture of 1.12.0, as table-fit-before-after
 #   undo-rewrite  the chat's actions searched for "undo" after Make Shorter: Undo Rewrite

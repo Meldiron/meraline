@@ -345,7 +345,10 @@ struct ProviderPane: View {
                     if provider == .ollamaDecision {
                         Text("Needs Ollama 0.35 or newer with a decision model pulled: in Terminal, “ollama pull nimble” (9 GB) or “ollama pull tev1” (4 GB).")
                     }
-                    Link(provider.keyPolicy == .none ? "Install \(provider.name)" : "Get an API key", destination: portal)
+                    if provider == .ollaya {
+                        Text("Needs Ollaya with a decision model pulled: in Terminal, “ollaya pull winnow:e4b”, the one Ollaya recommends, or “ollaya pull kev:0.8b”. The key is only for a server that asks for one.")
+                    }
+                    Link(provider.keyPolicy == .none || provider.runsOnThisMac ? "Install \(provider.name)" : "Get an API key", destination: portal)
                 }
             }
 

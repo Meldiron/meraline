@@ -116,7 +116,8 @@ nonisolated struct DecisionRequest: Equatable, Sendable {
 }
 
 /// The System One endpoint, `POST /v1/systemone`, at TypeSafe, at OpenRouter, which serves Jev and other labs'
-/// decision models over the same contract, or at Ollama on this Mac, which serves Nimble and Tev1 over it too: a
+/// decision models over the same contract, or at Ollama or Ollaya on this Mac, which serve Nimble, Tev1, Winnow,
+/// Kev, and more over it too: a
 /// state and named questions in, and for each a typed answer with probabilities out, in one JSON body a few
 /// hundred milliseconds later, never a stream. Meraline asks one question a request, or several at once for the
 /// live decisions and for Decision's presets, and reads each answer into a `Decision`, with what the reply says it

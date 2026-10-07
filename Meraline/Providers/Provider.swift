@@ -13,6 +13,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
     case typeSafe
     case openRouterDecision
     case ollamaDecision
+    case ollaya
     // Last: the on-device model is the fallback, so it sorts after the configured providers of its kind.
     case apple
 
@@ -20,8 +21,8 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
     static let commandLineTools: [Provider] = [.claudeCode, .codex, .opencode]
     /// The models that decide rather than write: a yes or no, one of a set of answers, or a level, with how sure
     /// they are (see `DecisionClient`): TypeSafe's Jev directly, any System One model OpenRouter serves, or one
-    /// Ollama runs on this Mac.
-    static let decisionModels: [Provider] = [.typeSafe, .openRouterDecision, .ollamaDecision]
+    /// Ollama or Ollaya runs on this Mac.
+    static let decisionModels: [Provider] = [.typeSafe, .openRouterDecision, .ollamaDecision, .ollaya]
 
     /// The System One models OpenRouter serves (`output_modalities=decisions` in its list), each run with
     /// Meraline's own requests on 2026-10-02: Jev, its always-newest alias, and the other labs' models that take a
@@ -35,6 +36,13 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
     /// own requests on 2026-10-02: Bespoke Labs' Nimble, 9B, and Together's Tev1, 4B, or its 0.8B size, which
     /// takes less memory and is less sure.
     static let ollamaDecisionModels = ["nimble", "tev1", "tev1:0.8b"]
+
+    /// The decision models Ollaya serves (`ollaya pull <name>`), from its list on 2026-10-07: EldanRing's Winnow,
+    /// the one it recommends, Jared Palmer's Kev in its three sizes (`kev` is the 4B), Laya, a router that picks
+    /// its English or multilingual model by the text, and Mapika's Decider. Ollaya speaks System One as Jev does
+    /// (`crates/ollaya-api/src/decide.rs`): a state of any JSON, instructions of any JSON, a set's criteria with
+    /// null descriptions, and levels as an array, as Meraline sends them, and answers in Jev's shapes.
+    static let ollayaModels = ["winnow:e4b", "kev:0.8b", "kev", "kev:9b", "laya", "decider", "decider:0.8b"]
 
     var isCommandLine: Bool { Self.commandLineTools.contains(self) }
     var isDecisionModel: Bool { Self.decisionModels.contains(self) }
@@ -52,19 +60,20 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
     /// Runs on this Mac through Apple's Foundation Models framework: no key, no server, no command.
     var isOnDevice: Bool { self == .apple }
 
-    /// Answers on this Mac, so the question never leaves it and nothing is charged: Apple Intelligence, and
-    /// Ollama in either mode.
-    var runsOnThisMac: Bool { isOnDevice || self == .ollama || self == .ollamaDecision }
+    /// Answers on this Mac, so the question never leaves it and nothing is charged: Apple Intelligence, Ollama
+    /// in either mode, and Ollaya.
+    var runsOnThisMac: Bool { isOnDevice || self == .ollama || self == .ollamaDecision || self == .ollaya }
 
     /// The most questions one System One request carries, when a decision is about each word or line (see
-    /// `DecisionScope`): Jev and OpenRouter a hundred. Ollama's models read every question of the request in each
-    /// prompt, and a prompt takes at most 2,050 tokens (the `num_ctx` they ship with, which a request can't raise),
-    /// so they get eight, which fits lines of sixty words and takes about as long an item as a bigger batch would.
+    /// `DecisionScope`): Jev, OpenRouter, and Ollaya, which takes 256, a hundred. Ollama's models read every
+    /// question of the request in each prompt, and a prompt takes at most 2,050 tokens (the `num_ctx` they ship
+    /// with, which a request can't raise), so they get eight, which fits lines of sixty words and takes about as
+    /// long an item as a bigger batch would.
     var questionsPerRequest: Int { self == .ollamaDecision ? 8 : DecisionScope.batchSize }
 
     /// Whether a request about each word or line carries only its batch's items in the state, and the texts only
-    /// when they are short (`DecisionRequest.trimmedTextLimit`), so each prompt fits Ollama's 2,050 tokens. Jev
-    /// and OpenRouter get every item and the texts, as TypeSafe's docs ask.
+    /// when they are short (`DecisionRequest.trimmedTextLimit`), so each prompt fits Ollama's 2,050 tokens. Jev,
+    /// OpenRouter, and Ollaya get every item and the texts, as TypeSafe's docs ask.
     var trimsDecisionState: Bool { self == .ollamaDecision }
 
     /// Providers that can search the web when asked to.
@@ -90,6 +99,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .typeSafe: "TypeSafe"
         case .openRouterDecision: "OpenRouter"
         case .ollamaDecision: "Ollama"
+        case .ollaya: "Ollaya"
         }
     }
 
@@ -108,6 +118,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .typeSafe: "Jev, TypeSafe’s decision model. It writes nothing: asked about the text you add, it answers yes or no, one of the answers you name, or a level, with how sure it is, in a fraction of a second."
         case .openRouterDecision: "Decision models from several labs, with the key you use for OpenRouter’s LLMs: TypeSafe’s Jev, Liquid’s D1, Upstage’s Solar Decide, and more. They write nothing: asked about the text you add, they answer yes or no, one of the answers you name, or a level, with how sure they are."
         case .ollamaDecision: "Decision models running on this Mac through Ollama, such as Bespoke Labs’ Nimble and Together’s Tev1. No key needed, and the text never leaves your Mac. They write nothing: asked about the text you add, they answer yes or no, one of the answers you name, or a level, with how sure they are."
+        case .ollaya: "Decision models running on this Mac through Ollaya, such as EldanRing’s Winnow, Jared Palmer’s Kev, Laya, and Mapika’s Decider. No key needed, and the text never leaves your Mac. They write nothing: asked about the text you add, they answer yes or no, one of the answers you name, or a level, with how sure they are."
         }
     }
 
@@ -126,6 +137,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .typeSafe: "circle.lefthalf.filled"
         case .openRouterDecision: "arrow.triangle.branch"
         case .ollamaDecision: "desktopcomputer"
+        case .ollaya: "cpu"
         }
     }
 
@@ -144,6 +156,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .typeSafe: Color(red: 0.16, green: 0.53, blue: 0.6)
         case .openRouterDecision: Color(red: 0.42, green: 0.36, blue: 0.91)
         case .ollamaDecision: Color(white: 0.35)
+        case .ollaya: Color(red: 0.36, green: 0.41, blue: 0.49)
         }
     }
 
@@ -157,6 +170,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .typeSafe: "jev-latest"
         case .openRouterDecision: "typesafe/jev-1.13"
         case .ollamaDecision: "nimble"
+        case .ollaya: "winnow:e4b"
         case .custom, .claudeCode, .codex, .opencode, .apple: ""
         }
     }
@@ -174,6 +188,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .typeSafe: ["jev-latest", "jev-preview", "jev-1.13.0"]
         case .openRouterDecision: Self.openRouterDecisionModels
         case .ollamaDecision: Self.ollamaDecisionModels
+        case .ollaya: Self.ollayaModels
         }
     }
 
@@ -192,13 +207,15 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .typeSafe: "https://api.typesafe.ai/v1"
         case .openRouterDecision: "https://openrouter.ai/api/v1"
         case .ollamaDecision: "http://127.0.0.1:11434/v1"
+        case .ollaya: "http://127.0.0.1:11435/v1"
         }
     }
 
     var keyPolicy: KeyPolicy {
         switch self {
         case .anthropic, .openAI, .gemini, .openRouter, .typeSafe, .openRouterDecision: .required
-        case .custom: .optional
+        // Ollaya takes a key only when its server sets one (`OLLAYA_API_KEY`), as any server Custom points at might.
+        case .custom, .ollaya: .optional
         case .ollama, .ollamaDecision, .claudeCode, .codex, .opencode, .apple: .none
         }
     }
@@ -218,6 +235,7 @@ nonisolated enum Provider: String, CaseIterable, Identifiable, Codable, Sendable
         case .typeSafe: URL(string: "https://console.typesafe.ai/keys")
         case .openRouterDecision: URL(string: "https://openrouter.ai/settings/keys")
         case .ollamaDecision: URL(string: "https://ollama.com/download")
+        case .ollaya: URL(string: "https://ollaya.dev/download")
         }
     }
 

@@ -184,6 +184,22 @@ struct ShowcaseTests {
         }
     }
 
+    @Test func ollaya() async throws {
+        guard Showcase.wants("ollaya") else { return }
+        for appearance in Showcase.appearances {
+            let stage = ShowcaseStage(appearance)
+            // Settings › Decision Models on Ollaya's pane, turned on with Kev's smallest size, as after "ollaya pull kev:0.8b".
+            let defaults: [String: Any] = ["ollaya.enabled": true, "ollaya.model": "kev:0.8b"]
+            try await Self.settings(on: stage, pane: .provider(.ollaya), defaults: defaults) { window in
+                // The sidebar down to its Decision Models group, so the other three show beside the chosen Ollaya.
+                Self.scroll(window, to: 1_000, sidebar: true)
+                await Showcase.settle(0.5)
+                try await stage.captureWindow(window, as: "ollaya")
+            }
+            stage.close()
+        }
+    }
+
     @Test func presets() async throws {
         guard Showcase.wants("presets") else { return }
         let presets = PromptPreset.defaults(in: .english)
